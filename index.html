@@ -243,50 +243,57 @@
             scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
         }
 
-        /* Other existing styles remain the same */
-        .legend-layer-selector {
-            margin-bottom: 1rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
         .slider-container {
-            margin: 0.5rem 0;
+            margin: 0;
+            padding: 0 0.5rem;
         }
 
         .layer-slider {
             width: 100%;
-            height: 6px;
+            height: 4px;
             -webkit-appearance: none;
             appearance: none;
             background: #e5e7eb;
             outline: none;
-            border-radius: 3px;
+            border-radius: 2px;
             cursor: pointer;
         }
 
         .layer-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 20px;
-            height: 20px;
+            width: 16px;
+            height: 16px;
             background: #3b82f6;
             cursor: pointer;
             border-radius: 50%;
             border: 2px solid #fff;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            transition: all 0.15s ease;
+        }
+
+        .layer-slider::-webkit-slider-thumb:hover {
+            width: 18px;
+            height: 18px;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
         }
 
         .layer-slider::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
+            width: 16px;
+            height: 16px;
             background: #3b82f6;
             cursor: pointer;
             border-radius: 50%;
             border: 2px solid #fff;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            transition: all 0.15s ease;
         }
 
+        .layer-slider::-moz-range-thumb:hover {
+            width: 18px;
+            height: 18px;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+        }
         .slider-labels {
             display: flex;
             justify-content: space-between;
@@ -296,14 +303,6 @@
         .slider-label {
             font-size: 0.75rem;
             color: #6b7280;
-        }
-
-        .current-layer-label {
-            text-align: center;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #374151;
-            margin-top: 0.5rem;
         }
 
         .legend-item {
@@ -327,13 +326,6 @@
             overflow: hidden;
             text-overflow: ellipsis;
             max-width: calc(100% - 30px);
-        }
-
-        .legend-title {
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: #6b7280;
-            margin-bottom: 0.5rem;
         }
     
         .metadata-card {
@@ -2751,7 +2743,7 @@ function updateSliderPosition(layer) {
 }
 
 // Function to set up slider interactions
-function setupLegendSlider(hierarchicalData, maxDepth) {
+function setupLegendSlider(hierarchicalData, maxDepth, visibleNodes = null) {
     const slider = document.getElementById('legend-layer-slider');
     
     if (!slider) return;
@@ -2766,31 +2758,28 @@ function setupLegendSlider(hierarchicalData, maxDepth) {
         }
     }
     
-    // Initialize slider and legend
+    // Initialize slider and legend with visible nodes
     slider.value = currentLayer;
-    updateLegend(hierarchicalData, currentLayer);
+    updateLegend(hierarchicalData, currentLayer, visibleNodes);
     
     // Slider change handler
     slider.addEventListener('input', function() {
         const layer = parseInt(this.value);
-        updateLegend(hierarchicalData, layer);
+        updateLegend(hierarchicalData, layer, visibleNodes);
     });
 }
 
 // Function to create the legend HTML structure
 function createLegendHTML(maxDepth) {
     let legendHTML = '<div class="circle-legend" id="circle-legend">';
-    legendHTML += '<div class="legend-title">Layer Legend</div>';
-    legendHTML += '<div class="legend-layer-selector">';
-    legendHTML += '<div class="slider-container">';
-    legendHTML += '<input type="range" class="layer-slider" id="legend-layer-slider" ';
+    legendHTML += '<div class="text-xs font-light text-gray-500 mb-1.5 text-right uppercase tracking-wider">Legend</div>';
+    legendHTML += '<div class="mb-3 pb-3 border-b border-gray-100 flex items-center gap-2">';
+    legendHTML += '<div class="text-xs font-medium text-gray-600 min-w-fit" id="legend-layer-label">Layer 1</div>';
+    legendHTML += '<div class="slider-container flex-1">';
+    legendHTML += '<input type="range" class="layer-slider w-full" id="legend-layer-slider" ';
     legendHTML += 'min="1" max="' + maxDepth + '" value="1" step="1">';
-    legendHTML += '<div class="slider-labels">';
-    legendHTML += '<span class="slider-label">1</span>';
-    legendHTML += '<span class="slider-label">' + maxDepth + '</span>';
     legendHTML += '</div>';
-    legendHTML += '</div>';
-    legendHTML += '<div class="current-layer-label" id="legend-layer-label">Layer 1</div>';
+    legendHTML += '<div class="text-xs text-gray-500 min-w-fit">' + maxDepth + '</div>';
     legendHTML += '</div>';
     legendHTML += '<div class="legend-items" id="legend-items">';
     legendHTML += '<!-- Legend items will be populated here -->';
@@ -2801,27 +2790,37 @@ function createLegendHTML(maxDepth) {
 }
 
 // Function to populate the legend based on the selected layer
-function updateLegend(hierarchicalData, selectedLayer) {
+function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
     const legendItems = document.getElementById('legend-items');
     if (!legendItems) return;
     
     // Clear existing items
     legendItems.innerHTML = '';
     
-    // Get all nodes at the selected depth from the actual D3 hierarchy
-    const actualNodes = [];
-    const root = d3.hierarchy(hierarchicalData);
+    // If visibleNodes are provided, use those; otherwise get all nodes
+    let actualNodes = [];
     
-    // Traverse the hierarchy to find nodes at the selected depth
-    function traverse(node, depth) {
-        if (depth === selectedLayer) {
-            actualNodes.push(node);
-        } else if (node.children && depth < selectedLayer) {
-            node.children.forEach(child => traverse(child, depth + 1));
+    if (visibleNodes) {
+        // Filter visible nodes to only those at the selected depth
+        actualNodes = visibleNodes.filter(d => d.depth === selectedLayer);
+    } else {
+        // Fallback to original behavior
+        const root = d3.hierarchy(hierarchicalData);
+        
+        // Traverse the hierarchy to find nodes at the selected depth
+        function traverse(node, depth) {
+            if (depth === selectedLayer) {
+                actualNodes.push(node);
+            } else if (node.children && depth < selectedLayer) {
+                node.children.forEach(child => traverse(child, depth + 1));
+            }
         }
+        
+        traverse(root, 0);
     }
     
-    traverse(root, 0);
+    // Filter to only nodes with positive radius
+    actualNodes = actualNodes.filter(node => node.r > 0);
     
     // Create a map to track unique circle types by name only
     const uniqueTypes = new Map();
@@ -3117,12 +3116,6 @@ function drawCirclePacking() {
         if (legend && !appState.showLegend) {
             legend.classList.add('hidden');
         }
-
-        // Set up legend slider interactions
-        setupLegendSlider(hierarchicalData, maxDepth);
-        
-        // Initialize legend with layer 1
-        updateLegend(hierarchicalData, 1);
         
         // Update the max depth slider range
         const depthSlider = document.getElementById('max-depth-slider');
@@ -3163,6 +3156,12 @@ function drawCirclePacking() {
             container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">Could not generate valid visualization</div>';
             return;
         }
+
+        // Set up legend slider interactions with visible nodes
+        setupLegendSlider(hierarchicalData, maxDepth, validDescendants);
+        
+        // Initialize legend with layer 1 and visible nodes
+        updateLegend(hierarchicalData, 1, validDescendants);
         
         // Add a margin transform to the visualization group
         const g = svg.append('g')
