@@ -19,6 +19,7 @@
             display: none;
             position: fixed;
             z-index: 100;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
     
         .tooltip {
@@ -75,14 +76,15 @@
             cursor: grab;
             display: flex;
             flex-direction: column;
-            transition: all 0.2s ease; /* This existing transition is key */
-            border: 1px solid transparent;
+            transition: all 0.2s ease;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
         
         .case-item:hover {
-            border-color: rgba(59, 130, 246, 0.3);
-            box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
-            background-color: rgba(59, 130, 246, 0.04);
+            border-color: rgba(59, 130, 246, 0.5);
+            box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06);
+            background-color: rgba(59, 130, 246, 0.02);
         }
         
         .case-item:hover .case-name {
@@ -91,7 +93,8 @@
     
         .case-item.active {
             background-color: rgba(59, 130, 246, 0.08);
-            border-left: 3px solid #2563eb;
+            border: 1px solid #3b82f6;
+            box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.15), 0 2px 4px -1px rgba(59, 130, 246, 0.08);
         }
     
         .case-name {
@@ -248,13 +251,15 @@
             padding: 0.5rem;
             margin: 0;
             border-bottom: none;
+            background-color: transparent;
         }
 
         /* Ensure the container has proper overflow handling */
         .case-list-container {
             border: 1px solid #e5e7eb;
-            border-radius: 0.375rem;
+            border-radius: 0.5rem;
             overflow: hidden;
+            background-color: #f9fafb;
         }
 
         @keyframes slide-down {
@@ -286,15 +291,54 @@
         select:valid {
         color: #111827; /* Dark text color */
         }
+
+        /* New styles for improved pivot table */
+        .pivot-total-row {
+            background-color: #f3f4f6;
+            border-top: 2px solid #d1d5db;
+        }
+        
+        .pivot-total-row td {
+            color: #111827; /* Dark text for total row */
+            font-weight: 500; /* Regular weight, same as other cells */
+        }
+        
+        /* Make regular data cells slightly grey */
+        #pivot-body tr:not(.pivot-total-row) td {
+            color: #4b5563; /* Medium grey for data cells */
+        }
+
+        .pivot-legend {
+            margin-top: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            text-align: right;
+            color: #6b7280;
+            font-size: 0.75rem;
+        }
+
+        .pivot-legend-item {
+            display: inline-block;
+            margin-left: 1rem;
+        }
+
+        .pivot-legend-label {
+            font-weight: 500;
+            color: #374151;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <div class="container mx-auto px-4 py-6">
         <!-- Updated Header with Dynamic Title and Navigation Buttons -->
         <header class="mb-2">
-            <div class="flex items-center">
-                <h1 id="app-title" class="text-3xl font-bold text-gray-800 mr-3">Volumetric Data</h1>
-
+            <div class="flex items-center justify-between">
+                <div class="flex items-center flex-grow">
+                    <h1 class="text-3xl font-bold flex items-center">
+                        <span id="field-title" class="text-gray-600">Volumetric Data</span>
+                        <span id="separator" class="mx-2 text-gray-400">•</span>
+                        <span id="case-title" class="text-gray-800">No case selected</span>
+                    </h1>
+                </div>
                 <div class="flex space-x-1 ml-3">
                     <button id="prev-case-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded p-1 w-8 h-8 flex items-center justify-center transition-colors duration-150">
                         <i class="fas fa-chevron-left"></i>
@@ -328,7 +372,7 @@
                 <div class="flex items-center">
                     <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
                         <input type="checkbox" id="show-parameters-toggle" class="sr-only peer">
-                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-500"></div>
+                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
                         <span class="ml-2">Show Parameters</span>
                     </label>
                 </div>
@@ -344,6 +388,9 @@
                         <!-- Pivot data will be populated here -->
                     </tbody>
                 </table>
+                <div id="pivot-legend" class="pivot-legend">
+                    <!-- Legend will be populated here -->
+                </div>
             </div>
         </div>
         <!-- Circle Packing Visualization - Improved layout -->
@@ -355,20 +402,41 @@
                             <h2 id="ball-chart-title" class="text-xl font-semibold">Ball Chart</h2>
                             <p id="ball-chart-subtitle" class="text-sm text-gray-500">Field Name</p>
                         </div>
-                        <div class="flex flex-col items-end space-y-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Circle Size Metric</label>
-                                <select id="metric-selector" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border">
+                        <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm space-y-3 min-w-[260px]">
+                            <div id="metric-header" class="cursor-pointer select-none">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-sm font-medium text-gray-700">Circle Size Metric</label>
+                                    <i id="collapse-icon" class="fas fa-chevron-up text-gray-400 text-xs transition-transform duration-200"></i>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <select id="metric-selector" class="block w-full pl-3 pr-10 py-2 text-base border border-gray-100 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 sm:text-sm rounded-md">
                                     <!-- Metrics will be populated here -->
                                 </select>
                             </div>
-                            <div id="current-unit" class="text-xs text-gray-700 font-medium"></div>
-                            <div class="flex items-center">
-                                <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
-                                    <input type="checkbox" id="show-values-toggle" class="sr-only peer">
-                                    <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-500"></div>
-                                    <span class="ml-2">Show Values</span>
-                                </label>
+                            <div id="current-unit" class="text-xs text-gray-700 font-medium bg-white px-3 py-1 rounded border border-gray-100"></div>
+                            <div id="collapsible-content" class="space-y-3 transition-all duration-200 overflow-hidden mt-3">
+                                <div class="flex items-center">
+                                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                        <input type="checkbox" id="show-values-toggle" class="sr-only peer">
+                                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                                        <span class="ml-2">Show Values</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center">
+                                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                        <input type="checkbox" id="enable-zoom-toggle" class="sr-only peer">
+                                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                                        <span class="ml-2">Enable Zoom</span>
+                                    </label>
+                                </div>
+                                <div class="w-full">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Max Depth</label>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="range" id="max-depth-slider" min="1" max="5" value="5" class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                        <span id="max-depth-value" class="text-sm text-gray-700 w-8 text-center bg-white px-2 py-1 rounded border border-gray-100">5</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -386,28 +454,28 @@
     </div>
 
     <!-- Context Menu for Settings - Updated layout -->
-    <div id="context-menu" class="context-menu bg-white rounded-lg shadow-xl p-3 w-64">
-        <div class="mb-3">
+    <div id="context-menu" class="context-menu bg-white rounded-lg shadow-2xl p-4 w-72 border border-gray-200">
+        <div class="mb-4">
             <!-- Field selector with proper label and gear icon -->
-            <div class="mb-3">
-                <label for="field-selector" class="block text-sm font-medium text-gray-700 mb-1">Field</label>
+            <div class="mb-4">
+                <label for="field-selector" class="block text-sm font-medium text-gray-700 mb-2">Field</label>
                 <div class="flex items-center space-x-2">
-                <select id="field-selector" class="flex-1 pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm">
+                <select id="field-selector" class="flex-1 pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 sm:text-sm">
                     <!-- Options will be populated dynamically -->
                 </select>
-                <button id="edit-field-btn" class="text-gray-500 hover:text-blue-600 transition-colors duration-150">
+                <button id="edit-field-btn" class="text-gray-500 hover:text-blue-600 transition-colors duration-150 p-2 hover:bg-gray-50 rounded-md">
                     <i class="fas fa-cog"></i>
                 </button>
                 </div>
             </div>
-            <div class="mb-1">
+            <div class="mb-2">
                 <label class="block text-sm font-medium text-gray-700">Volumetric Cases</label>
             </div>
-            <div class="case-list-container">
-                <div id="case-list" class="max-h-80 overflow-y-auto">
+            <div class="case-list-container border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                <div id="case-list" class="max-h-80 overflow-y-auto bg-gray-50">
                     <!-- Cases will be listed here with action buttons -->
                 </div>
-                <button id="add-case-btn" class="text-left px-3 py-2 text-sm text-gray-500 hover:text-blue-600 bg-white border-t border-gray-200 sticky bottom-0 z-10">
+                <button id="add-case-btn" class="text-left px-3 py-2 text-sm text-gray-500 hover:text-blue-600 bg-white border-t border-gray-200 sticky bottom-0 z-10 w-full transition-colors duration-150">
                     <i class="fas fa-plus mr-2 text-xs"></i>Add new case
                 </button>
             </div>
@@ -589,6 +657,9 @@ const appState = {
     showValues: true, // Default to showing values on circles
     showParameters: false, // Default to showing raw volumetric values
     defaultAuthor: '', // Store default author
+    zoomEnabled: false, // Default zoom is disabled
+    maxDepth: 5, // Default maximum depth to show
+    circleMenuCollapsed: false, // Default menu is expanded
     volumeGroups: {
         columns: [] // Array of column names for multi-level grouping
     }
@@ -753,10 +824,29 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize show values toggle
     document.getElementById('show-values-toggle').checked = appState.showValues;
     document.getElementById('show-parameters-toggle').checked = appState.showParameters;
+    document.getElementById('enable-zoom-toggle').checked = appState.zoomEnabled;
+    document.getElementById('max-depth-slider').value = appState.maxDepth;
+    document.getElementById('max-depth-value').textContent = appState.maxDepth;
     
     // Load default author if saved
     if (localStorage.getItem('defaultAuthor')) {
         appState.defaultAuthor = localStorage.getItem('defaultAuthor');
+    }
+    
+    // Load menu collapsed state (app-wide setting)
+    const savedCollapsedState = localStorage.getItem('circleMenuCollapsed');
+    if (savedCollapsedState !== null) {
+        appState.circleMenuCollapsed = JSON.parse(savedCollapsedState);
+        
+        // Apply the saved state
+        const content = document.getElementById('collapsible-content');
+        const icon = document.getElementById('collapse-icon');
+        
+        if (appState.circleMenuCollapsed) {
+            content.classList.add('collapsed');
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        }
     }
     
     // Initialize sortable for case list
@@ -1126,6 +1216,7 @@ function setupEventListeners() {
     document.getElementById('metric-selector').addEventListener('change', function(e) {
         appState.currentMetric = e.target.value;
         updateCurrentUnit();
+        saveCircleSettings(); // Save settings when metric changes
         // Redraw the circle diagram without reloading data
         if (appState.volumetricData) {
             drawCirclePacking();
@@ -1135,9 +1226,50 @@ function setupEventListeners() {
     // Toggle values visibility
     document.getElementById('show-values-toggle').addEventListener('change', function(e) {
         appState.showValues = e.target.checked;
+        saveCircleSettings(); // Save settings when toggle changes
         if (appState.volumetricData) {
             drawCirclePacking();
         }
+    });
+    
+    // Toggle zoom functionality
+    document.getElementById('enable-zoom-toggle').addEventListener('change', function(e) {
+        appState.zoomEnabled = e.target.checked;
+        saveCircleSettings(); // Save settings when toggle changes
+        if (appState.volumetricData) {
+            drawCirclePacking();
+        }
+    });
+    
+    // Max depth slider
+    document.getElementById('max-depth-slider').addEventListener('input', function(e) {
+        appState.maxDepth = parseInt(e.target.value);
+        document.getElementById('max-depth-value').textContent = appState.maxDepth;
+        saveCircleSettings(); // Save settings when slider changes
+        if (appState.volumetricData) {
+            drawCirclePacking();
+        }
+    });
+    
+    // Collapsible menu handler
+    document.getElementById('metric-header').addEventListener('click', function() {
+        const content = document.getElementById('collapsible-content');
+        const icon = document.getElementById('collapse-icon');
+        
+        appState.circleMenuCollapsed = !appState.circleMenuCollapsed;
+        
+        if (appState.circleMenuCollapsed) {
+            content.classList.add('collapsed');
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        } else {
+            content.classList.remove('collapsed');
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+        }
+        
+        // Save the menu state to localStorage (app-wide, not per case)
+        localStorage.setItem('circleMenuCollapsed', JSON.stringify(appState.circleMenuCollapsed));
     });
     
     // Toggle parameters visibility
@@ -1692,6 +1824,9 @@ function loadVolumetricData() {
                 };
             }
             
+            // Load circle settings for this case
+            loadCircleSettings();
+            
             // Update UI
             updatePageTitle();
             updateCurrentUnit(); // Update unit display
@@ -1880,18 +2015,17 @@ function createPivotTable() {
     // --- Header Row ---
     const headerRow = document.createElement('tr');
 
-    // Add headers based on grouping depth
+    // Add headers - toggle column and group column headers
     const toggleHeader = document.createElement('th');
     toggleHeader.className = 'w-6 px-2 py-1';
     headerRow.appendChild(toggleHeader);
-
-    // Each group level gets a column
-    groupColumns.forEach((groupCol, index) => {
-        const groupLevelHeader = document.createElement('th');
-        groupLevelHeader.className = 'w-32 px-2 py-1 text-left text-xs font-semibold text-gray-700';
-        groupLevelHeader.textContent = `Level ${index + 1}: ${groupCol}`;
-        headerRow.appendChild(groupLevelHeader);
-    });
+    
+    // Add empty headers for group columns
+    for (let i = 0; i < groupColumns.length; i++) {
+        const groupHeader = document.createElement('th');
+        groupHeader.className = 'px-2 py-1';
+        headerRow.appendChild(groupHeader);
+    }
 
     // Numeric column headers (right aligned)
     formattedHeaders.forEach(col => {
@@ -1906,33 +2040,27 @@ function createPivotTable() {
 
     headerContainer.appendChild(headerRow);
 
-    // --- Total Row ---
+    // Create a nested data structure for the pivot table
+    const nestedData = createMultiLevelGroups(data, groupColumns);
+    
+    // Render the pivot table with the nested structure
+    renderMultiLevelPivotTable(body, nestedData, 0, groupColumns, displayColumns, formattedHeaders, units);
+
+    // --- Total Row (moved to bottom) ---
     const totalRow = document.createElement('tr');
-    totalRow.className = 'bg-white text-sm';
+    totalRow.className = 'pivot-total-row text-sm'; // Add text-sm to match regular rows
 
     // Toggle cell for total row (empty)
     const totalToggle = document.createElement('td');
-    totalToggle.className = 'w-6';
+    totalToggle.className = 'w-6 px-2 py-1';
     totalRow.appendChild(totalToggle);
 
-    // Label cells for each group level
-    groupColumns.forEach(() => {
-        const td = document.createElement('td');
-        td.className = 'px-2 py-1';
-        totalRow.appendChild(td);
-    });
-
-    // Add "Total" label to the last group column cell
-    if (groupColumns.length > 0) {
-        totalRow.children[groupColumns.length].textContent = 'Total';
-        totalRow.children[groupColumns.length].className = 'px-2 py-1 text-left text-gray-700 font-medium';
-    } else {
-        // If no group columns, add a separate cell for Total
-        const totalLabelCell = document.createElement('td');
-        totalLabelCell.className = 'px-2 py-1 text-left text-gray-700 font-medium';
-        totalLabelCell.textContent = 'Total';
-        totalRow.insertBefore(totalLabelCell, totalRow.firstChild.nextSibling);
-    }
+    // Label cell for total - add colspan to span the group columns
+    const totalLabelCell = document.createElement('td');
+    totalLabelCell.className = 'px-2 py-1 text-left font-medium';
+    totalLabelCell.textContent = 'Total';
+    totalLabelCell.colSpan = Math.max(1, groupColumns.length);
+    totalRow.appendChild(totalLabelCell);
 
     if (appState.showParameters) {
         // Calculate parameters for the total
@@ -1960,7 +2088,7 @@ function createPivotTable() {
         // Display parameters
         formattedHeaders.forEach(col => {
             const td = document.createElement('td');
-            td.className = 'px-2 py-1 text-right text-gray-800';
+            td.className = 'px-2 py-1 text-right';
             
             let value = totalParameters[col.key];
             
@@ -1983,7 +2111,7 @@ function createPivotTable() {
         // Display raw volume sums
         formattedHeaders.forEach(col => {
             const td = document.createElement('td');
-            td.className = 'px-2 py-1 text-right text-gray-800';
+            td.className = 'px-2 py-1 text-right';
             const sum = data.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
             td.textContent = sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             totalRow.appendChild(td);
@@ -1991,12 +2119,34 @@ function createPivotTable() {
     }
 
     body.appendChild(totalRow);
-
-    // Create a nested data structure for the pivot table
-    const nestedData = createMultiLevelGroups(data, groupColumns);
     
-    // Render the pivot table with the nested structure
-    renderMultiLevelPivotTable(body, nestedData, 0, groupColumns, displayColumns, formattedHeaders, units);
+    // Add legend if there are volume groups
+    if (groupColumns.length > 0) {
+        const legendContainer = document.getElementById('pivot-legend');
+        legendContainer.innerHTML = '';
+        
+        // Create legend text
+        const legendText = document.createElement('span');
+        legendText.textContent = 'Grouping: ';
+        legendContainer.appendChild(legendText);
+        
+        // Add group column names
+        groupColumns.forEach((column, index) => {
+            const legendItem = document.createElement('span');
+            legendItem.className = 'pivot-legend-item';
+            
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'pivot-legend-label';
+            labelSpan.textContent = `Level ${index + 1}`;
+            
+            const valueSpan = document.createElement('span');
+            valueSpan.textContent = ` = ${column}`;
+            
+            legendItem.appendChild(labelSpan);
+            legendItem.appendChild(valueSpan);
+            legendContainer.appendChild(legendItem);
+        });
+    }
 }
 
 // Create a nested data structure based on multiple group levels
@@ -2158,18 +2308,22 @@ function renderMultiLevelPivotTable(container, nestedData, level, groupColumns, 
         
         groupRow.appendChild(toggleCell);
         
-        // Empty cells for higher levels (indentation)
-        for (let i = 0; i < level; i++) {
-            const spacerCell = document.createElement('td');
-            spacerCell.className = 'px-2 py-1';
-            groupRow.appendChild(spacerCell);
-        }
-        
-        // Group label cell
+        // Group label cell with indentation and proper colspan
         const labelCell = document.createElement('td');
         labelCell.className = 'px-2 py-1 text-gray-800 font-medium';
-        labelCell.colSpan = groupColumns.length - level;
-        labelCell.textContent = groupValue;
+        labelCell.colSpan = Math.max(1, groupColumns.length); // Span all group columns
+        
+        const indent = level * 16; // pixels of indentation per level
+        const groupLabel = document.createElement('div');
+        groupLabel.className = 'pivot-group-label';
+        groupLabel.style.paddingLeft = `${indent}px`;
+        
+        // Just display the group value without the column name
+        const valueSpan = document.createElement('span');
+        valueSpan.textContent = groupValue;
+        groupLabel.appendChild(valueSpan);
+        
+        labelCell.appendChild(groupLabel);
         groupRow.appendChild(labelCell);
         
         // Calculate summary values for the group - safely check all properties
@@ -2276,20 +2430,13 @@ function renderMultiLevelPivotTable(container, nestedData, level, groupColumns, 
                 spacer.className = 'w-6';
                 detailRow.appendChild(spacer);
                 
-                // Empty cells for indentation up to the current level
-                for (let i = 0; i < groupColumns.length; i++) {
-                    const spacerCell = document.createElement('td');
-                    spacerCell.className = 'px-2 py-1';
-                    
-                    // Add detail description in the last indent cell
-                    if (i === groupColumns.length - 1) {
-                        spacerCell.className = 'px-2 py-1 text-gray-500';
-                        // Use row index as detail identifier
-                        spacerCell.textContent = `Row ${rowIndex + 1}`;
-                    }
-                    
-                    detailRow.appendChild(spacerCell);
-                }
+                // Label cell with indentation and proper colspan
+                const detailLabelCell = document.createElement('td');
+                detailLabelCell.className = 'px-2 py-1 text-gray-500';
+                detailLabelCell.colSpan = Math.max(1, groupColumns.length); // Span all group columns
+                const detailIndent = (level + 1) * 16;
+                detailLabelCell.innerHTML = `<div style="padding-left: ${detailIndent}px">Row ${rowIndex + 1}</div>`;
+                detailRow.appendChild(detailLabelCell);
                 
                 // Display values based on toggle state
                 if (appState.showParameters) {
@@ -2332,64 +2479,6 @@ function renderMultiLevelPivotTable(container, nestedData, level, groupColumns, 
             });
         }
     });
-}
-
-// Also fix the createMultiLevelGroups function to ensure it always returns valid structure:
-
-function createMultiLevelGroups(data, groupColumns) {
-    // Base case - no group columns or empty data
-    if (!data || data.length === 0 || !groupColumns || groupColumns.length === 0) {
-        return { 
-            items: data || [],
-            subgroups: {}
-        };
-    }
-    
-    const currentColumn = groupColumns[0];
-    const remainingColumns = groupColumns.slice(1);
-    
-    // Guard against invalid column name
-    if (!currentColumn || typeof currentColumn !== 'string') {
-        console.warn("Invalid group column name:", currentColumn);
-        return {
-            items: data,
-            subgroups: {}
-        };
-    }
-    
-    // Group data by the current column
-    const groups = {};
-    
-    // Group rows by the current column value
-    data.forEach(row => {
-        if (!row) return; // Skip if row is undefined
-        
-        const groupValue = row[currentColumn] || 'Unspecified';
-        
-        if (!groups[groupValue]) {
-            groups[groupValue] = [];
-        }
-        
-        groups[groupValue].push(row);
-    });
-    
-    // Process each group
-    const result = {};
-    
-    Object.entries(groups).forEach(([groupValue, rows]) => {
-        // Create entry for this group with its rows
-        result[groupValue] = {
-            items: rows,
-            subgroups: {}
-        };
-        
-        // Process subgroups if there are more group columns
-        if (remainingColumns.length > 0) {
-            result[groupValue].subgroups = createMultiLevelGroups(rows, remainingColumns);
-        }
-    });
-    
-    return result;
 }
 
 function getNodesAtDepth(node, targetDepth, currentDepth = 0) {
@@ -2499,6 +2588,15 @@ function drawCirclePacking() {
         
         // Get the depth of the hierarchy
         const maxDepth = getMaxDepth(hierarchicalData);
+        
+        // Update the max depth slider range
+        const depthSlider = document.getElementById('max-depth-slider');
+        if (depthSlider) {
+            depthSlider.max = maxDepth;
+            depthSlider.value = Math.min(appState.maxDepth, maxDepth);
+            document.getElementById('max-depth-value').textContent = depthSlider.value;
+            appState.maxDepth = parseInt(depthSlider.value);
+        }
         
         // Create ordinal scales for different depth levels
         // We'll use these for the tooltip and other needs
@@ -2649,8 +2747,13 @@ function drawCirclePacking() {
         // Apply the pack layout
         pack(root);
         
+        // Filter nodes by maximum depth
+        const filteredDescendants = root.descendants().filter(d => 
+            d.depth <= appState.maxDepth
+        );
+        
         // Check if we got valid coordinates (will prevent NaN errors)
-        const validDescendants = root.descendants().filter(d => 
+        const validDescendants = filteredDescendants.filter(d => 
             !isNaN(d.x) && !isNaN(d.y) && !isNaN(d.r) && d.r > 0
         );
         
@@ -2662,6 +2765,17 @@ function drawCirclePacking() {
         // Add a margin transform to the visualization group
         const g = svg.append('g')
             .attr('transform', 'translate(10, 10)');
+        
+        // Add zoom behavior if enabled
+        if (appState.zoomEnabled) {
+            const zoom = d3.zoom()
+                .scaleExtent([0.5, 5]) // Min and max zoom levels
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+            
+            svg.call(zoom);
+        }
         
         g.selectAll('circle')
             .data(validDescendants)
@@ -2757,11 +2871,11 @@ function drawCirclePacking() {
                 tooltip.transition().duration(500).style('opacity', 0);
             });
 
-        // Add text labels to circles - ONLY for level 0 (total) and level 1 circles
+        // Add text labels to circles - ONLY for level 1 circles (not the total)
         g.selectAll('text.label')
             .data(validDescendants.filter(d => {
-                // Only show labels for total (depth 0) and level 1 circles with sufficient size
-                return (d.depth === 0) || (d.depth === 1 && d.r > 25);
+                // Only show labels for level 1 circles with sufficient size
+                return (d.depth === 1 && d.r > 25);
             }))
             .join('text')
             .attr('class', 'label')
@@ -2771,9 +2885,9 @@ function drawCirclePacking() {
             .attr('dominant-baseline', 'middle')
             .attr('font-size', d => {
                 // Adjust font size based on depth
-                return d.depth === 0 ? circleConfig.fontSize.total : circleConfig.fontSize.level1;
+                return circleConfig.fontSize.level1;
             })
-            .attr('fill', d => d.depth === 0 ? themeColors.textDark : themeColors.textLight)
+            .attr('fill', d => themeColors.textLight)
             .attr('pointer-events', 'none')
             .text(d => d.data && d.data.name ? d.data.name : '');
             
@@ -3205,6 +3319,15 @@ function deleteField(fieldName) {
         
         // Remove associated cases
         const fieldKey = `volumetricCases_${fieldName}`;
+        const cases = JSON.parse(localStorage.getItem(fieldKey) || '{}');
+        
+        // Remove circle settings for all cases in this field
+        Object.keys(cases).forEach(caseName => {
+            const settingsKey = `circleSettings_${fieldName}_${caseName}`;
+            localStorage.removeItem(settingsKey);
+        });
+        
+        // Remove the cases
         localStorage.removeItem(fieldKey);
         
         // Remove associated case order
@@ -3350,13 +3473,41 @@ function formatDateTimeForInput(date) {
 function updatePageTitle() {
     const field = appState.currentField || '';
     const caseName = appState.currentCase || '';
-    const title = field && caseName ? `${field} - ${caseName}` : 'Volumetric Data';
     
-    // Update h1 heading
-    document.getElementById('app-title').textContent = title;
+    // Update field title
+    const fieldTitle = document.getElementById('field-title');
+    const separator = document.getElementById('separator');
+    
+    if (field) {
+        fieldTitle.textContent = field;
+        fieldTitle.classList.remove('text-gray-400');
+        fieldTitle.classList.add('text-gray-600');
+    } else {
+        fieldTitle.textContent = 'No field selected';
+        fieldTitle.classList.remove('text-gray-600');
+        fieldTitle.classList.add('text-gray-400');
+    }
+    
+    // Update case title
+    const caseTitle = document.getElementById('case-title');
+    if (caseName) {
+        caseTitle.textContent = caseName;
+        caseTitle.classList.remove('text-gray-400');
+        caseTitle.classList.add('text-gray-800');
+        separator.style.display = 'inline'; // Show separator when both field and case exist
+    } else if (field) {
+        caseTitle.textContent = 'No case selected';
+        caseTitle.classList.remove('text-gray-800');
+        caseTitle.classList.add('text-gray-400');
+        separator.style.display = 'inline';
+    } else {
+        caseTitle.textContent = '';
+        separator.style.display = 'none'; // Hide separator when no field
+    }
     
     // Update browser tab title
-    document.title = title + ' | Volumetric Data Visualization';
+    const browserTitle = field && caseName ? `${field} - ${caseName}` : 'Volumetric Data';
+    document.title = browserTitle + ' | Volumetric Data Visualization';
     
     // Update ball chart title
     if (appState.currentCase) {
@@ -3850,6 +4001,10 @@ function deleteCase(field, caseName) {
             // Remove case from order list
             removeCaseFromOrder(field, caseName);
             
+            // Remove circle settings for this case
+            const settingsKey = `circleSettings_${field}_${caseName}`;
+            localStorage.removeItem(settingsKey);
+            
             // Update current case if needed
             if (appState.currentCase === caseName) {
                 // Select the next case if available
@@ -3866,6 +4021,62 @@ function deleteCase(field, caseName) {
             // Refresh UI
             loadCasesForField(field);
         }
+    }
+}
+
+// Save circle diagram settings for current case
+function saveCircleSettings() {
+    if (!appState.currentField || !appState.currentCase) return;
+    
+    const settingsKey = `circleSettings_${appState.currentField}_${appState.currentCase}`;
+    const settings = {
+        showValues: appState.showValues,
+        zoomEnabled: appState.zoomEnabled,
+        maxDepth: appState.maxDepth,
+        currentMetric: appState.currentMetric
+    };
+    
+    localStorage.setItem(settingsKey, JSON.stringify(settings));
+}
+
+// Load circle diagram settings for current case
+function loadCircleSettings() {
+    if (!appState.currentField || !appState.currentCase) return;
+    
+    const settingsKey = `circleSettings_${appState.currentField}_${appState.currentCase}`;
+    const savedSettings = localStorage.getItem(settingsKey);
+    
+    if (savedSettings) {
+        const settings = JSON.parse(savedSettings);
+        
+        // Update state
+        appState.showValues = settings.showValues !== undefined ? settings.showValues : true;
+        appState.zoomEnabled = settings.zoomEnabled !== undefined ? settings.zoomEnabled : false;
+        appState.maxDepth = settings.maxDepth !== undefined ? settings.maxDepth : 5;
+        appState.currentMetric = settings.currentMetric || 'STOIIP';
+        
+        // Update UI controls
+        document.getElementById('show-values-toggle').checked = appState.showValues;
+        document.getElementById('enable-zoom-toggle').checked = appState.zoomEnabled;
+        document.getElementById('max-depth-slider').value = appState.maxDepth;
+        document.getElementById('max-depth-value').textContent = appState.maxDepth;
+        document.getElementById('metric-selector').value = appState.currentMetric;
+        
+        // Update unit display
+        updateCurrentUnit();
+    } else {
+        // Reset to defaults if no saved settings
+        appState.showValues = true;
+        appState.zoomEnabled = false;
+        appState.maxDepth = 5;
+        appState.currentMetric = 'STOIIP';
+        
+        // Update UI controls
+        document.getElementById('show-values-toggle').checked = appState.showValues;
+        document.getElementById('enable-zoom-toggle').checked = appState.zoomEnabled;
+        document.getElementById('max-depth-slider').value = appState.maxDepth;
+        document.getElementById('max-depth-value').textContent = appState.maxDepth;
+        document.getElementById('metric-selector').value = appState.currentMetric;
     }
 }
 
