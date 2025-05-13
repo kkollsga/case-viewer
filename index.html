@@ -1641,7 +1641,7 @@ function formatDate(timestamp) {
 }
 
 // Load cases for a specific field and update the case list in the context menu
-function loadCasesForField(field) {
+function loadCasesForField(field, selectLast = false) {
     const caseList = document.getElementById('case-list');
     caseList.innerHTML = '';
 
@@ -1765,12 +1765,20 @@ function loadCasesForField(field) {
             appState.currentCase = appState.savedCase;
             appState.savedCase = null; // Clear the temporary storage
         } else if (!appState.currentCase || !cases.includes(appState.currentCase)) {
-            // If no valid case is selected, select the first one
-            appState.currentCase = cases[0];
+            // If no valid case is selected, select based on selectLast parameter
+            if (selectLast && cases.length > 0) {
+                appState.currentCase = cases[cases.length - 1];
+            } else if (cases.length > 0) {
+                appState.currentCase = cases[0];
+            }
         }
 
-        loadVolumetricData();
-        saveSessionState();
+        // Only load volumetric data if we haven't just added a new case
+        // (because addNewCase will handle loading the data itself)
+        if (!window._justAddedCase) {
+            loadVolumetricData();
+            saveSessionState();
+        }
         
         // Ensure case selection is updated in the UI
         setTimeout(() => {
@@ -3866,9 +3874,55 @@ function addNewCase() {
     // Update UI
     appState.currentField = field;
     document.getElementById('field-selector').value = field;
+    
+    // Set the new case as current
+    appState.currentCase = title;
+    
+    // Set flag to prevent duplicate loading
+    window._justAddedCase = true;
+    
+    // Load cases for field (this will populate the list)
     loadCasesForField(field);
-    appState.currentCase = title; // Set the newly created case as current
+    
+    // Clear the flag
+    window._justAddedCase = false;
+    
+    // Ensure the new case is still selected
+    appState.currentCase = title;
+    
+    // Directly set the volumetric data in the app state
+    appState.volumetricData = cases[title];
+    if (appState.volumetricData.volumeGroups) {
+        appState.volumeGroups = appState.volumetricData.volumeGroups;
+    } else {
+        appState.volumeGroups = { columns: [] };
+    }
+    
+    // Initialize expandedZones for the new case
+    if (!appState.expandedZones[appState.currentCase]) {
+        appState.expandedZones[appState.currentCase] = {};
+    }
+    
+    // Get columns from the first row of data
+    appState.columns = Object.keys(appState.volumetricData.data[0]);
+    
+    // Load circle settings
+    loadCircleSettings();
+    
+    // Update UI elements
+    updatePageTitle();
+    updateCurrentUnit();
+    updateCaseDescription();
+    updateNavigationButtons();
+    updateCaseSelectionInList();
+    
+    // Process and display the data
+    processVolumetricData();
+    
+    // Save session state
     saveSessionState();
+    
+    // Hide the modal
     hideModal();
 }
 
