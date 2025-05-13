@@ -184,10 +184,130 @@
             top: 0;
             left: 0;
             right: 0;
-            z-index: 10;
+            z-index: 0;
             padding: 1rem;
             border-top-left-radius: 0.5rem;
             border-top-right-radius: 0.5rem;
+            pointer-events: none;
+        }
+
+        .circle-legend {
+            position: absolute;
+            bottom: 1rem;
+            left: 1rem;
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            width: 280px; /* Fixed width */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            z-index: 20;
+        }
+
+        .legend-layer-selector {
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .slider-container {
+            margin: 0.5rem 0;
+        }
+
+        .layer-slider {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #e5e7eb;
+            outline: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .layer-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .layer-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .layer-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+
+        .layer-slider::-moz-range-thumb:hover {
+            transform: scale(1.1);
+        }
+
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.5rem;
+        }
+
+        .slider-label {
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+
+        .current-layer-label {
+            text-align: center;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+            margin-top: 0.5rem;
+        }
+
+        .legend-items {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .legend-color-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 0.25rem;
+            border: 1px solid #d1d5db;
+            flex-shrink: 0;
+        }
+
+        .legend-label {
+            font-size: 0.875rem;
+            color: #374151;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: calc(100% - 30px); /* Account for color box and gap */
+        }
+
+        .legend-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #6b7280;
+            margin-bottom: 0.5rem;
         }
     
         .metadata-card {
@@ -679,24 +799,63 @@ const appState = {
 
 // Theme colors for visualizations
 const themeColors = {
-    // Two distinct color palettes for alternating levels
+    // First color palette - Cool colors (Blues, Greens, Cyans)
     palette1: [
-        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
-        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+        '#78BE20', // Green (bright, position 7)
+        '#685BC7', // Violet (bright, position 7)
+        '#E40046', // Rose (bright, position 7)
+        '#0072CE', // Blue (bright, position 7)
+        '#C724B1', // Fuchsia (bright, position 7)
+        '#26D07C', // Emerald (bright, position 7)
+        
+        '#009CDE', // Sky (bright, position 7)
+        
+        '#00C1D5', // Cyan (bright, position 7)
+        '#9063CD', // Purple (bright, position 7)
+        '#C4D600'  // Lime (bright, position 7)
     ],
+    // Second color palette - Medium-light colors (position 4)
     palette2: [
-        '#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3',
-        '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd'
+        '#FEF199', // Yellow (position 4)
+        '#99C6EB', // Blue (position 4)
+        '#FCAFA6', // Red (position 4)
+        '#FFC3A0', // Orange (position 4)
+        '#E7EE99', // Lime (position 4)
+        '#E8A7DF', // Fuchsia (position 4)
+        '#F9DC99', // Amber (position 4)
+        '#C9E5A5', // Green (position 4)
+        '#A8ECCA', // Emerald (position 4)
+        '#99E6EE', // Cyan (position 4)
+        '#99D7F1', // Sky (position 4)
+        '#C2BDE8', // Violet (position 4)
+        '#D2C0EB', // Purple (position 4)
+        '#F499B5'  // Rose (position 4)
     ],
+    // Third color palette - Medium-bright colors from reds to light greens (position 6)
+    palette3: [
+        '#FF863F', // Orange (position 6)
+        '#FA5D4B', // Red (position 6)
+        '#847AD1', // Violet (position 6)
+        '#91CA4A', // Green (position 6)
+        '#CFDD30', // Lime (position 6)
+        '#F4B930', // Amber (position 6)
+        '#FEE330', // Yellow (position 6)
+        '#E93069', // Rose (position 6)
+        '#4FD894', // Emerald (position 6)
+        '#DD7BD0', // Fuchsia (position 6)
+        '#A580D6', // Purple (position 6)
+        '#30AEE4'  // Sky (position 6)
+    ],
+    // Bas
     // Base colors
-    white: '#ffffff',
-    totalCircle: '#ffffff',
-    totalBorder: '#333333',
-    defaultStroke: '#999999',
-    fallback: '#cccccc',
+    white: '#FFFFFF',
+    totalCircle: '#FFFFFF',
+    totalBorder: '#001C33', // Dark blue from your palette
+    defaultStroke: '#5B001C', // Dark rose from your palette
+    fallback: '#B7D7F1', // Light blue from your palette
     // Text colors
-    textDark: '#333333',
-    textLight: '#ffffff',
+    textDark: '#001C33', // Dark blue from your palette
+    textLight: '#FFFFFF',
     // Color interpolators for tooltips and other uses
     interpolators: [
         d3.interpolateViridis,
@@ -705,7 +864,6 @@ const themeColors = {
         d3.interpolateSpectral
     ]
 };
-
 // Unit multipliers for calculations
 const unitMultipliers = {
     'CM': 1,
@@ -2514,6 +2672,269 @@ function getMaxDepth(node, currentDepth = 0) {
     }
 }
 
+function updateSliderPosition(layer) {
+    const thumb = document.getElementById('legend-slider-thumb');
+    const circles = document.querySelectorAll('.slider-circle');
+    const container = document.querySelector('.slider-container');
+    
+    if (!thumb || !circles.length || !container) return;
+    
+    // Update active circle
+    circles.forEach(circle => {
+        if (parseInt(circle.dataset.layer) === layer) {
+            circle.classList.add('active');
+        } else {
+            circle.classList.remove('active');
+        }
+    });
+    
+    // Calculate thumb position
+    const containerWidth = container.offsetWidth - 16; // Account for padding
+    const numLayers = circles.length;
+    const spacing = containerWidth / (numLayers - 1);
+    const position = (layer - 1) * spacing + 8; // Add left padding
+    
+    thumb.style.left = position + 'px';
+}
+
+// Function to set up slider interactions
+function setupLegendSlider(hierarchicalData, maxDepth) {
+    const slider = document.getElementById('legend-layer-slider');
+    
+    if (!slider) return;
+    
+    // Get saved layer or default to 1
+    let currentLayer = 1;
+    if (appState.currentField) {
+        const savedLayer = localStorage.getItem('legendLayer_' + appState.currentField);
+        if (savedLayer) {
+            currentLayer = parseInt(savedLayer);
+            currentLayer = Math.max(1, Math.min(maxDepth, currentLayer)); // Clamp to valid range
+        }
+    }
+    
+    // Initialize slider and legend
+    slider.value = currentLayer;
+    updateLegend(hierarchicalData, currentLayer);
+    
+    // Slider change handler
+    slider.addEventListener('input', function() {
+        const layer = parseInt(this.value);
+        updateLegend(hierarchicalData, layer);
+    });
+}
+
+// Function to create the legend HTML structure
+function createLegendHTML(maxDepth) {
+    let legendHTML = '<div class="circle-legend" id="circle-legend">';
+    legendHTML += '<div class="legend-title">Layer Legend</div>';
+    legendHTML += '<div class="legend-layer-selector">';
+    legendHTML += '<div class="slider-container">';
+    legendHTML += '<input type="range" class="layer-slider" id="legend-layer-slider" ';
+    legendHTML += 'min="1" max="' + maxDepth + '" value="1" step="1">';
+    legendHTML += '<div class="slider-labels">';
+    legendHTML += '<span class="slider-label">1</span>';
+    legendHTML += '<span class="slider-label">' + maxDepth + '</span>';
+    legendHTML += '</div>';
+    legendHTML += '</div>';
+    legendHTML += '<div class="current-layer-label" id="legend-layer-label">Layer 1</div>';
+    legendHTML += '</div>';
+    legendHTML += '<div class="legend-items" id="legend-items">';
+    legendHTML += '<!-- Legend items will be populated here -->';
+    legendHTML += '</div>';
+    legendHTML += '</div>';
+    
+    return legendHTML;
+}
+
+// Function to populate the legend based on the selected layer
+function updateLegend(hierarchicalData, selectedLayer) {
+    const legendItems = document.getElementById('legend-items');
+    if (!legendItems) return;
+    
+    // Clear existing items
+    legendItems.innerHTML = '';
+    
+    // Get all nodes at the selected depth from the actual D3 hierarchy
+    const actualNodes = [];
+    const root = d3.hierarchy(hierarchicalData);
+    
+    // Traverse the hierarchy to find nodes at the selected depth
+    function traverse(node, depth) {
+        if (depth === selectedLayer) {
+            actualNodes.push(node);
+        } else if (node.children && depth < selectedLayer) {
+            node.children.forEach(child => traverse(child, depth + 1));
+        }
+    }
+    
+    traverse(root, 0);
+    
+    // Create a map to track unique circle types by name only
+    const uniqueTypes = new Map();
+    
+    // Process nodes and get their colors
+    actualNodes.forEach(function(node) {
+        const name = node.data.name || 'Unnamed';
+        
+        // Only add if we haven't seen this name before
+        if (!uniqueTypes.has(name)) {
+            const color = getNodeColor(node);
+            const opacity = getNodeOpacity(node);
+            
+            uniqueTypes.set(name, {
+                name: name,
+                color: color,
+                opacity: opacity
+            });
+        }
+    });
+    
+    // Sort items by name for consistent ordering
+    const sortedItems = Array.from(uniqueTypes.values()).sort(function(a, b) {
+        return a.name.localeCompare(b.name);
+    });
+    
+    // Create legend items
+    sortedItems.forEach(function(item) {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'legend-item';
+        
+        const colorBox = document.createElement('div');
+        colorBox.className = 'legend-color-box';
+        colorBox.style.backgroundColor = item.color;
+        colorBox.style.opacity = item.opacity;
+        
+        const label = document.createElement('div');
+        label.className = 'legend-label';
+        label.textContent = item.name;
+        label.title = item.name; // Show full text on hover
+        
+        itemDiv.appendChild(colorBox);
+        itemDiv.appendChild(label);
+        legendItems.appendChild(itemDiv);
+    });
+    
+    // Update layer label
+    const layerLabel = document.getElementById('legend-layer-label');
+    if (layerLabel) {
+        layerLabel.textContent = 'Layer ' + selectedLayer;
+    }
+    
+    // Update slider position
+    const slider = document.getElementById('legend-layer-slider');
+    if (slider && slider.value != selectedLayer) {
+        slider.value = selectedLayer;
+    }
+    
+    // Save selection to localStorage
+    if (appState.currentField) {
+        const key = 'legendLayer_' + appState.currentField;
+        localStorage.setItem(key, selectedLayer.toString());
+    }
+}
+
+function getNodeColor(d) {
+    if (d.depth === 0) return themeColors.totalCircle;
+    
+    try {
+        // Get the depth (1-based) 
+        const depth = d.depth;
+        
+        // Determine which palette to use based on rotating pattern
+        const paletteNumber = ((depth - 1) % 3) + 1; // This will give us 1, 2, or 3
+        
+        // Get palette index (position within siblings)
+        const paletteIndex = d.parent ? d.parent.children.indexOf(d) : 0;
+        
+        // Select the appropriate palette
+        let palette;
+        switch (paletteNumber) {
+            case 1:
+                palette = themeColors.palette1;
+                break;
+            case 2:
+                palette = themeColors.palette2;
+                break;
+            case 3:
+                palette = themeColors.palette3;
+                break;
+            default:
+                palette = themeColors.palette1;
+        }
+        
+        // Return color from the selected palette
+        return palette[paletteIndex % palette.length];
+        
+    } catch (error) {
+        console.error("Error determining node color:", error);
+        return themeColors.fallback;
+    }
+}
+
+// Function to get opacity for a node - consistent opacity for all levels
+function getNodeOpacity(d) {
+    if (d.depth === 0) return 1.0; // Total circle is fully opaque
+    
+    // All other levels have a consistent, high opacity
+    return 0.65;
+}
+
+// Function to get stroke color for a node
+function getNodeStroke(d) {
+    if (d.depth === 0) return themeColors.totalBorder; // Dark outline for total
+    
+    // Use parent's color for leaf nodes
+    if (!d.children && d.parent) {
+        try {
+            const parentDepth = d.parent.depth;
+            
+            // Determine which palette the parent uses
+            const paletteNumber = ((parentDepth - 1) % 3) + 1;
+            
+            // Get parent's position among its siblings
+            const parentIndex = d.parent.parent ? d.parent.parent.children.indexOf(d.parent) : 0;
+            
+            // Select the appropriate palette
+            let palette;
+            switch (paletteNumber) {
+                case 1:
+                    palette = themeColors.palette1;
+                    break;
+                case 2:
+                    palette = themeColors.palette2;
+                    break;
+                case 3:
+                    palette = themeColors.palette3;
+                    break;
+                default:
+                    palette = themeColors.palette1;
+            }
+            
+            return palette[parentIndex % palette.length];
+        } catch (error) {
+            return themeColors.defaultStroke;
+        }
+    }
+    
+    return 'none'; // No stroke for non-leaf internal nodes
+}
+
+// Function to get text color for labels
+function getLabelTextColor(d) {
+    // All labels should be black
+    return themeColors.textDark;
+}
+// Function to get text color for values
+function getValueTextColor(d) {
+    // Only layer 1 values should be white, all others black
+    if (d.depth === 1) {
+        return themeColors.textLight;
+    }
+    
+    return themeColors.textDark;
+}
+
 // Draw the packed circle diagram with multi-level groups
 function drawCirclePacking() {
     if (!appState.volumetricData || !appState.volumetricData.data) {
@@ -2549,19 +2970,13 @@ function drawCirclePacking() {
         const width = container.clientWidth;
         const height = container.clientHeight || 600;
         
-        let tooltip = d3.select('body').select('.tooltip');
-        if (tooltip.empty()) {
-            tooltip = d3.select('body')
-                .append('div')
-                .attr('class', 'tooltip')
-                .style('opacity', 0);
-        } else {
-            tooltip.remove();
-            tooltip = d3.select('body')
-                .append('div')
-                .attr('class', 'tooltip')
-                .style('opacity', 0);
-        }
+        // Remove any existing tooltips and create a new one with proper z-index
+        d3.selectAll('.tooltip').remove();
+        const tooltip = d3.select('body')
+            .append('div')
+            .attr('class', 'tooltip')
+            .style('opacity', 0)
+            .style('z-index', 100); // Ensure tooltip is above everything
         
         // Get hierarchical data
         const hierarchicalData = prepareHierarchicalData();
@@ -2577,10 +2992,20 @@ function drawCirclePacking() {
             .attr('width', width)
             .attr('height', height)
             .attr('viewBox', [0, 0, width, height])
-            .attr('style', 'max-width: 100%; height: 100%;');
+            .attr('style', 'max-width: 100%; height: 100%; position: relative; z-index: 5;'); // Ensure SVG has proper z-index
         
         // Get the depth of the hierarchy
         const maxDepth = getMaxDepth(hierarchicalData);
+        
+        // Add legend after SVG is created
+        const legendHTML = createLegendHTML(maxDepth);
+        container.insertAdjacentHTML('beforeend', legendHTML);
+
+        // Set up legend slider interactions
+        setupLegendSlider(hierarchicalData, maxDepth);
+        
+        // Initialize legend with layer 1
+        updateLegend(hierarchicalData, 1);
         
         // Update the max depth slider range
         const depthSlider = document.getElementById('max-depth-slider');
@@ -2589,139 +3014,6 @@ function drawCirclePacking() {
             depthSlider.value = Math.min(appState.maxDepth, maxDepth);
             document.getElementById('max-depth-value').textContent = depthSlider.value;
             appState.maxDepth = parseInt(depthSlider.value);
-        }
-        
-        // Create ordinal scales for different depth levels
-        // We'll use these for the tooltip and other needs
-        const depthScales = [];
-        
-        // Process nodes to assign sibling positions for transparency distribution
-        // Map to store sibling information by node ID
-        const siblingInfo = new Map();
-        
-        // Helper function to assign sibling positions
-        function processSiblings(node, depth = 0) {
-            if (!node) return;
-            
-            // Process children if they exist
-            if (node.children && node.children.length > 0) {
-                // Sort children by size for consistent visualization
-                const sortedChildren = [...node.children].sort((a, b) => {
-                    const aVal = a.value || 0;
-                    const bVal = b.value || 0;
-                    return bVal - aVal; // Descending
-                });
-                
-                // Assign position and total siblings to each child
-                sortedChildren.forEach((child, index) => {
-                    // Create a unique ID for the child
-                    const childId = `${depth}_${child.name}_${index}`;
-                    
-                    // Store sibling info
-                    siblingInfo.set(childId, {
-                        position: index,
-                        totalSiblings: sortedChildren.length,
-                        name: child.name,
-                        depth: depth + 1
-                    });
-                    
-                    // Recursively process grandchildren
-                    processSiblings(child, depth + 1);
-                });
-            }
-        }
-        
-        // Start processing from the root to assign sibling positions
-        processSiblings(hierarchicalData);
-        
-        // Create ordinal scales for each depth level
-        for (let i = 0; i <= maxDepth; i++) {
-            try {
-                const interpolator = themeColors.interpolators[i % themeColors.interpolators.length];
-                const scale = d3.scaleOrdinal()
-                    .domain(i === 0 ? ['Total'] : getNodesAtDepth(hierarchicalData, i).map(n => n.name || 'unnamed'))
-                    .range(d3.quantize(interpolator, Math.max(10, 3) + 1));
-                
-                depthScales.push(scale);
-            } catch (error) {
-                console.error(`Error creating color scale for depth ${i}:`, error);
-                depthScales.push(() => themeColors.fallback);
-            }
-        }
-        
-        // Function to get color for a specific node
-        function getNodeColor(d) {
-            if (d.depth === 0) return themeColors.totalCircle;
-            
-            try {
-                // Get the adjusted depth (1-based)
-                const depth = d.depth;
-                
-                // Pattern: Alternating solid colors and white with transparency
-                if (depth % 4 === 1) {
-                    // Level 1: First color palette
-                    const paletteIndex = d.parent ? d.parent.children.indexOf(d) : 0;
-                    return themeColors.palette1[paletteIndex % themeColors.palette1.length];
-                } else if (depth % 4 === 2) {
-                    // Level 2: White with transparency
-                    return themeColors.white;
-                } else if (depth % 4 === 3) {
-                    // Level 3: Second color palette
-                    const paletteIndex = d.parent ? d.parent.children.indexOf(d) : 0;
-                    return themeColors.palette2[paletteIndex % themeColors.palette2.length];
-                } else if (depth % 4 === 0 && depth > 0) {
-                    // Level 4, 8, etc: White with transparency
-                    return themeColors.white;
-                } 
-                
-                // Fallback
-                return themeColors.fallback;
-            } catch (error) {
-                console.error("Error determining node color:", error);
-                return themeColors.fallback;
-            }
-        }
-        
-        // Function to get opacity for a node - with varying transparency across siblings
-        function getNodeOpacity(d) {
-            if (d.depth === 0) return 1.0; // Total circle is fully opaque
-            
-            try {
-                const depth = d.depth;
-                
-                // Colored levels (1, 3, 5, etc.) have fixed opacity
-                if (depth % 4 === 1 || depth % 4 === 3) {
-                    return 0.8;
-                }
-                
-                // White levels (2, 4, 6, etc.) have varying transparency
-                if (depth % 4 === 2 || (depth % 4 === 0 && depth > 0)) {
-                    // Find this node's position among its siblings
-                    if (!d.parent || !d.parent.children) return 0.5; // Default if no parent/siblings
-                    
-                    const siblings = d.parent.children;
-                    const totalSiblings = siblings.length;
-                    
-                    // If only one sibling, use middle transparency
-                    if (totalSiblings === 1) return 0.5;
-                    
-                    // Get this node's index among siblings sorted by value
-                    const sortedSiblings = [...siblings].sort((a, b) => (b.value || 0) - (a.value || 0));
-                    const index = sortedSiblings.indexOf(d);
-                    
-                    // Calculate transparency - distribute from 0.9 (90%) to 0.1 (10%)
-                    // First sibling (largest) gets 90%, last gets 10%
-                    const maxOpacity = 0.6;
-                    const minOpacity = 0.05;
-                    
-                    return maxOpacity - (index / (totalSiblings - 1)) * (maxOpacity - minOpacity);
-                }
-                
-                return 0.7; // Default opacity if no other rule applies
-            } catch (error) {
-                console.error("Error calculating opacity:", error);
-                return 0.7; // Default opacity if error
-            }
         }
         
         const pack = d3.pack()
@@ -2770,7 +3062,8 @@ function drawCirclePacking() {
             svg.call(zoom);
         }
         
-        g.selectAll('circle')
+        // Create circles with proper event handling
+        const circles = g.selectAll('circle')
             .data(validDescendants)
             .join('circle')
             .attr('cx', d => d.x)
@@ -2778,36 +3071,18 @@ function drawCirclePacking() {
             .attr('r', d => d.r)
             .attr('fill', d => getNodeColor(d))
             .attr('fill-opacity', d => getNodeOpacity(d))
-            .attr('stroke', d => {
-                if (d.depth === 0) return themeColors.totalBorder; // Dark outline for total
-                
-                // Use parent's color for leaf nodes
-                if (!d.children && d.parent) {
-                    try {
-                        const parentDepth = d.parent.depth;
-                        
-                        // Follow the same alternating pattern as fill
-                        if (parentDepth % 4 === 1) {
-                            const paletteIndex = d.parent.parent ? d.parent.parent.children.indexOf(d.parent) : 0;
-                            return themeColors.palette1[paletteIndex % themeColors.palette1.length];
-                        } else if (parentDepth % 4 === 3) {
-                            const paletteIndex = d.parent.parent ? d.parent.parent.children.indexOf(d.parent) : 0;
-                            return themeColors.palette2[paletteIndex % themeColors.palette2.length];
-                        } else {
-                            // For transparent parents, use a light gray stroke
-                            return '#999999';
-                        }
-                    } catch (error) {
-                        return themeColors.defaultStroke;
-                    }
-                }
-                
-                return 'none'; // No stroke for non-leaf internal nodes
-            })
+            .attr('stroke', d => getNodeStroke(d))
             .attr('stroke-width', d => {
                 return d.depth === 0 ? 2 : 1.5;
             })
+            .style('cursor', 'pointer'); // Add cursor pointer for better UX
+            
+        // Add hover effects with proper event handling
+        circles
             .on('mouseover', function(event, d) {
+                // Ensure the event can propagate properly
+                event.stopPropagation();
+                
                 tooltip.transition().duration(200).style('opacity', 0.9);
 
                 let content = '';
@@ -2880,7 +3155,7 @@ function drawCirclePacking() {
                 // Adjust font size based on depth
                 return circleConfig.fontSize.level1;
             })
-            .attr('fill', d => themeColors.textLight)
+            .attr('fill', d => getLabelTextColor(d))
             .attr('pointer-events', 'none')
             .text(d => d.data && d.data.name ? d.data.name : '');
             
@@ -2918,19 +3193,8 @@ function drawCirclePacking() {
                         default: return circleConfig.fontSize.other;
                     }
                 })
-                .attr('fill', d => {
-                    // Adjust text color for better contrast
-                    if (d.depth === 0) return '#666666';
-                    
-                    // For levels with white/transparent circles, use dark text
-                    if (d.depth % 4 === 2 || (d.depth % 4 === 0 && d.depth > 0)) {
-                        return '#333333';
-                    }
-                    
-                    // For colored circles, use white text
-                    return themeColors.textLight;
-                })
-                .attr('fill-opacity', d => 0.90 - (d.depth * 0.05)) // Slightly reduce opacity with depth
+                .attr('fill', d => getValueTextColor(d))
+                .attr('fill-opacity', d => 0.90) // Consistent opacity for text
                 .attr('pointer-events', 'none')
                 .text(d => {
                     try {
