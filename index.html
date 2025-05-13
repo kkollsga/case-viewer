@@ -184,7 +184,7 @@
             top: 0;
             left: 0;
             right: 0;
-            z-index: 0;
+            z-index: 6;
             padding: 1rem;
             border-top-left-radius: 0.5rem;
             border-top-right-radius: 0.5rem;
@@ -202,8 +202,48 @@
             width: 280px; /* Fixed width */
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             z-index: 20;
+            transition: opacity 0.3s ease;
         }
 
+        .circle-legend.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .legend-items {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-height: 144px; /* Approximately 6 items * 24px height */
+            overflow-y: auto;
+            padding-right: 4px; /* Space for scrollbar */
+        }
+
+        /* Custom scrollbar styling for legend items */
+        .legend-items::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .legend-items::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .legend-items::-webkit-scrollbar-thumb {
+            background-color: rgba(156, 163, 175, 0.5);
+            border-radius: 2px;
+        }
+
+        .legend-items::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(156, 163, 175, 0.7);
+        }
+
+        /* Firefox scrollbar */
+        .legend-items {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+        }
+
+        /* Other existing styles remain the same */
         .legend-layer-selector {
             margin-bottom: 1rem;
             padding-bottom: 1rem;
@@ -247,14 +287,6 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
-        .layer-slider::-webkit-slider-thumb:hover {
-            transform: scale(1.1);
-        }
-
-        .layer-slider::-moz-range-thumb:hover {
-            transform: scale(1.1);
-        }
-
         .slider-labels {
             display: flex;
             justify-content: space-between;
@@ -272,12 +304,6 @@
             font-weight: 500;
             color: #374151;
             margin-top: 0.5rem;
-        }
-
-        .legend-items {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
         }
 
         .legend-item {
@@ -300,7 +326,7 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: calc(100% - 30px); /* Account for color box and gap */
+            max-width: calc(100% - 30px);
         }
 
         .legend-title {
@@ -542,7 +568,7 @@
                             <h2 id="ball-chart-title" class="text-xl font-semibold">Ball Chart</h2>
                             <p id="ball-chart-subtitle" class="text-sm text-gray-500">Field Name</p>
                         </div>
-                        <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm space-y-3 min-w-[200px]">
+                        <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm space-y-3 min-w-[200px]" style="pointer-events: auto;">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Circle Size Metric</label>
                                 <select id="metric-selector" class="block w-full pl-3 pr-10 py-2 text-sm text-gray-700 bg-blue-50 border border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 rounded-md font-medium">
@@ -562,6 +588,13 @@
                                     <input type="checkbox" id="enable-zoom-toggle" class="sr-only peer">
                                     <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
                                     <span class="ml-2">Enable Zoom</span>
+                                </label>
+                            </div>
+                            <div class="flex items-center">
+                                <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                    <input type="checkbox" id="show-legend-toggle" class="sr-only peer">
+                                    <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                                    <span class="ml-2">Show Legend</span>
                                 </label>
                             </div>
                             <div class="w-full">
@@ -794,7 +827,11 @@ const appState = {
     maxDepth: 5, // Default maximum depth to show
     volumeGroups: {
         columns: [] // Array of column names for multi-level grouping
-    }
+    },
+    colorMap: new Map(), // Store consistent colors by name
+    colorUsageByLayer: new Map(), // Track which colors are used per layer
+    colorIndexByLayer: new Map(), // Track next color index per layer
+    showLegend: true // Default to showing legend
 };
 
 // Theme colors for visualizations
@@ -1396,6 +1433,20 @@ function setupEventListeners() {
             drawCirclePacking();
         }
     });
+
+    // Toggle legend visibility
+    document.getElementById('show-legend-toggle').addEventListener('change', function(e) {
+        appState.showLegend = e.target.checked;
+        const legend = document.getElementById('circle-legend');
+        if (legend) {
+            if (appState.showLegend) {
+                legend.classList.remove('hidden');
+            } else {
+                legend.classList.add('hidden');
+            }
+        }
+        saveCircleSettings();
+    });
     
     // Max depth slider
     document.getElementById('max-depth-slider').addEventListener('input', function(e) {
@@ -1488,6 +1539,8 @@ function setupEventListeners() {
         showModal('manage-fields-modal');
         populateFieldList();
     });
+
+
 
     // Modal buttons
     document.getElementById('cancel-add-case').addEventListener('click', function() {
@@ -2842,10 +2895,18 @@ function getNodeColor(d) {
         const depth = d.depth;
         
         // Determine which palette to use based on rotating pattern
-        const paletteNumber = ((depth - 1) % 3) + 1; // This will give us 1, 2, or 3
+        const paletteNumber = ((depth - 1) % 3) + 1;
         
-        // Get palette index (position within siblings)
-        const paletteIndex = d.parent ? d.parent.children.indexOf(d) : 0;
+        // Get the node name
+        const nodeName = d.data ? d.data.name : 'Unnamed';
+        
+        // Create a unique key for this depth and name combination
+        const colorKey = `depth${depth}_${nodeName}`;
+        
+        // Check if we already have a color for this combination
+        if (appState.colorMap.has(colorKey)) {
+            return appState.colorMap.get(colorKey);
+        }
         
         // Select the appropriate palette
         let palette;
@@ -2863,13 +2924,60 @@ function getNodeColor(d) {
                 palette = themeColors.palette1;
         }
         
-        // Return color from the selected palette
-        return palette[paletteIndex % palette.length];
+        // Get or initialize usage tracking for this layer
+        const layerKey = `layer_${depth}`;
+        if (!appState.colorUsageByLayer.has(layerKey)) {
+            appState.colorUsageByLayer.set(layerKey, new Set());
+            appState.colorIndexByLayer.set(layerKey, 0);
+        }
+        
+        const usedColors = appState.colorUsageByLayer.get(layerKey);
+        let colorIndex = appState.colorIndexByLayer.get(layerKey);
+        let color;
+        
+        // If all colors have been used, start reusing
+        if (usedColors.size >= palette.length) {
+            // Use a hash to get a consistent index when reusing colors
+            const nameHash = getStringHash(nodeName);
+            colorIndex = Math.abs(nameHash) % palette.length;
+            color = palette[colorIndex];
+        } else {
+            // Find the next unused color
+            while (usedColors.has(palette[colorIndex % palette.length])) {
+                colorIndex++;
+            }
+            color = palette[colorIndex % palette.length];
+            usedColors.add(color);
+            appState.colorIndexByLayer.set(layerKey, (colorIndex + 1) % palette.length);
+        }
+        
+        // Store the color for consistency
+        appState.colorMap.set(colorKey, color);
+        
+        return color;
         
     } catch (error) {
         console.error("Error determining node color:", error);
         return themeColors.fallback;
     }
+}
+
+// Helper function to get a consistent hash from a string
+function getStringHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash;
+}
+
+// Reset color assignments for a new visualization
+function resetColorAssignments() {
+    appState.colorMap.clear();
+    appState.colorUsageByLayer.clear();
+    appState.colorIndexByLayer.clear();
 }
 
 // Function to get opacity for a node - consistent opacity for all levels
@@ -2940,7 +3048,7 @@ function drawCirclePacking() {
     if (!appState.volumetricData || !appState.volumetricData.data) {
         return;
     }
-    
+    resetColorAssignments();
     try {
         const data = appState.volumetricData.data;
         const units = appState.volumetricData.units || {};
@@ -2997,9 +3105,18 @@ function drawCirclePacking() {
         // Get the depth of the hierarchy
         const maxDepth = getMaxDepth(hierarchicalData);
         
+        // Clear any existing color mappings for this visualization
+        appState.colorMap.clear();
+
         // Add legend after SVG is created
         const legendHTML = createLegendHTML(maxDepth);
         container.insertAdjacentHTML('beforeend', legendHTML);
+
+        // Set legend visibility based on setting
+        const legend = document.getElementById('circle-legend');
+        if (legend && !appState.showLegend) {
+            legend.classList.add('hidden');
+        }
 
         // Set up legend slider interactions
         setupLegendSlider(hierarchicalData, maxDepth);
@@ -4376,16 +4493,24 @@ function saveCircleSettings() {
         showValues: appState.showValues,
         zoomEnabled: appState.zoomEnabled,
         maxDepth: appState.maxDepth
-        // Removed currentMetric from here
     };
     
     localStorage.setItem(settingsKey, JSON.stringify(settings));
+    
+    // Save field-level settings
+    const fieldSettingsKey = `fieldCircleSettings_${appState.currentField}`;
+    const fieldSettings = {
+        showLegend: appState.showLegend
+    };
+    
+    localStorage.setItem(fieldSettingsKey, JSON.stringify(fieldSettings));
 }
 
 // Load circle diagram settings for current case (without metric)
 function loadCircleSettings() {
     if (!appState.currentField || !appState.currentCase) return;
     
+    // Load case-level settings
     const settingsKey = `circleSettings_${appState.currentField}_${appState.currentCase}`;
     const savedSettings = localStorage.getItem(settingsKey);
     
@@ -4396,24 +4521,29 @@ function loadCircleSettings() {
         appState.showValues = settings.showValues !== undefined ? settings.showValues : true;
         appState.zoomEnabled = settings.zoomEnabled !== undefined ? settings.zoomEnabled : false;
         appState.maxDepth = settings.maxDepth !== undefined ? settings.maxDepth : 5;
-        // Removed currentMetric from here
         
         // Update UI controls
         document.getElementById('show-values-toggle').checked = appState.showValues;
         document.getElementById('enable-zoom-toggle').checked = appState.zoomEnabled;
         document.getElementById('max-depth-slider').value = appState.maxDepth;
         document.getElementById('max-depth-value').textContent = appState.maxDepth;
+    }
+    
+    // Load field-level settings
+    const fieldSettingsKey = `fieldCircleSettings_${appState.currentField}`;
+    const savedFieldSettings = localStorage.getItem(fieldSettingsKey);
+    
+    if (savedFieldSettings) {
+        const fieldSettings = JSON.parse(savedFieldSettings);
+        appState.showLegend = fieldSettings.showLegend !== undefined ? fieldSettings.showLegend : true;
     } else {
-        // Reset to defaults if no saved settings
-        appState.showValues = true;
-        appState.zoomEnabled = false;
-        appState.maxDepth = 5;
-        
-        // Update UI controls
-        document.getElementById('show-values-toggle').checked = appState.showValues;
-        document.getElementById('enable-zoom-toggle').checked = appState.zoomEnabled;
-        document.getElementById('max-depth-slider').value = appState.maxDepth;
-        document.getElementById('max-depth-value').textContent = appState.maxDepth;
+        appState.showLegend = true; // Default to showing legend
+    }
+    
+    // Update legend toggle UI
+    const legendToggle = document.getElementById('show-legend-toggle');
+    if (legendToggle) {
+        legendToggle.checked = appState.showLegend;
     }
 }
 
