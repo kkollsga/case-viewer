@@ -1,0 +1,3889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volumetric Data Visualization</title>
+    <!-- TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- D3.js for visualization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Sortable.js for drag and drop functionality -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <style>
+        .context-menu {
+            display: none;
+            position: fixed;
+            z-index: 100;
+        }
+    
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            border-radius: 4px;
+            pointer-events: none;
+            font-size: 12px;
+            max-width: 300px;
+        }
+    
+        .pivot-row-toggle {
+            cursor: pointer;
+        }
+    
+        .pivot-row-toggle:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .pivot-table-container {
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+
+        .pivot-table-container table {
+            margin-bottom: 0;
+        }
+    
+        .table-fixed {
+            table-layout: fixed;
+        }
+    
+        .num-cell {
+            text-align: right;
+        }
+    
+        .btn-disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            background-color: #f3f4f6 !important;
+            color: #9ca3af !important;
+            border-color: #e5e7eb !important;
+        }
+    
+        .case-item {
+            position: relative;
+            background-color: #fff;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem;
+            margin-bottom: 0.25rem;
+            cursor: grab;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.2s ease; /* This existing transition is key */
+            border: 1px solid transparent;
+        }
+        
+        .case-item:hover {
+            border-color: rgba(59, 130, 246, 0.3);
+            box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+            background-color: rgba(59, 130, 246, 0.04);
+        }
+        
+        .case-item:hover .case-name {
+            font-weight: 600;
+        }
+    
+        .case-item.active {
+            background-color: rgba(59, 130, 246, 0.08);
+            border-left: 3px solid #2563eb;
+        }
+    
+        .case-name {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+            user-select: none;
+            cursor: grab;
+        }
+    
+        .case-item.active .case-name {
+            color: #2563eb;
+            font-weight: 600;
+        }
+
+        .sortable-ghost { /* Your previously added style for the drop indicator line */
+            opacity: 1 !important;
+            background-color: #3b82f6 !important;
+            height: 2px !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: hidden;
+        }
+
+        .sortable-ghost > * {
+            display: none !important;
+        }
+
+
+        #add-case-btn {
+            position: sticky;
+            bottom: 0;
+            background-color: white;
+            border-top: 1px solid #e5e7eb;
+            margin: 0 -0.25rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0 0 0.375rem 0.375rem;
+            transition: all 0.15s ease;
+        }
+
+        #add-case-btn:hover {
+            background-color: #f3f8ff;
+            color: #2563eb !important;
+        }
+    
+        .timestamp {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-top: 0.15rem;
+        }
+    
+        .action-buttons {
+            position: absolute;
+            top: 0.6rem;
+            right: 0.2rem;
+            display: flex;
+            gap: 0.15rem;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 10;
+        }
+    
+        .case-item:hover .action-buttons {
+            opacity: 1;
+        }
+    
+        .circle-diagram-container {
+            position: relative;
+            height: 850px;
+        }
+    
+        .circle-diagram-header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            padding: 1rem;
+            border-top-left-radius: 0.5rem;
+            border-top-right-radius: 0.5rem;
+        }
+    
+        .metadata-card {
+            display: flex;
+            flex-direction: column;
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            min-width: 200px;
+        }
+    
+        .metadata-card-row {
+            display: flex;
+            align-items: center;
+            line-height: 1.4;
+        }
+    
+        .metadata-card i {
+            margin-right: 0.5rem;
+            color: #6b7280;
+            width: 14px;
+            text-align: center;
+        }
+    
+        .metadata-card .timestamp-row {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        /* Custom scrollbar styling */
+        #case-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #case-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #case-list::-webkit-scrollbar-thumb {
+            background-color: rgba(156, 163, 175, 0.3);
+            border-radius: 20px;
+            border: transparent;
+        }
+
+        #case-list::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(156, 163, 175, 0.5);
+        }
+
+        /* Firefox scrollbar */
+        #case-list {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+        }
+
+        /* Fix for add-case-btn alignment */
+        #add-case-btn {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            width: 100%;
+            border-left: none;
+            border-right: none;
+            border-bottom: none;
+            border-bottom-left-radius: inherit;
+            border-bottom-right-radius: inherit;
+        }
+
+        /* Ensure case list properly contains its items */
+        #case-list {
+            padding: 0.5rem;
+            margin: 0;
+            border-bottom: none;
+        }
+
+        /* Ensure the container has proper overflow handling */
+        .case-list-container {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            overflow: hidden;
+        }
+
+        @keyframes slide-down {
+            0% {
+                opacity: 0;
+                transform: translateY(-6px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-slide-down {
+            animation: slide-down 0.2s ease-out;
+        }
+
+        /* Add this to your style section */
+        select option[value=""] {
+        color: #9ca3af; /* Gray text color */
+        }
+
+        /* Style for selects with no selection */
+        select:invalid {
+        color: #9ca3af;
+        }
+
+        /* Style for selects with a selection */
+        select:valid {
+        color: #111827; /* Dark text color */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-6">
+        <!-- Updated Header with Dynamic Title and Navigation Buttons -->
+        <header class="mb-2">
+            <div class="flex items-center">
+                <h1 id="app-title" class="text-3xl font-bold text-gray-800 mr-3">Volumetric Data</h1>
+
+                <div class="flex space-x-1 ml-3">
+                    <button id="prev-case-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded p-1 w-8 h-8 flex items-center justify-center transition-colors duration-150">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button id="next-case-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded p-1 w-8 h-8 flex items-center justify-center transition-colors duration-150">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Case Metadata Area with Author and Timestamp in single div -->
+        <div id="case-metadata-container" class="mb-6 flex items-start">
+            <div id="case-author-timestamp" class="metadata-card cursor-pointer hover:border-blue-300 mr-3">
+                <div class="metadata-card-row">
+                    <i class="fas fa-user"></i>
+                    <span class="author-name">Not specified</span>
+                </div>
+                <div class="metadata-card-row timestamp-row">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span class="timestamp-value">No date available</span>
+                </div>
+            </div>
+            <div id="case-description" class="text-gray-600 italic ml-2 mt-1"></div>
+        </div>
+
+        <!-- Pivot Table Area with Parameter Toggle -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-6 overflow-x-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Volumetrics</h2>
+                <div class="flex items-center">
+                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                        <input type="checkbox" id="show-parameters-toggle" class="sr-only peer">
+                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-500"></div>
+                        <span class="ml-2">Show Parameters</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Pivot Table -->
+            <div class="overflow-x-auto pivot-table-container">
+                <table id="pivot-table" class="min-w-full divide-y divide-gray-200 table-auto">
+                    <thead class="bg-gray-50 rounded-t-lg" id="pivot-headers">
+                        <!-- Headers will be dynamically populated -->
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200" id="pivot-body">
+                        <!-- Pivot data will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <!-- Circle Packing Visualization - Improved layout -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+            <div class="circle-diagram-container">
+                <div class="circle-diagram-header">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h2 id="ball-chart-title" class="text-xl font-semibold">Ball Chart</h2>
+                            <p id="ball-chart-subtitle" class="text-sm text-gray-500">Field Name</p>
+                        </div>
+                        <div class="flex flex-col items-end space-y-2">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Circle Size Metric</label>
+                                <select id="metric-selector" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border">
+                                    <!-- Metrics will be populated here -->
+                                </select>
+                            </div>
+                            <div id="current-unit" class="text-xs text-gray-700 font-medium"></div>
+                            <div class="flex items-center">
+                                <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                    <input type="checkbox" id="show-values-toggle" class="sr-only peer">
+                                    <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-500"></div>
+                                    <span class="ml-2">Show Values</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="circle-diagram" class="w-full h-full"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Menu Button (Right-click activation) -->
+    <div class="fixed bottom-4 right-4">
+        <button id="settings-button" class="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg">
+            <i class="fas fa-cog"></i>
+        </button>
+    </div>
+
+    <!-- Context Menu for Settings - Updated layout -->
+    <div id="context-menu" class="context-menu bg-white rounded-lg shadow-xl p-3 w-64">
+        <div class="mb-3">
+            <!-- Field selector with proper label and gear icon -->
+            <div class="mb-3">
+                <label for="field-selector" class="block text-sm font-medium text-gray-700 mb-1">Field</label>
+                <div class="flex items-center space-x-2">
+                <select id="field-selector" class="flex-1 pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm">
+                    <!-- Options will be populated dynamically -->
+                </select>
+                <button id="edit-field-btn" class="text-gray-500 hover:text-blue-600 transition-colors duration-150">
+                    <i class="fas fa-cog"></i>
+                </button>
+                </div>
+            </div>
+            <div class="mb-1">
+                <label class="block text-sm font-medium text-gray-700">Volumetric Cases</label>
+            </div>
+            <div class="case-list-container">
+                <div id="case-list" class="max-h-80 overflow-y-auto">
+                    <!-- Cases will be listed here with action buttons -->
+                </div>
+                <button id="add-case-btn" class="text-left px-3 py-2 text-sm text-gray-500 hover:text-blue-600 bg-white border-t border-gray-200 sticky bottom-0 z-10">
+                    <i class="fas fa-plus mr-2 text-xs"></i>Add new case
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Overlay -->
+    <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <!-- Add Case Modal (Updated with Volume Groups) -->
+        <div id="add-case-modal" class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">Add New Volumetric Case</h3>
+                <div id="timestamp-display" class="text-xs text-gray-500 cursor-pointer hover:text-blue-600"></div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Field</label>
+                    <select id="new-case-field" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border">
+                        <!-- Fields will be populated here -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Case Title</label>
+                    <input type="text" id="new-case-title" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter case title">
+                </div>
+            </div>
+            
+            <!-- New Author field with default toggle -->
+            <div class="flex items-center gap-2 mb-4">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Author</label>
+                    <input type="text" id="new-case-author" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter author name">
+                </div>
+                <div class="flex items-end h-full pb-1">
+                    <label class="inline-flex items-center cursor-pointer text-sm text-gray-700">
+                        <input type="checkbox" id="default-author-toggle" class="sr-only peer">
+                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-500"></div>
+                        <span class="ml-2">Default</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea id="new-case-description" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter description (optional)" rows="2"></textarea>
+            </div>
+            
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-sm font-medium text-gray-700">Volumetric Data (Tab-separated or Copy from Excel)</label>
+                    <div class="flex items-center">
+                        <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                            <input type="checkbox" id="divide-by-1000-toggle" class="sr-only peer" checked>
+                            <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-500"></div>
+                            <span class="ml-2">Divide values by 1000</span>
+                        </label>
+                    </div>
+                </div>
+                <textarea id="new-case-data" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border h-40 font-mono" placeholder="Paste your data here..."></textarea>
+            </div>
+            
+            <!-- Volume Groups section (Multi-level version) -->
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-sm font-medium text-gray-700">Volume Groups</label>
+                    <div class="text-xs text-gray-500">Used for table and visualization grouping</div>
+                </div>
+                
+                <div id="volume-group-container" class="space-y-2">
+                    <!-- Group levels will be added here dynamically -->
+                </div>
+                
+                <div class="flex justify-end mt-2">
+                    <button id="add-group-level" type="button" class="text-blue-600 hover:text-blue-800 text-sm flex items-center">
+                        <i class="fas fa-plus mr-1"></i> Add Level
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Hidden datetime picker - will be shown when timestamp is clicked -->
+            <div class="mb-4 hidden" id="timestamp-picker-container">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Custom Timestamp</label>
+                <input type="datetime-local" id="custom-timestamp" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border">
+            </div>
+            
+            <div class="flex justify-end space-x-2">
+                <button id="cancel-add-case" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                <button id="confirm-add-case" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Add Case</button>
+            </div>
+        </div>
+
+        <!-- Manage Fields Modal -->
+        <div id="manage-fields-modal" class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg hidden">
+            <h3 class="text-lg font-semibold mb-4">Manage Fields</h3>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Fields</label>
+                <ul id="field-list" class="border border-gray-300 rounded-md max-h-60 overflow-y-auto">
+                    <!-- Fields will be listed here -->
+                </ul>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Add New Field</label>
+                <div class="flex">
+                    <input type="text" id="new-field-name" class="flex-1 block pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter field name">
+                    <button id="add-field-btn" class="ml-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Add</button>
+                </div>
+            </div>
+            
+            <div class="flex justify-end">
+                <button id="close-manage-fields" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Close</button>
+            </div>
+        </div>
+
+        <!-- Rename Case Modal (Updated with Volume Groups) -->
+        <div id="rename-case-modal" class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg hidden">
+            <h3 class="text-lg font-semibold mb-4">Edit Volumetric Case</h3>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Case Title</label>
+                <input type="text" id="rename-case-title" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter case title">
+            </div>
+            
+            <!-- Author field in edit modal -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Author</label>
+                <input type="text" id="edit-case-author" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter author name">
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea id="edit-case-description" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter description (optional)" rows="2"></textarea>
+            </div>
+            
+            <!-- Volume Groups section (Multi-level version) for edit modal -->
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-sm font-medium text-gray-700">Volume Groups</label>
+                    <div class="text-xs text-gray-500">Used for table and visualization grouping</div>
+                </div>
+                
+                <div id="edit-volume-group-container" class="space-y-2">
+                    <!-- Group levels will be added here dynamically -->
+                </div>
+                
+                <div class="flex justify-end mt-2">
+                    <button id="edit-add-group-level" type="button" class="text-blue-600 hover:text-blue-800 text-sm flex items-center">
+                        <i class="fas fa-plus mr-1"></i> Add Level
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Timestamp for editing -->
+            <div class="mb-4" id="edit-timestamp-container">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Timestamp</label>
+                <input type="datetime-local" id="edit-timestamp" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border">
+            </div>
+            
+            <div class="flex justify-end space-x-2">
+                <button id="cancel-rename-case" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                <button id="confirm-rename-case" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+// Application state
+const appState = {
+    fields: [],
+    currentField: null,
+    currentCase: null,
+    currentMetric: 'STOIIP', // Default metric for circle packing
+    volumetricData: null,
+    expandedZones: {}, // Track which zones are expanded in the pivot table by case
+    columns: [], // Store columns for the volumetric data
+    availableCases: [], // Track all available cases for navigation
+    showValues: true, // Default to showing values on circles
+    showParameters: false, // Default to showing raw volumetric values
+    defaultAuthor: '', // Store default author
+    volumeGroups: {
+        columns: [] // Array of column names for multi-level grouping
+    }
+};
+
+// Theme colors for visualizations
+const themeColors = {
+    // Two distinct color palettes for alternating levels
+    palette1: [
+        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ],
+    palette2: [
+        '#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3',
+        '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd'
+    ],
+    // Base colors
+    white: '#ffffff',
+    totalCircle: '#ffffff',
+    totalBorder: '#333333',
+    defaultStroke: '#999999',
+    fallback: '#cccccc',
+    // Text colors
+    textDark: '#333333',
+    textLight: '#ffffff',
+    // Color interpolators for tooltips and other uses
+    interpolators: [
+        d3.interpolateViridis,
+        d3.interpolateWarm,
+        d3.interpolateCool, 
+        d3.interpolateSpectral
+    ]
+};
+
+// Unit multipliers for calculations
+const unitMultipliers = {
+    'CM': 1,
+    'KCM': 1000,
+    'MCM': 1000000,
+    'BCM': 1000000000,
+    'TCM': 1000000000000
+};
+
+// Standard volume columns that should not be used for grouping
+const standardColumns = [
+    'Bulk volume', 'Net volume', 'Pore volume', 
+    'HCPV oil', 'HCPV gas', 'STOIIP', 'GIIP',
+    'NTG', 'Por', 'So', 'Sg', '1/Bo', '1/Bg', 'GRV'
+];
+
+// Function to standardize units to CM, KCM, MCM, BCM, TCM format
+function standardizeUnit(rawUnit) {
+    if (!rawUnit) return '';
+    
+    // Handle scientific notation format like [*10^3 m3]
+    // Strip the brackets first to simplify matching
+    const unitsWithoutBrackets = rawUnit.replace(/\[|\]/g, '').trim();
+    
+    // Check for scientific notation pattern
+    if (unitsWithoutBrackets.includes('*10^')) {
+        // Extract the power part
+        const powerMatch = unitsWithoutBrackets.match(/\*10\^(\d+)/);
+        if (powerMatch) {
+            const power = parseInt(powerMatch[1]);
+            
+            // Map power to standard unit
+            switch (power) {
+                case 0: return 'CM';  // Base unit
+                case 3: return 'KCM'; // Thousand
+                case 6: return 'MCM'; // Million
+                case 9: return 'BCM'; // Billion
+                case 12: return 'TCM'; // Trillion
+                default: return 'CM'; // Default to base unit
+            }
+        }
+    }
+    
+    // Handle standard unit formats directly (in case they're already in our format)
+    if (Object.keys(unitMultipliers).includes(rawUnit)) {
+        return rawUnit; // Already in our standard format
+    }
+    
+    // Default case - just use CM if we couldn't determine the unit
+    return 'CM';
+}
+
+// Function to get unit multiplier from unit string
+function getUnitMultiplier(unitStr) {
+    if (!unitStr) return 1;
+    
+    // Use the unitMultipliers object to avoid duplication
+    return unitMultipliers[unitStr] || 1;
+}
+
+// Function to scale up unit when dividing by 1000
+function getScaledUnit(unit) {
+    if (!unit) return unit;
+    
+    // Map each unit to the next larger unit
+    const scaleUpMap = {
+        'CM': 'KCM',
+        'KCM': 'MCM',
+        'MCM': 'BCM',
+        'BCM': 'TCM',
+        'TCM': 'TCM' // Can't scale up further
+    };
+    
+    // Return the scaled-up unit or the original if not found
+    return scaleUpMap[unit] || unit;
+}
+
+// Updated parseHeaders to use the simplified standardizeUnit
+function parseHeaders(headerLine) {
+    // Parse headers using tab as delimiter
+    let rawHeaders = headerLine.split('\t');
+    
+    // Initialize return objects
+    const cleanHeaders = [];
+    const units = {};
+    const columnMap = {}; // Maps cleaned header name to original header
+    
+    // Process each header
+    rawHeaders.forEach(header => {
+        if (!header) {
+            cleanHeaders.push('');
+            return;
+        }
+        
+        const match = header.match(/^(.+?)\s*\[\s*(.*?)\s*\]$/);
+        if (match) {
+            // Header has units in brackets
+            const cleanLabel = match[1].trim();
+            const rawUnit = match[2].trim();
+            const standardUnit = standardizeUnit(rawUnit);
+            
+            cleanHeaders.push(cleanLabel);
+            units[cleanLabel] = standardUnit;
+            columnMap[cleanLabel] = header;
+        } else {
+            // Header without units
+            const cleanLabel = header.trim();
+            cleanHeaders.push(cleanLabel);
+            units[cleanLabel] = '';
+            columnMap[cleanLabel] = header;
+        }
+    });
+    
+    return {
+        headers: cleanHeaders,
+        units: units,
+        columnMap: columnMap
+    };
+}
+
+// Function to ensure active case styling immediately after initialization
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+    setupEventListeners();
+    setupTimestampUI();
+    setupMultiLevelGroupsUI(); // Set up event handlers for group level UI
+    
+    // Initialize show values toggle
+    document.getElementById('show-values-toggle').checked = appState.showValues;
+    document.getElementById('show-parameters-toggle').checked = appState.showParameters;
+    
+    // Load default author if saved
+    if (localStorage.getItem('defaultAuthor')) {
+        appState.defaultAuthor = localStorage.getItem('defaultAuthor');
+    }
+    
+    // Initialize sortable for case list
+    initializeSortable();
+    
+    // Ensure active case styling is applied after everything is loaded
+    setTimeout(function() {
+        updateCaseSelectionInList();
+    }, 100);
+});
+
+// Initialize Sortable.js for case list
+function initializeSortable() {
+    const caseList = document.getElementById('case-list');
+    
+    Sortable.create(caseList, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        // Entire case item is dragable, no handle required
+        onEnd: function(evt) {
+            // Get new order of cases
+            const items = Array.from(evt.to.children).map(item => 
+                item.querySelector('.case-name').textContent);
+            
+            // Save new order to localStorage
+            if (appState.currentField && items.length > 0) {
+                saveCaseOrder(appState.currentField, items);
+            }
+        }
+    });
+}
+
+// Save case order to localStorage
+function saveCaseOrder(field, caseOrder) {
+    const fieldKey = `volumetricCasesOrder_${field}`;
+    localStorage.setItem(fieldKey, JSON.stringify(caseOrder));
+    
+    // Update availableCases array with new order
+    appState.availableCases = caseOrder;
+    
+    // Update navigation buttons
+    updateNavigationButtons();
+}
+
+// Get case order from localStorage
+function getCaseOrder(field) {
+    const fieldKey = `volumetricCasesOrder_${field}`;
+    if (localStorage.getItem(fieldKey)) {
+        return JSON.parse(localStorage.getItem(fieldKey));
+    }
+    return null;
+}
+
+// Select the first field by default and load the last case by default
+function initializeApp() {
+    // Initialize default fields if none exist
+    if (!localStorage.getItem('volumetricFields')) {
+        const defaultFields = ['Cerisa', 'Gjøa Nord'];
+        localStorage.setItem('volumetricFields', JSON.stringify(defaultFields));
+        appState.fields = defaultFields;
+    } else {
+        appState.fields = JSON.parse(localStorage.getItem('volumetricFields'));
+    }
+
+    // Initialize metrics selector with the new format
+    const defaultMetrics = [
+        'Bulk volume',
+        'Net volume',
+        'Pore volume',
+        'HCPV oil',
+        'HCPV gas',
+        'STOIIP',
+        'GIIP'
+    ];
+    
+    const metricSelector = document.getElementById('metric-selector');
+    if(metricSelector) {
+        metricSelector.innerHTML = ''; // Clear any existing options
+        defaultMetrics.forEach(metric => {
+            const option = document.createElement('option');
+            option.value = metric;
+            option.textContent = metric;
+            metricSelector.appendChild(option);
+        });
+        
+        metricSelector.value = appState.currentMetric;
+    }
+
+    // Populate field selector
+    populateFieldSelector();
+
+    // Load session state if available
+    loadSessionState();
+
+    // Select the first field by default if no field is selected
+    if (!appState.currentField && appState.fields.length > 0) {
+        appState.currentField = appState.fields[0];
+    }
+    
+    // Update the field selector with current field
+    if (appState.currentField) {
+        document.getElementById('field-selector').value = appState.currentField;
+        loadCasesForField(appState.currentField, true); // pass true to select the last case
+    }
+    
+    // Set initial page title
+    updatePageTitle();
+}
+
+// Setup event handlers for multi-level group UI
+function setupMultiLevelGroupsUI() {
+    // For the "Add New Case" modal
+    const addLevelBtn = document.getElementById('add-group-level');
+    const editLevelBtn = document.getElementById('edit-add-group-level');
+    
+    // Remove existing listeners (if any) to prevent duplicates
+    addLevelBtn.replaceWith(addLevelBtn.cloneNode(true));
+    editLevelBtn.replaceWith(editLevelBtn.cloneNode(true));
+    
+    // Get fresh references after replacement
+    const newAddLevelBtn = document.getElementById('add-group-level');
+    const newEditLevelBtn = document.getElementById('edit-add-group-level');
+    
+    // Add single event listener for add case modal
+    newAddLevelBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('Add Level button (add-case-modal) clicked at:', new Date().toISOString());
+        
+        const container = document.getElementById('volume-group-container');
+        const columns = getAvailableGroupColumns();
+        
+        // Set a flag to prevent recursive calls
+        window._addingGroupLevel = true;
+        
+        // Add a single level without reinitializing
+        addGroupLevel(container, columns);
+        
+        // Clear the flag
+        setTimeout(() => { window._addingGroupLevel = false; }, 50);
+    });
+
+    // Add single event listener for edit case modal
+    newEditLevelBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('Add Level button (edit-case-modal) clicked at:', new Date().toISOString());
+        
+        const container = document.getElementById('edit-volume-group-container');
+        const columns = appState.currentEditingCaseColumns || getAvailableGroupColumns();
+        
+        // Set a flag to prevent recursive calls
+        window._addingGroupLevel = true;
+        
+        // Add a single level without reinitializing
+        addGroupLevel(container, columns);
+        
+        // Clear the flag
+        setTimeout(() => { window._addingGroupLevel = false; }, 50);
+    });
+}
+
+// Helper function to get columns that can be used for grouping
+function getAvailableGroupColumns() {
+    // If we have detected columns from data, use those
+    if (appState.detectedHeaders) {
+        return appState.detectedHeaders.filter(header => 
+            !standardColumns.includes(header) && 
+            header.trim() !== '' && 
+            !header.startsWith('__')
+        );
+    }
+    
+    // Fallback to some default values if no columns detected
+    return [];
+}
+
+// Initialize volume group selectors
+function initializeVolumeGroups(container, columns, existingGroups = []) {
+    // Skip if we're in the middle of adding a level manually
+    if (window._addingGroupLevel) {
+        console.log("Skipping initializeVolumeGroups during manual add operation");
+        return;
+    }
+    
+    // Clear the container
+    container.innerHTML = '';
+    
+    // If no existing groups, add at least one level
+    if (existingGroups.length === 0) {
+        addGroupLevel(container, columns);
+    } else {
+        // Add a level for each existing group
+        existingGroups.forEach((column, index) => {
+            addGroupLevel(container, columns, column);
+        });
+    }
+}
+
+// Add a new group level selector
+function addGroupLevel(container, columns, selectedValue = null) {
+    console.log("Adding group level!");
+    
+    // Determine the level number
+    const levelNumber = container.children.length + 1;
+    
+    // Create group level container
+    const levelContainer = document.createElement('div');
+    levelContainer.className = 'flex items-center gap-2 mb-2';
+    levelContainer.dataset.level = levelNumber;
+    
+    // Create label
+    const label = document.createElement('label');
+    label.className = 'block text-sm font-medium text-gray-700 w-24';
+    label.textContent = `Level ${levelNumber}`;
+    
+    // Create select dropdown with a required attribute to enable :invalid selector
+    const select = document.createElement('select');
+    select.className = 'flex-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border';
+    select.id = `volume-group-level-${container.id}-${levelNumber}`;
+    select.required = true; // Make it required so we can use :invalid selector
+    
+    // Add placeholder option
+    const placeholderOption = document.createElement('option');
+    placeholderOption.value = '';
+    placeholderOption.textContent = `-- Select Level ${levelNumber} group --`;
+    placeholderOption.selected = true; // Make it selected by default
+    select.appendChild(placeholderOption);
+    
+    // Add options from columns
+    let hasValidOptions = false;
+    columns.forEach(column => {
+        if (!standardColumns.includes(column) && column.trim() !== '' && !column.startsWith('__')) {
+            const option = document.createElement('option');
+            option.value = column;
+            option.textContent = column;
+            select.appendChild(option);
+            hasValidOptions = true;
+        }
+    });
+    
+    // Set selected value if provided and valid
+    if (selectedValue && columns.includes(selectedValue)) {
+        select.value = selectedValue;
+    } else if (hasValidOptions && columns.length > 0) {
+        // Auto-select the first option for simplicity (can be empty for the user to choose)
+        select.value = '';
+    }
+    
+    // Create remove button (only show for levels beyond the first)
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'text-red-600 hover:text-red-800 p-2';
+    removeButton.innerHTML = '<i class="fas fa-minus-circle"></i>';
+    removeButton.title = 'Remove this level';
+    
+    // Only enable remove button if not the first level
+    if (levelNumber === 1) {
+        removeButton.disabled = true;
+        removeButton.classList.add('opacity-50', 'cursor-not-allowed');
+    } else {
+        removeButton.addEventListener('click', function() {
+            removeGroupLevel(container, levelContainer);
+        });
+    }
+    
+    // Assemble the level container
+    levelContainer.appendChild(label);
+    levelContainer.appendChild(select);
+    levelContainer.appendChild(removeButton);
+    
+    // Add to the main container
+    container.appendChild(levelContainer);
+    
+    // Return the level container
+    return levelContainer;
+}
+
+// Remove a group level
+function removeGroupLevel(container, levelElement) {
+    // Remove the level element
+    container.removeChild(levelElement);
+    
+    // Update the level numbers for remaining levels
+    Array.from(container.children).forEach((child, index) => {
+        const newLevel = index + 1;
+        child.dataset.level = newLevel;
+        
+        // Update label
+        const label = child.querySelector('label');
+        label.textContent = `Level ${newLevel}`;
+        
+        // Update select ID
+        const select = child.querySelector('select');
+        select.id = `volume-group-level-${container.id}-${newLevel}`;
+        
+        // Update remove button state
+        const removeButton = child.querySelector('button');
+        if (newLevel === 1) {
+            removeButton.disabled = true;
+            removeButton.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            removeButton.disabled = false;
+            removeButton.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    });
+}
+
+// Get volume groups from UI
+function getVolumeGroupsFromUI(container) {
+    const groups = [];
+    
+    // Get all select elements in the container
+    Array.from(container.children).forEach(levelElement => {
+        const select = levelElement.querySelector('select');
+        // Only add to groups if the selection has a non-empty value
+        if (select && select.value && select.value.trim() !== '') {
+            groups.push(select.value);
+        }
+    });
+    
+    return groups;
+}
+
+// Save session state to localStorage
+function saveSessionState() {
+    const sessionState = {
+        currentField: appState.currentField,
+        currentCase: appState.currentCase
+    };
+    
+    localStorage.setItem('volumetricSessionState', JSON.stringify(sessionState));
+}
+
+// Load session state from localStorage
+function loadSessionState() {
+    const savedState = localStorage.getItem('volumetricSessionState');
+    
+    if (savedState) {
+        const state = JSON.parse(savedState);
+        
+        // Apply saved field and case if they exist
+        if (state.currentField && appState.fields.includes(state.currentField)) {
+            appState.currentField = state.currentField;
+            
+            // We'll set currentCase later in loadCasesForField to ensure the case exists
+            if (state.currentCase) {
+                // Store it temporarily so loadCasesForField can use it
+                appState.savedCase = state.currentCase;
+            }
+        }
+    }
+}
+
+// Set up all event listeners
+function setupEventListeners() {
+    // Field selection change
+    document.getElementById('field-selector').addEventListener('change', function(e) {
+        appState.currentField = e.target.value;
+        loadCasesForField(appState.currentField);
+        saveSessionState();
+    });
+
+    // Metric selection change
+    document.getElementById('metric-selector').addEventListener('change', function(e) {
+        appState.currentMetric = e.target.value;
+        updateCurrentUnit();
+        // Redraw the circle diagram without reloading data
+        if (appState.volumetricData) {
+            drawCirclePacking();
+        }
+    });
+    
+    // Toggle values visibility
+    document.getElementById('show-values-toggle').addEventListener('change', function(e) {
+        appState.showValues = e.target.checked;
+        if (appState.volumetricData) {
+            drawCirclePacking();
+        }
+    });
+    
+    // Toggle parameters visibility
+    document.getElementById('show-parameters-toggle').addEventListener('change', function(e) {
+        appState.showParameters = e.target.checked;
+        if (appState.volumetricData) {
+            createPivotTable();
+        }
+    });
+    
+    // Default author toggle
+    document.getElementById('default-author-toggle').addEventListener('change', function(e) {
+        const authorInput = document.getElementById('new-case-author');
+        
+        if (e.target.checked) {
+            // When checked, save current value as default and disable the input
+            appState.defaultAuthor = authorInput.value;
+            localStorage.setItem('defaultAuthor', appState.defaultAuthor);
+            authorInput.disabled = true;
+        } else {
+            // When unchecked, enable the input for editing
+            authorInput.disabled = false;
+        }
+    });
+
+    // Navigation buttons
+    document.getElementById('prev-case-btn').addEventListener('click', function() {
+        navigateToCase('prev');
+    });
+    
+    document.getElementById('next-case-btn').addEventListener('click', function() {
+        navigateToCase('next');
+    });
+    
+    // Keyboard arrow navigation
+    document.addEventListener('keydown', function(e) {
+        // Only respond to arrow keys if not in an input field
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+            return;
+        }
+        
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            navigateToCase('prev');
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            navigateToCase('next');
+        }
+    });
+
+    // Settings menu events
+    const settingsButton = document.getElementById('settings-button');
+    const contextMenu = document.getElementById('context-menu');
+    
+    settingsButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const rect = settingsButton.getBoundingClientRect();
+        contextMenu.style.display = 'block';
+        contextMenu.style.left = `${rect.left - contextMenu.offsetWidth + rect.width}px`;
+        contextMenu.style.top = `${rect.top - contextMenu.offsetHeight}px`;
+    });
+    
+    // Hide context menu when clicking elsewhere
+    document.addEventListener('click', function(e) {
+        if (!contextMenu.contains(e.target) && e.target !== settingsButton) {
+            contextMenu.style.display = 'none';
+        }
+    });
+
+    // Add Case button
+    document.getElementById('add-case-btn').addEventListener('click', function() {
+        showModal('add-case-modal');
+        clearAddCaseFields(); // Clear fields when opening modal
+        populateNewCaseFields();
+    });
+
+    // Manage Fields button
+    document.getElementById('edit-field-btn').addEventListener('click', function() {
+        showModal('manage-fields-modal');
+        populateFieldList();
+    });
+
+    // Modal buttons
+    document.getElementById('cancel-add-case').addEventListener('click', function() {
+        hideModal();
+    });
+    
+    document.getElementById('confirm-add-case').addEventListener('click', function() {
+        addNewCase();
+    });
+    
+    document.getElementById('close-manage-fields').addEventListener('click', function() {
+        hideModal();
+    });
+    
+    document.getElementById('add-field-btn').addEventListener('click', function() {
+        const fieldName = document.getElementById('new-field-name').value.trim();
+        if (fieldName) {
+            addNewField(fieldName);
+            document.getElementById('new-field-name').value = '';
+        }
+    });
+    
+    document.getElementById('cancel-rename-case').addEventListener('click', function() {
+        hideModal();
+    });
+    
+    document.getElementById('confirm-rename-case').addEventListener('click', function() {
+        const newTitle = document.getElementById('rename-case-title').value.trim();
+        const description = document.getElementById('edit-case-description').value.trim();
+        const author = document.getElementById('edit-case-author').value.trim();
+        
+        // Get volume groups from the edit container
+        const volumeGroupContainer = document.getElementById('edit-volume-group-container');
+        const volumeGroupColumns = getVolumeGroupsFromUI(volumeGroupContainer);
+        
+        // Get timestamp
+        const timestamp = new Date(document.getElementById('edit-timestamp').value);
+        
+        if (newTitle) {
+            renameCase(appState.currentField, appState.currentCase, newTitle, description, author, volumeGroupColumns, timestamp);
+            hideModal();
+        }
+    });
+
+    // Add event listener for the new case data textarea to detect columns
+    document.getElementById('new-case-data').addEventListener('input', function() {
+        // Detect columns after a short delay to allow for large pastes
+        clearTimeout(this.timeout);
+        this.timeout = setTimeout(() => {
+            // First detect the columns from the data
+            detectColumnsFromData();
+            
+            // Now reinitialize the volume group UI with intelligent selection
+            const container = document.getElementById('volume-group-container');
+            const newColumns = getAvailableGroupColumns();
+            
+            // If no valid columns detected, don't change anything
+            if (newColumns.length === 0) return;
+            
+            // Save existing selections if any
+            const existingSelections = [];
+            const existingLevels = container.querySelectorAll('select');
+            existingLevels.forEach(select => {
+                existingSelections.push({
+                    value: select.value,
+                    element: select
+                });
+            });
+            
+            // Set flag to prevent cascading
+            window._addingGroupLevel = true;
+            
+            // If we have no existing levels or the existing levels are empty,
+            // initialize with up to 2 new levels
+            if (existingSelections.length === 0 || 
+                existingSelections.every(sel => !sel.value)) {
+                
+                // Clear container
+                container.innerHTML = '';
+                
+                // Add first level with default selection (first column)
+                const firstLevel = addGroupLevel(container, newColumns);
+                const firstSelect = firstLevel.querySelector('select');
+                if (firstSelect && newColumns.length > 0) {
+                    firstSelect.value = newColumns[0]; // Simply select the first column
+                }
+                
+                // Add second level if we have enough columns
+                if (newColumns.length >= 2) {
+                    const secondLevel = addGroupLevel(container, newColumns);
+                    const secondSelect = secondLevel.querySelector('select');
+                    if (secondSelect) {
+                        // Choose a different column than the first level
+                        const firstValue = firstSelect ? firstSelect.value : '';
+                        const availableForSecond = newColumns.filter(col => col !== firstValue);
+                        
+                        if (availableForSecond.length > 0) {
+                            secondSelect.value = availableForSecond[0]; // Select the first different column
+                        }
+                    }
+                }
+            } else {
+                // We have existing selections - preserve valid ones and update the options
+                // Update the options in each existing dropdown without changing the selection
+                existingLevels.forEach((select, index) => {
+                const currentValue = select.value;
+                
+                // Clear and repopulate options
+                select.innerHTML = '';
+                
+                // Ensure select has the required attribute
+                select.required = true;
+                
+                // Add placeholder option (not disabled)
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = `-- Select Level ${index + 1} group --`;
+                select.appendChild(placeholderOption);
+                
+                // Add new options
+                let hasValidOptions = false;
+                newColumns.forEach(column => {
+                    const option = document.createElement('option');
+                    option.value = column;
+                    option.textContent = column;
+                    select.appendChild(option);
+                    hasValidOptions = true;
+                });
+                
+                // Restore previous selection if valid
+                if (currentValue && newColumns.includes(currentValue)) {
+                    select.value = currentValue;
+                } else {
+                    // If previous selection is invalid, default to blank/placeholder
+                    select.value = '';
+                }
+            });
+                
+                // If we only have one level but should have two, add a second level
+                if (existingLevels.length === 1 && newColumns.length >= 2) {
+                    // Get value of first level
+                    const firstValue = existingLevels[0].value;
+                    
+                    // Add second level 
+                    const secondLevel = addGroupLevel(container, newColumns);
+                    const secondSelect = secondLevel.querySelector('select');
+                    
+                    if (secondSelect) {
+                        // Choose a different column than the first level
+                        const availableForSecond = newColumns.filter(col => col !== firstValue);
+                        
+                        if (availableForSecond.length > 0) {
+                            secondSelect.value = availableForSecond[0]; // Select first different column
+                        }
+                    }
+                }
+            }
+            
+            // Clear flag
+            setTimeout(() => { window._addingGroupLevel = false; }, 50);
+        }, 300);
+    });
+
+    // Window resize handler
+    window.addEventListener('resize', function() {
+        // Redraw circle packing if data exists
+        if (appState.volumetricData) {
+            drawCirclePacking();
+        }
+        
+        // Update context menu position if visible
+        const contextMenu = document.getElementById('context-menu');
+        if (contextMenu.style.display === 'block') {
+            const settingsButton = document.getElementById('settings-button');
+            const rect = settingsButton.getBoundingClientRect();
+            contextMenu.style.left = `${rect.left - contextMenu.offsetWidth + rect.width}px`;
+            contextMenu.style.top = `${rect.top - contextMenu.offsetHeight}px`;
+        }
+    });
+}
+
+// Function to update the current unit display
+function updateCurrentUnit() {
+    const unitEl = document.getElementById('current-unit');
+    if (!unitEl) return;
+    
+    if (!appState.volumetricData || !appState.currentMetric) {
+        unitEl.textContent = '';
+        return;
+    }
+    
+    const units = appState.volumetricData.units || {};
+    const currentUnit = units[appState.currentMetric] || '';
+    
+    // Calculate total value
+    const totalValue = appState.volumetricData.data.reduce((sum, row) => {
+        const val = parseFloat(row[appState.currentMetric]) || 0;
+        return sum + val;
+    }, 0);
+    
+    // Format total value with 2 decimal places
+    let formattedTotal;
+    if (totalValue >= 1000000) {
+        formattedTotal = (totalValue / 1000000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + 'M';
+    } else if (totalValue >= 1000) {
+        formattedTotal = (totalValue / 1000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + 'k';
+    } else {
+        formattedTotal = totalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+    
+    // Format the display string
+    unitEl.textContent = `Total ${appState.currentMetric}: ${formattedTotal} ${currentUnit}`;
+}
+
+// Navigate between cases
+function navigateToCase(direction) {
+    if (!appState.currentField || !appState.availableCases.length) return;
+    
+    const currentIndex = appState.availableCases.indexOf(appState.currentCase);
+    let newIndex;
+    
+    if (direction === 'prev') {
+        newIndex = currentIndex - 1;
+        if (newIndex < 0) return; // Already at first case
+    } else {
+        newIndex = currentIndex + 1;
+        if (newIndex >= appState.availableCases.length) return; // Already at last case
+    }
+    
+    appState.currentCase = appState.availableCases[newIndex];
+    loadVolumetricData();
+    updateCaseSelectionInList();
+    saveSessionState();
+}
+
+// Update navigation buttons state
+function updateNavigationButtons() {
+    const prevBtn = document.getElementById('prev-case-btn');
+    const nextBtn = document.getElementById('next-case-btn');
+    
+    if (!appState.currentField || !appState.currentCase || appState.availableCases.length <= 1) {
+        // Disable both if no field or case, or only one case
+        prevBtn.classList.add('btn-disabled');
+        nextBtn.classList.add('btn-disabled');
+        return;
+    }
+    
+    const currentIndex = appState.availableCases.indexOf(appState.currentCase);
+    
+    // Update prev button state
+    if (currentIndex <= 0) {
+        prevBtn.classList.add('btn-disabled');
+    } else {
+        prevBtn.classList.remove('btn-disabled');
+    }
+    
+    // Update next button state
+    if (currentIndex >= appState.availableCases.length - 1) {
+        nextBtn.classList.add('btn-disabled');
+    } else {
+        nextBtn.classList.remove('btn-disabled');
+    }
+}
+
+// Update case selection in list
+function updateCaseSelectionInList() {
+    document.querySelectorAll('#case-list > div').forEach(item => {
+        item.classList.remove('active');
+        const nameSpan = item.querySelector('.case-name');
+        
+        if (nameSpan) {
+            // Reset styles for all cases
+            nameSpan.style.color = '';
+            nameSpan.style.fontWeight = '';
+            
+            // Apply active styles to current case
+            if (nameSpan.textContent === appState.currentCase) {
+                item.classList.add('active');
+                nameSpan.style.color = '#0072CE'; // Set the blue color exactly as specified
+                nameSpan.style.fontWeight = '600';
+            }
+        }
+    });
+}
+
+// Populate field selector dropdown
+function populateFieldSelector() {
+    const fieldSelector = document.getElementById('field-selector');
+    fieldSelector.innerHTML = '';
+    
+    appState.fields.forEach(field => {
+        const option = document.createElement('option');
+        option.value = field;
+        option.textContent = field;
+        fieldSelector.appendChild(option);
+    });
+}
+
+// Format date for display
+function formatDate(timestamp) {
+    if (!timestamp) return '';
+    
+    const date = new Date(timestamp);
+    return date.toLocaleDateString(undefined, { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+    });
+}
+
+// Load cases for a specific field and update the case list in the context menu
+function loadCasesForField(field) {
+    const caseList = document.getElementById('case-list');
+    caseList.innerHTML = '';
+
+    const fieldKey = `volumetricCases_${field}`;
+    let casesData = JSON.parse(localStorage.getItem(fieldKey) || '{}');
+    let cases = Object.keys(casesData);
+
+    const savedOrder = getCaseOrder(field);
+    if (savedOrder) {
+        const ordered = savedOrder.filter(name => cases.includes(name));
+        const extras = cases.filter(name => !ordered.includes(name));
+        cases = [...ordered, ...extras];
+    }
+
+    appState.availableCases = cases;
+
+    if (cases.length === 0) {
+        caseList.innerHTML = `<div class="p-2 text-gray-500 text-sm">No cases available</div>`;
+        appState.currentCase = null; // Reset the current case
+        clearData();
+    } else {
+        // Populate the case list
+        for (const caseName of cases) {
+            const data = casesData[caseName] || {};
+            function formatManual(date) {
+              const month = date.toLocaleString('en-US', { month: 'short' }); // e.g. "May"
+              const day = date.getDate(); // e.g. 8
+              return `${month} ${day}`;
+            }
+
+            const timestamp = data.timestamp 
+              ? formatManual(new Date(data.timestamp))
+              : '';
+
+            const caseItem = document.createElement('div');
+            caseItem.className = `case-item ${appState.currentCase === caseName ? 'active' : ''}`;
+
+            const content = document.createElement('div');
+            content.innerHTML = `
+                <div class="flex flex-col">
+                    <span class="case-name truncate text-sm font-medium text-gray-700">${caseName}</span>
+                    ${timestamp ? `<span class="text-xs text-gray-400 mt-0.5">${timestamp}</span>` : ''}
+                </div>
+            `;
+            caseItem.appendChild(content);
+
+            const actionButtons = document.createElement('div');
+            actionButtons.className = 'action-buttons';
+
+            const renameBtn = document.createElement('button');
+            renameBtn.className = 'text-blue-600 hover:text-blue-800 p-1';
+            renameBtn.innerHTML = '<i class="fas fa-pen"></i>';
+            renameBtn.title = 'Edit Case';
+            renameBtn.onclick = e => {
+                e.stopPropagation();
+                appState.currentCase = caseName;
+                showEditCaseModal(field, caseName);
+            };
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'text-red-600 hover:text-red-800 p-1';
+            deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+            deleteBtn.title = 'Delete Case';
+            deleteBtn.onclick = e => {
+                e.stopPropagation();
+
+                // Remove any existing inline confirmation prompts
+                document.querySelectorAll('.delete-confirmation').forEach(el => el.remove());
+
+                // Create inline confirmation bar
+                const confirmBar = document.createElement('div');
+                confirmBar.className = 'delete-confirmation mt-1 px-3 py-2 bg-red-50 text-sm text-red-700 rounded-md flex items-center justify-between gap-3 animate-slide-down';
+                confirmBar.innerHTML = `
+                    <span>Delete this case?</span>
+                    <div class="flex items-center gap-2">
+                        <button class="confirm-delete text-green-600 hover:text-green-800" title="Confirm">
+                            <i class="fas fa-check"></i>
+                        </button>
+                        <button class="cancel-delete text-gray-500 hover:text-gray-700" title="Cancel">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `;
+
+                // Insert the confirmation bar after the case
+                caseItem.insertAdjacentElement('afterend', confirmBar);
+
+                confirmBar.querySelector('.confirm-delete').onclick = (e) => {
+                    e.stopPropagation(); // Stop event bubbling - this is the key fix
+                    deleteCase(field, caseName);
+                    confirmBar.remove();
+                };
+
+                confirmBar.querySelector('.cancel-delete').onclick = (e) => {
+                    e.stopPropagation(); // Also stop event bubbling here
+                    confirmBar.remove();
+                };
+
+            };
+
+            actionButtons.append(renameBtn, deleteBtn);
+            caseItem.appendChild(actionButtons);
+
+            caseItem.onclick = e => {
+                if (!e.target.closest('.action-buttons')) {
+                    appState.currentCase = caseName;
+                    loadVolumetricData();
+                    updateCaseSelectionInList();
+                    saveSessionState();
+                }
+            };
+
+            caseList.appendChild(caseItem);
+        }
+
+        // Check if we have a saved case to restore
+        if (appState.savedCase && cases.includes(appState.savedCase)) {
+            appState.currentCase = appState.savedCase;
+            appState.savedCase = null; // Clear the temporary storage
+        } else if (!appState.currentCase || !cases.includes(appState.currentCase)) {
+            // If no valid case is selected, select the first one
+            appState.currentCase = cases[0];
+        }
+
+        loadVolumetricData();
+        saveSessionState();
+    }
+
+    // Add modern inline "Add Case" button
+    document.getElementById('add-case-btn').onclick = () => {
+        showModal('add-case-modal');
+        clearAddCaseFields();
+        populateNewCaseFields();
+    };
+}
+
+// Load volumetric data for the current field and case
+function loadVolumetricData() {
+    if (!appState.currentField || !appState.currentCase) {
+        clearData();
+        return;
+    }
+    
+    const fieldKey = `volumetricCases_${appState.currentField}`;
+    if (localStorage.getItem(fieldKey)) {
+        const cases = JSON.parse(localStorage.getItem(fieldKey));
+        if (cases && cases[appState.currentCase]) {
+            appState.volumetricData = cases[appState.currentCase];
+            
+            // Set volume groups from case data if available
+            if (appState.volumetricData.volumeGroups) {
+                appState.volumeGroups = appState.volumetricData.volumeGroups;
+            } else {
+                // Reset to default if not defined
+                appState.volumeGroups = {
+                    columns: []
+                };
+            }
+            
+            // Update UI
+            updatePageTitle();
+            updateCurrentUnit(); // Update unit display
+            processVolumetricData();
+        } else {
+            clearData();
+        }
+    } else {
+        clearData();
+    }
+}
+
+// Process the volumetric data and update visualizations
+function processVolumetricData() {
+    if (!appState.volumetricData || !appState.volumetricData.data || appState.volumetricData.data.length === 0) {
+        return;
+    }
+    
+    // Initialize expandedZones for current case if not exists
+    if (!appState.expandedZones[appState.currentCase]) {
+        appState.expandedZones[appState.currentCase] = {};
+    }
+
+    // Get columns from the first row
+    appState.columns = Object.keys(appState.volumetricData.data[0]);
+    
+    // Get the volume groups (multi-level columns)
+    const volumeGroups = appState.volumetricData.volumeGroups || {};
+    const groupColumns = volumeGroups.columns || [];
+    
+    // Ensure all numeric columns have valid numbers
+    const numericColumns = [
+        'Bulk volume', 'Net volume', 'Pore volume', 
+        'HCPV oil', 'HCPV gas', 'STOIIP', 'GIIP'
+    ];
+    
+    // Process each row
+    appState.volumetricData.data.forEach((row, index) => {
+        // Ensure numeric columns have valid numbers
+        numericColumns.forEach(col => {
+            if (!row[col] || isNaN(parseFloat(row[col]))) {
+                row[col] = '0';
+            }
+        });
+        
+        // Add default values for group columns if needed
+        groupColumns.forEach((groupCol, groupIdx) => {
+            if (!appState.columns.includes(groupCol)) {
+                // If group column not in data structure, add it
+                row[groupCol] = `Group ${groupIdx + 1}-${index + 1}`;
+                if (!appState.columns.includes(groupCol)) {
+                    appState.columns.push(groupCol);
+                }
+            } else if (!row[groupCol]) {
+                // If column exists but value is empty, add default
+                row[groupCol] = `Group ${groupIdx + 1}-${index + 1}`;
+            }
+        });
+    });
+    
+    // Create pivot table and visualizations
+    createPivotTable();
+    
+    // Add a try-catch block around drawCirclePacking to handle errors
+    try {
+        drawCirclePacking();
+    } catch (error) {
+        console.error("Error drawing circle packing:", error);
+        document.getElementById('circle-diagram').innerHTML = 
+            '<div class="flex items-center justify-center h-full text-gray-500">Error rendering visualization</div>';
+    }
+}
+
+// Clear all data visualizations
+function clearData() {
+    appState.volumetricData = null;
+    document.getElementById('pivot-headers').innerHTML = '';
+    document.getElementById('pivot-body').innerHTML = '';
+    document.getElementById('circle-diagram').innerHTML = '';
+    document.getElementById('current-unit').textContent = '';
+    
+    // Update description and page title with empty state
+    updatePageTitle();
+}
+
+// Calculate volumetric parameters based on raw volumetric data
+function calculateParameters(row, units) {
+    const get = (key) => (parseFloat(row[key]) || 0) * (getUnitMultiplier(units[key]) || 1);
+
+    const parameters = {};
+
+    const bulkVolume = get('Bulk volume');
+    const netVolume = get('Net volume');
+    const poreVolume = get('Pore volume');
+    const hcpvOil = get('HCPV oil');
+    const hcpvGas = get('HCPV gas');
+    const stoiip = get('STOIIP');
+    const giip = get('GIIP');
+
+    parameters['GRV'] = parseFloat(row['Bulk volume']);
+    parameters['NTG'] = bulkVolume > 0 ? netVolume / bulkVolume : 0;
+    parameters['Por'] = netVolume > 0 ? poreVolume / netVolume : 0;
+    parameters['So'] = poreVolume > 0 ? hcpvOil / poreVolume : 0;
+    parameters['Sg'] = poreVolume > 0 ? hcpvGas / poreVolume : 0;
+    parameters['1/Bo'] = hcpvOil > 0 ? stoiip / hcpvOil : 0;
+    parameters['1/Bg'] = hcpvGas > 0 ? giip / hcpvGas : 0;
+
+    parameters['STOIIP'] = parseFloat(row['STOIIP']);
+    parameters['GIIP'] = parseFloat(row['GIIP']);
+
+    return parameters;
+}
+
+// Create the pivot table from volumetric data
+function createPivotTable() {
+    if (!appState.volumetricData || !appState.volumetricData.data) return;
+
+    const data = appState.volumetricData.data;
+    const headerContainer = document.getElementById('pivot-headers');
+    const body = document.getElementById('pivot-body');
+
+    headerContainer.innerHTML = '';
+    body.innerHTML = '';
+
+    // Columns already cleaned during parsing
+    appState.columns = Object.keys(data[0]);
+    const units = appState.volumetricData.units || {};
+
+    // Get volume groups (now array of column names)
+    const volumeGroups = appState.volumetricData.volumeGroups || {};
+    const groupColumns = volumeGroups.columns || [];
+
+    // Determine which columns to display based on the toggle state
+    let displayColumns;
+    let formattedHeaders;
+    
+    if (appState.showParameters) {
+        // Show calculated parameters
+        displayColumns = [
+            'GRV',
+            'NTG',
+            'Por',
+            'So',
+            'Sg',
+            '1/Bo',
+            '1/Bg',
+            'STOIIP',
+            'GIIP'
+        ];
+        
+        // Define parameter units
+        const parameterUnits = {
+            'GRV': units['Bulk volume'] || '',
+            'NTG': 'frac',
+            'Por': 'frac',
+            'So': 'frac',
+            'Sg': 'frac',
+            '1/Bo': '',
+            '1/Bg': '',
+            'STOIIP': units['STOIIP'] || '',
+            'GIIP': units['GIIP'] || ''
+        };
+        
+        formattedHeaders = displayColumns.map(col => ({
+            key: col,
+            label: col,
+            unit: parameterUnits[col] || ''
+        }));
+    } else {
+        // Show raw volumetric values
+        const numericColumns = appState.columns.filter(col => {
+            // Skip group columns and non-numeric/meta columns
+            const isGroupColumn = groupColumns.includes(col);
+            return !isGroupColumn && !col.startsWith('__');
+        });
+
+        formattedHeaders = numericColumns.map(col => ({
+            key: col,
+            label: col,
+            unit: units[col] || ''
+        }));
+        
+        displayColumns = numericColumns;
+    }
+
+    // --- Header Row ---
+    const headerRow = document.createElement('tr');
+
+    // Add headers based on grouping depth
+    const toggleHeader = document.createElement('th');
+    toggleHeader.className = 'w-6 px-2 py-1';
+    headerRow.appendChild(toggleHeader);
+
+    // Each group level gets a column
+    groupColumns.forEach((groupCol, index) => {
+        const groupLevelHeader = document.createElement('th');
+        groupLevelHeader.className = 'w-32 px-2 py-1 text-left text-xs font-semibold text-gray-700';
+        groupLevelHeader.textContent = `Level ${index + 1}: ${groupCol}`;
+        headerRow.appendChild(groupLevelHeader);
+    });
+
+    // Numeric column headers (right aligned)
+    formattedHeaders.forEach(col => {
+        const th = document.createElement('th');
+        th.className = 'w-32 px-2 py-1 text-right text-xs font-semibold text-gray-700';
+        th.innerHTML = `
+            <div>${col.label}</div>
+            ${col.unit ? `<div class="text-[10px] text-gray-400 leading-tight">${col.unit}</div>` : ''}
+        `;
+        headerRow.appendChild(th);
+    });
+
+    headerContainer.appendChild(headerRow);
+
+    // --- Total Row ---
+    const totalRow = document.createElement('tr');
+    totalRow.className = 'bg-white text-sm';
+
+    // Toggle cell for total row (empty)
+    const totalToggle = document.createElement('td');
+    totalToggle.className = 'w-6';
+    totalRow.appendChild(totalToggle);
+
+    // Label cells for each group level
+    groupColumns.forEach(() => {
+        const td = document.createElement('td');
+        td.className = 'px-2 py-1';
+        totalRow.appendChild(td);
+    });
+
+    // Add "Total" label to the last group column cell
+    if (groupColumns.length > 0) {
+        totalRow.children[groupColumns.length].textContent = 'Total';
+        totalRow.children[groupColumns.length].className = 'px-2 py-1 text-left text-gray-700 font-medium';
+    } else {
+        // If no group columns, add a separate cell for Total
+        const totalLabelCell = document.createElement('td');
+        totalLabelCell.className = 'px-2 py-1 text-left text-gray-700 font-medium';
+        totalLabelCell.textContent = 'Total';
+        totalRow.insertBefore(totalLabelCell, totalRow.firstChild.nextSibling);
+    }
+
+    if (appState.showParameters) {
+        // Calculate parameters for the total
+        const totalRawValues = {};
+        
+        // Initialize with zeros
+        appState.columns.forEach(col => {
+            if (!groupColumns.includes(col) && !col.startsWith('__')) {
+                totalRawValues[col] = 0;
+            }
+        });
+        
+        // Sum all raw values
+        data.forEach(row => {
+            appState.columns.forEach(col => {
+                if (!groupColumns.includes(col) && !col.startsWith('__')) {
+                    totalRawValues[col] += parseFloat(row[col]) || 0;
+                }
+            });
+        });
+        
+        // Calculate parameters based on total raw values
+        const totalParameters = calculateParameters(totalRawValues, units);
+        
+        // Display parameters
+        formattedHeaders.forEach(col => {
+            const td = document.createElement('td');
+            td.className = 'px-2 py-1 text-right text-gray-800';
+            
+            let value = totalParameters[col.key];
+            
+            // Format based on parameter type
+            if (['NTG', 'Por', 'So', 'Sg'].includes(col.key)) {
+                // Format as percentage for fractions
+                value = (value * 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+            } else if (['1/Bo', '1/Bg'].includes(col.key)) {
+                // Format with higher precision for formation volume factors
+                value = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            } else {
+                // Standard formatting for volumes
+                value = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+            
+            td.textContent = value;
+            totalRow.appendChild(td);
+        });
+    } else {
+        // Display raw volume sums
+        formattedHeaders.forEach(col => {
+            const td = document.createElement('td');
+            td.className = 'px-2 py-1 text-right text-gray-800';
+            const sum = data.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
+            td.textContent = sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            totalRow.appendChild(td);
+        });
+    }
+
+    body.appendChild(totalRow);
+
+    // Create a nested data structure for the pivot table
+    const nestedData = createMultiLevelGroups(data, groupColumns);
+    
+    // Render the pivot table with the nested structure
+    renderMultiLevelPivotTable(body, nestedData, 0, groupColumns, displayColumns, formattedHeaders, units);
+}
+
+// Create a nested data structure based on multiple group levels
+function createMultiLevelGroups(data, groupColumns) {
+    // Base case - no group columns or empty data
+    if (!data || data.length === 0 || !groupColumns || groupColumns.length === 0) {
+        return { 
+            items: data || [],
+            subgroups: {}
+        };
+    }
+    
+    // Handle first level of grouping
+    const currentColumn = groupColumns[0];
+    const remainingColumns = groupColumns.slice(1);
+    
+    // Guard against invalid column name
+    if (!currentColumn || typeof currentColumn !== 'string') {
+        console.warn("Invalid group column name:", currentColumn);
+        return {
+            items: data,
+            subgroups: {}
+        };
+    }
+    
+    // Group data by the current column
+    const groups = {};
+    
+    // Group rows by the current column value
+    data.forEach(row => {
+        if (!row) return; // Skip if row is undefined
+        
+        const groupValue = row[currentColumn] || 'Unspecified';
+        
+        if (!groups[groupValue]) {
+            groups[groupValue] = [];
+        }
+        
+        groups[groupValue].push(row);
+    });
+    
+    // Process each group
+    const result = {};
+    
+    if (Object.keys(groups).length === 0) {
+        // If no groups were created, return a valid but empty structure
+        return {
+            items: [],
+            subgroups: {}
+        };
+    }
+    
+    Object.entries(groups).forEach(([groupValue, rows]) => {
+        // Create entry for this group with its rows
+        result[groupValue] = {
+            items: rows,
+            subgroups: {}
+        };
+        
+        // Process subgroups if there are more group columns
+        if (remainingColumns.length > 0) {
+            result[groupValue].subgroups = createMultiLevelGroups(rows, remainingColumns);
+        }
+    });
+    
+    return result;
+}
+
+// Render the pivot table with multi-level grouping
+function renderMultiLevelPivotTable(container, nestedData, level, groupColumns, displayColumns, formattedHeaders, units) {
+    // Check if nestedData is defined and has entries
+    if (!nestedData || Object.keys(nestedData).length === 0) {
+        console.log("No nested data to render for level", level);
+        return;
+    }
+    
+    // Track expanded state for this level
+    if (!appState.expandedZones[appState.currentCase]) {
+        appState.expandedZones[appState.currentCase] = {};
+    }
+    
+    // Sort groups by volume - with proper error checking
+    let sortedGroups = [];
+    try {
+        const entries = Object.entries(nestedData);
+        if (entries.length === 0) {
+            return; // No data to render
+        }
+        
+        sortedGroups = entries.filter(entry => 
+            // Filter out any invalid entries
+            entry && entry[1] && entry[1].items
+        ).sort((a, b) => {
+            // Make sure a[1] and b[1] exist and have items property
+            if (!a[1] || !a[1].items || !b[1] || !b[1].items) {
+                return 0; // Can't compare, keep original order
+            }
+            
+            // Calculate volumes safely
+            const aVolume = a[1].items.reduce((sum, row) => {
+                // Check if row has Bulk volume property
+                const value = row && row['Bulk volume'] ? parseFloat(row['Bulk volume']) : 0;
+                return sum + (isNaN(value) ? 0 : value);
+            }, 0);
+            
+            const bVolume = b[1].items.reduce((sum, row) => {
+                const value = row && row['Bulk volume'] ? parseFloat(row['Bulk volume']) : 0;
+                return sum + (isNaN(value) ? 0 : value);
+            }, 0);
+            
+            return bVolume - aVolume; // Descending order
+        });
+    } catch (error) {
+        console.error("Error sorting groups:", error);
+        // Fallback to unsorted entries if there was an error
+        try {
+            sortedGroups = Object.entries(nestedData).filter(entry => entry && entry[1]);
+        } catch (e) {
+            console.error("Could not get entries from nested data:", e);
+            return; // Cannot proceed
+        }
+    }
+    
+    // Render each group
+    sortedGroups.forEach(([groupValue, groupData]) => {
+        // Skip if groupData is undefined or missing items
+        if (!groupData || !groupData.items) {
+            console.warn(`Skipping undefined group data for "${groupValue}"`);
+            return;
+        }
+        
+        const groupKey = `level_${level}_${groupValue}`;
+        
+        // Initialize expanded state if not exists
+        if (appState.expandedZones[appState.currentCase][groupKey] === undefined) {
+            appState.expandedZones[appState.currentCase][groupKey] = false;
+        }
+        
+        const isExpanded = appState.expandedZones[appState.currentCase][groupKey];
+        const hasSubgroups = groupColumns.length > level + 1;
+        
+        // Group summary row
+        const groupRow = document.createElement('tr');
+        groupRow.className = 'pivot-row-toggle hover:bg-gray-50 text-sm';
+        groupRow.dataset.group = groupKey;
+        
+        // Toggle cell
+        const toggleCell = document.createElement('td');
+        toggleCell.className = 'w-6 px-2 py-1';
+        
+        // Only show toggle if there are subgroups or we're not at the deepest level
+        if (hasSubgroups) {
+            toggleCell.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'} text-gray-500"></i>
+                </div>
+            `;
+        }
+        
+        groupRow.appendChild(toggleCell);
+        
+        // Empty cells for higher levels (indentation)
+        for (let i = 0; i < level; i++) {
+            const spacerCell = document.createElement('td');
+            spacerCell.className = 'px-2 py-1';
+            groupRow.appendChild(spacerCell);
+        }
+        
+        // Group label cell
+        const labelCell = document.createElement('td');
+        labelCell.className = 'px-2 py-1 text-gray-800 font-medium';
+        labelCell.colSpan = groupColumns.length - level;
+        labelCell.textContent = groupValue;
+        groupRow.appendChild(labelCell);
+        
+        // Calculate summary values for the group - safely check all properties
+        const groupItems = groupData.items || [];
+        
+        if (appState.showParameters) {
+            // Calculate parameters for this group
+            const groupRawValues = {};
+            
+            // Initialize with zeros
+            appState.columns.forEach(col => {
+                if (!groupColumns.includes(col) && !col.startsWith('__')) {
+                    groupRawValues[col] = 0;
+                }
+            });
+            
+            // Sum all raw values for the group
+            groupItems.forEach(row => {
+                if (!row) return; // Skip if row is undefined
+                
+                appState.columns.forEach(col => {
+                    if (!groupColumns.includes(col) && !col.startsWith('__')) {
+                        groupRawValues[col] += parseFloat(row[col]) || 0;
+                    }
+                });
+            });
+            
+            // Calculate parameters based on group raw values
+            const groupParameters = calculateParameters(groupRawValues, units);
+            
+            // Display parameters
+            formattedHeaders.forEach(col => {
+                const td = document.createElement('td');
+                td.className = 'px-2 py-1 text-right text-gray-700';
+                
+                let value = groupParameters[col.key];
+                
+                // Format based on parameter type
+                if (['NTG', 'Por', 'So', 'Sg'].includes(col.key)) {
+                    // Format as percentage for fractions
+                    value = (value * 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+                } else if (['1/Bo', '1/Bg'].includes(col.key)) {
+                    // Format with higher precision for formation volume factors
+                    value = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                } else {
+                    // Standard formatting for volumes
+                    value = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+                
+                td.textContent = value;
+                groupRow.appendChild(td);
+            });
+        } else {
+            // Display raw volume sums
+            formattedHeaders.forEach(col => {
+                const td = document.createElement('td');
+                td.className = 'px-2 py-1 text-right text-gray-700';
+                const sum = groupItems.reduce((acc, row) => {
+                    if (!row) return acc; // Skip if row is undefined
+                    return acc + (parseFloat(row[col.key]) || 0);
+                }, 0);
+                td.textContent = sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                groupRow.appendChild(td);
+            });
+        }
+        
+        container.appendChild(groupRow);
+        
+        // Toggle expand/collapse
+        if (hasSubgroups) {
+            groupRow.addEventListener('click', () => {
+                appState.expandedZones[appState.currentCase][groupKey] = !isExpanded;
+                createPivotTable(); // rerender
+            });
+        }
+        
+        // If expanded and there are subgroups, render them
+        if (isExpanded && hasSubgroups) {
+            // Get the next level subgroups and render them
+            if (groupData.subgroups) {
+                renderMultiLevelPivotTable(
+                    container, 
+                    groupData.subgroups, 
+                    level + 1, 
+                    groupColumns, 
+                    displayColumns, 
+                    formattedHeaders,
+                    units
+                );
+            }
+        }
+        
+        // If expanded and we're at the deepest level, show individual rows
+        if (isExpanded && !hasSubgroups) {
+            // Render detail rows for leaf items
+            groupItems.forEach((row, rowIndex) => {
+                if (!row) return; // Skip if row is undefined
+                
+                const detailRow = document.createElement('tr');
+                detailRow.className = 'bg-gray-50 text-xs';
+                
+                // Empty toggle cell
+                const spacer = document.createElement('td');
+                spacer.className = 'w-6';
+                detailRow.appendChild(spacer);
+                
+                // Empty cells for indentation up to the current level
+                for (let i = 0; i < groupColumns.length; i++) {
+                    const spacerCell = document.createElement('td');
+                    spacerCell.className = 'px-2 py-1';
+                    
+                    // Add detail description in the last indent cell
+                    if (i === groupColumns.length - 1) {
+                        spacerCell.className = 'px-2 py-1 text-gray-500';
+                        // Use row index as detail identifier
+                        spacerCell.textContent = `Row ${rowIndex + 1}`;
+                    }
+                    
+                    detailRow.appendChild(spacerCell);
+                }
+                
+                // Display values based on toggle state
+                if (appState.showParameters) {
+                    // Calculate and display parameters for each detail row
+                    const rowParameters = calculateParameters(row, units);
+                    
+                    formattedHeaders.forEach(col => {
+                        const td = document.createElement('td');
+                        td.className = 'px-2 py-1 text-right text-gray-800';
+                        
+                        let value = rowParameters[col.key];
+                        
+                        // Format based on parameter type
+                        if (['NTG', 'Por', 'So', 'Sg'].includes(col.key)) {
+                            // Format as percentage for fractions
+                            value = (value * 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+                        } else if (['1/Bo', '1/Bg'].includes(col.key)) {
+                            // Format with higher precision for formation volume factors
+                            value = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        } else {
+                            // Standard formatting for volumes
+                            value = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
+                        
+                        td.textContent = value;
+                        detailRow.appendChild(td);
+                    });
+                } else {
+                    // Display raw values
+                    formattedHeaders.forEach(col => {
+                        const td = document.createElement('td');
+                        td.className = 'px-2 py-1 text-right text-gray-800';
+                        const val = parseFloat(row[col.key]) || 0;
+                        td.textContent = val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        detailRow.appendChild(td);
+                    });
+                }
+                
+                container.appendChild(detailRow);
+            });
+        }
+    });
+}
+
+// Also fix the createMultiLevelGroups function to ensure it always returns valid structure:
+
+function createMultiLevelGroups(data, groupColumns) {
+    // Base case - no group columns or empty data
+    if (!data || data.length === 0 || !groupColumns || groupColumns.length === 0) {
+        return { 
+            items: data || [],
+            subgroups: {}
+        };
+    }
+    
+    const currentColumn = groupColumns[0];
+    const remainingColumns = groupColumns.slice(1);
+    
+    // Guard against invalid column name
+    if (!currentColumn || typeof currentColumn !== 'string') {
+        console.warn("Invalid group column name:", currentColumn);
+        return {
+            items: data,
+            subgroups: {}
+        };
+    }
+    
+    // Group data by the current column
+    const groups = {};
+    
+    // Group rows by the current column value
+    data.forEach(row => {
+        if (!row) return; // Skip if row is undefined
+        
+        const groupValue = row[currentColumn] || 'Unspecified';
+        
+        if (!groups[groupValue]) {
+            groups[groupValue] = [];
+        }
+        
+        groups[groupValue].push(row);
+    });
+    
+    // Process each group
+    const result = {};
+    
+    Object.entries(groups).forEach(([groupValue, rows]) => {
+        // Create entry for this group with its rows
+        result[groupValue] = {
+            items: rows,
+            subgroups: {}
+        };
+        
+        // Process subgroups if there are more group columns
+        if (remainingColumns.length > 0) {
+            result[groupValue].subgroups = createMultiLevelGroups(rows, remainingColumns);
+        }
+    });
+    
+    return result;
+}
+
+function getNodesAtDepth(node, targetDepth, currentDepth = 0) {
+    if (!node) return [];
+    
+    if (currentDepth === targetDepth) {
+        return [node];
+    }
+    
+    if (!node.children || node.children.length === 0) {
+        return [];
+    }
+    
+    try {
+        return node.children.flatMap(child => 
+            getNodesAtDepth(child, targetDepth, currentDepth + 1)
+        );
+    } catch (error) {
+        console.error("Error in getNodesAtDepth:", error);
+        return [];
+    }
+}
+
+function getMaxDepth(node, currentDepth = 0) {
+    if (!node || !node.children || node.children.length === 0) {
+        return currentDepth;
+    }
+    
+    try {
+        const childDepths = node.children.map(child => 
+            getMaxDepth(child, currentDepth + 1)
+        );
+        
+        if (childDepths.length === 0) return currentDepth;
+        
+        return Math.max(...childDepths);
+    } catch (error) {
+        console.error("Error in getMaxDepth:", error);
+        return currentDepth;
+    }
+}
+
+// Draw the packed circle diagram with multi-level groups
+function drawCirclePacking() {
+    if (!appState.volumetricData || !appState.volumetricData.data) {
+        return;
+    }
+    
+    try {
+        const data = appState.volumetricData.data;
+        const units = appState.volumetricData.units || {};
+        const container = document.getElementById('circle-diagram');
+        container.innerHTML = '';
+        
+        // Configuration variables for visualization
+        const circleConfig = {
+            sizeThresholdPercent: 0.02, // Show values for circles at least 2% of total
+            minRadius: {
+                level1: 18,        // Minimum radius for level 1 circles
+                level2: 16,        // Minimum radius for level 2 circles
+                level3: 14,        // Minimum radius for level 3 circles
+                level4: 12,        // Minimum radius for level 4 circles
+                other: 10          // Minimum radius for deeper levels
+            },
+            fontSize: {
+                total: 12,         // Font size for total circle
+                level1: 11,        // Font size for level 1 circles
+                level2: 10,        // Font size for level 2 circles
+                level3: 9,         // Font size for level 3 circles
+                level4: 8,         // Font size for level 4 circles
+                other: 7           // Font size for deeper levels
+            }
+        };
+        
+        const width = container.clientWidth;
+        const height = container.clientHeight || 600;
+        
+        let tooltip = d3.select('body').select('.tooltip');
+        if (tooltip.empty()) {
+            tooltip = d3.select('body')
+                .append('div')
+                .attr('class', 'tooltip')
+                .style('opacity', 0);
+        } else {
+            tooltip.remove();
+            tooltip = d3.select('body')
+                .append('div')
+                .attr('class', 'tooltip')
+                .style('opacity', 0);
+        }
+        
+        // Get hierarchical data
+        const hierarchicalData = prepareHierarchicalData();
+        
+        // Check if we have valid data to display
+        if (!hierarchicalData || !hierarchicalData.children || hierarchicalData.children.length === 0) {
+            container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">No valid data to display</div>';
+            return;
+        }
+        
+        const svg = d3.select('#circle-diagram')
+            .append('svg')
+            .attr('width', width)
+            .attr('height', height)
+            .attr('viewBox', [0, 0, width, height])
+            .attr('style', 'max-width: 100%; height: 100%;');
+        
+        // Get the depth of the hierarchy
+        const maxDepth = getMaxDepth(hierarchicalData);
+        
+        // Create ordinal scales for different depth levels
+        // We'll use these for the tooltip and other needs
+        const depthScales = [];
+        
+        // Process nodes to assign sibling positions for transparency distribution
+        // Map to store sibling information by node ID
+        const siblingInfo = new Map();
+        
+        // Helper function to assign sibling positions
+        function processSiblings(node, depth = 0) {
+            if (!node) return;
+            
+            // Process children if they exist
+            if (node.children && node.children.length > 0) {
+                // Sort children by size for consistent visualization
+                const sortedChildren = [...node.children].sort((a, b) => {
+                    const aVal = a.value || 0;
+                    const bVal = b.value || 0;
+                    return bVal - aVal; // Descending
+                });
+                
+                // Assign position and total siblings to each child
+                sortedChildren.forEach((child, index) => {
+                    // Create a unique ID for the child
+                    const childId = `${depth}_${child.name}_${index}`;
+                    
+                    // Store sibling info
+                    siblingInfo.set(childId, {
+                        position: index,
+                        totalSiblings: sortedChildren.length,
+                        name: child.name,
+                        depth: depth + 1
+                    });
+                    
+                    // Recursively process grandchildren
+                    processSiblings(child, depth + 1);
+                });
+            }
+        }
+        
+        // Start processing from the root to assign sibling positions
+        processSiblings(hierarchicalData);
+        
+        // Create ordinal scales for each depth level
+        for (let i = 0; i <= maxDepth; i++) {
+            try {
+                const interpolator = themeColors.interpolators[i % themeColors.interpolators.length];
+                const scale = d3.scaleOrdinal()
+                    .domain(i === 0 ? ['Total'] : getNodesAtDepth(hierarchicalData, i).map(n => n.name || 'unnamed'))
+                    .range(d3.quantize(interpolator, Math.max(10, 3) + 1));
+                
+                depthScales.push(scale);
+            } catch (error) {
+                console.error(`Error creating color scale for depth ${i}:`, error);
+                depthScales.push(() => themeColors.fallback);
+            }
+        }
+        
+        // Function to get color for a specific node
+        function getNodeColor(d) {
+            if (d.depth === 0) return themeColors.totalCircle;
+            
+            try {
+                // Get the adjusted depth (1-based)
+                const depth = d.depth;
+                
+                // Pattern: Alternating solid colors and white with transparency
+                if (depth % 4 === 1) {
+                    // Level 1: First color palette
+                    const paletteIndex = d.parent ? d.parent.children.indexOf(d) : 0;
+                    return themeColors.palette1[paletteIndex % themeColors.palette1.length];
+                } else if (depth % 4 === 2) {
+                    // Level 2: White with transparency
+                    return themeColors.white;
+                } else if (depth % 4 === 3) {
+                    // Level 3: Second color palette
+                    const paletteIndex = d.parent ? d.parent.children.indexOf(d) : 0;
+                    return themeColors.palette2[paletteIndex % themeColors.palette2.length];
+                } else if (depth % 4 === 0 && depth > 0) {
+                    // Level 4, 8, etc: White with transparency
+                    return themeColors.white;
+                } 
+                
+                // Fallback
+                return themeColors.fallback;
+            } catch (error) {
+                console.error("Error determining node color:", error);
+                return themeColors.fallback;
+            }
+        }
+        
+        // Function to get opacity for a node - with varying transparency across siblings
+        function getNodeOpacity(d) {
+            if (d.depth === 0) return 1.0; // Total circle is fully opaque
+            
+            try {
+                const depth = d.depth;
+                
+                // Colored levels (1, 3, 5, etc.) have fixed opacity
+                if (depth % 4 === 1 || depth % 4 === 3) {
+                    return 0.8;
+                }
+                
+                // White levels (2, 4, 6, etc.) have varying transparency
+                if (depth % 4 === 2 || (depth % 4 === 0 && depth > 0)) {
+                    // Find this node's position among its siblings
+                    if (!d.parent || !d.parent.children) return 0.5; // Default if no parent/siblings
+                    
+                    const siblings = d.parent.children;
+                    const totalSiblings = siblings.length;
+                    
+                    // If only one sibling, use middle transparency
+                    if (totalSiblings === 1) return 0.5;
+                    
+                    // Get this node's index among siblings sorted by value
+                    const sortedSiblings = [...siblings].sort((a, b) => (b.value || 0) - (a.value || 0));
+                    const index = sortedSiblings.indexOf(d);
+                    
+                    // Calculate transparency - distribute from 0.9 (90%) to 0.1 (10%)
+                    // First sibling (largest) gets 90%, last gets 10%
+                    const maxOpacity = 0.6;
+                    const minOpacity = 0.05;
+                    
+                    return maxOpacity - (index / (totalSiblings - 1)) * (maxOpacity - minOpacity);
+                }
+                
+                return 0.7; // Default opacity if no other rule applies
+            } catch (error) {
+                console.error("Error calculating opacity:", error);
+                return 0.7; // Default opacity if error
+            }
+        }
+        
+        const pack = d3.pack()
+            .size([width - 20, height - 20])
+            .padding(3);
+        
+        // Create hierarchy with error checking
+        const root = d3.hierarchy(hierarchicalData)
+            .sum(d => {
+                // Ensure value is a valid number
+                const val = d.value || 0;
+                return isNaN(val) ? 0 : val;
+            })
+            .sort((a, b) => (b.value || 0) - (a.value || 0));
+        
+        // Apply the pack layout
+        pack(root);
+        
+        // Check if we got valid coordinates (will prevent NaN errors)
+        const validDescendants = root.descendants().filter(d => 
+            !isNaN(d.x) && !isNaN(d.y) && !isNaN(d.r) && d.r > 0
+        );
+        
+        if (validDescendants.length === 0) {
+            container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">Could not generate valid visualization</div>';
+            return;
+        }
+        
+        // Add a margin transform to the visualization group
+        const g = svg.append('g')
+            .attr('transform', 'translate(10, 10)');
+        
+        g.selectAll('circle')
+            .data(validDescendants)
+            .join('circle')
+            .attr('cx', d => d.x)
+            .attr('cy', d => d.y)
+            .attr('r', d => d.r)
+            .attr('fill', d => getNodeColor(d))
+            .attr('fill-opacity', d => getNodeOpacity(d))
+            .attr('stroke', d => {
+                if (d.depth === 0) return themeColors.totalBorder; // Dark outline for total
+                
+                // Use parent's color for leaf nodes
+                if (!d.children && d.parent) {
+                    try {
+                        const parentDepth = d.parent.depth;
+                        
+                        // Follow the same alternating pattern as fill
+                        if (parentDepth % 4 === 1) {
+                            const paletteIndex = d.parent.parent ? d.parent.parent.children.indexOf(d.parent) : 0;
+                            return themeColors.palette1[paletteIndex % themeColors.palette1.length];
+                        } else if (parentDepth % 4 === 3) {
+                            const paletteIndex = d.parent.parent ? d.parent.parent.children.indexOf(d.parent) : 0;
+                            return themeColors.palette2[paletteIndex % themeColors.palette2.length];
+                        } else {
+                            // For transparent parents, use a light gray stroke
+                            return '#999999';
+                        }
+                    } catch (error) {
+                        return themeColors.defaultStroke;
+                    }
+                }
+                
+                return 'none'; // No stroke for non-leaf internal nodes
+            })
+            .attr('stroke-width', d => {
+                return d.depth === 0 ? 2 : 1.5;
+            })
+            .on('mouseover', function(event, d) {
+                tooltip.transition().duration(200).style('opacity', 0.9);
+
+                let content = '';
+
+                if (d.depth === 0) {
+                    content = `<div class="font-semibold">Total Volumes</div>`;
+                } else {
+                    try {
+                        // Show the full path to this node
+                        let path = [];
+                        let current = d;
+                        while (current && current.depth > 0) {
+                            if (current.data && current.data.name) {
+                                path.unshift(current.data.name);
+                            }
+                            current = current.parent;
+                        }
+                        
+                        const name = d.data && d.data.name ? d.data.name : 'Unnamed';
+                        content = `<div class="font-semibold">${name}</div>`;
+                        if (path.length > 1) {
+                            content += `<div>Path: ${path.join(' › ')}</div>`;
+                        }
+                    } catch (error) {
+                        console.error("Error creating tooltip path:", error);
+                        content = `<div class="font-semibold">Volumetric Data</div>`;
+                    }
+                }
+
+                // Add all volumetric values with unit labels (if available)
+                if (d.data && d.data.volumetrics) {
+                    for (const key in d.data.volumetrics) {
+                        try {
+                            const val = d.data.volumetrics[key];
+                            const unit = units[key] ? ` ${units[key]}` : '';
+                            
+                            // Format number with bold values and 2 decimal places
+                            const formattedNum = parseFloat(val).toLocaleString(undefined, {
+                                minimumFractionDigits: 2, 
+                                maximumFractionDigits: 2
+                            });
+                            content += `<div>${key}: <strong>${formattedNum}</strong>${unit}</div>`;
+                        } catch (error) {
+                            console.error(`Error formatting tooltip value for ${key}:`, error);
+                        }
+                    }
+                }
+
+                tooltip.html(content)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+            })
+            .on('mouseout', function() {
+                tooltip.transition().duration(500).style('opacity', 0);
+            });
+
+        // Add text labels to circles - ONLY for level 0 (total) and level 1 circles
+        g.selectAll('text.label')
+            .data(validDescendants.filter(d => {
+                // Only show labels for total (depth 0) and level 1 circles with sufficient size
+                return (d.depth === 0) || (d.depth === 1 && d.r > 25);
+            }))
+            .join('text')
+            .attr('class', 'label')
+            .attr('x', d => d.x)
+            .attr('y', d => d.y)
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'middle')
+            .attr('font-size', d => {
+                // Adjust font size based on depth
+                return d.depth === 0 ? circleConfig.fontSize.total : circleConfig.fontSize.level1;
+            })
+            .attr('fill', d => d.depth === 0 ? themeColors.textDark : themeColors.textLight)
+            .attr('pointer-events', 'none')
+            .text(d => d.data && d.data.name ? d.data.name : '');
+            
+        // Add value labels to circles if showValues is true
+        if (appState.showValues) {
+            // First calculate the total value to determine percentage thresholds
+            const totalValue = root.value || 0.0001; // Avoid division by zero
+            
+            g.selectAll('text.value')
+                .data(validDescendants.filter(d => {
+                    // Show values based on depth and size
+                    try {
+                        return (d.depth === 0) || 
+                            (d.depth === 1 && d.r > 30) ||
+                            (d.depth === 2 && d.r > circleConfig.minRadius.level2 && (d.value / totalValue) >= circleConfig.sizeThresholdPercent) ||
+                            (d.depth === 3 && d.r > circleConfig.minRadius.level3 && (d.value / totalValue) >= circleConfig.sizeThresholdPercent) ||
+                            (d.depth >= 4 && d.r > circleConfig.minRadius.other && (d.value / totalValue) >= circleConfig.sizeThresholdPercent * 2);
+                    } catch (error) {
+                        return false;
+                    }
+                }))
+                .join('text')
+                .attr('class', 'value')
+                .attr('x', d => d.x)
+                .attr('y', d => d.y - d.r + 16) // Position at top
+                .attr('text-anchor', 'middle')
+                .attr('font-size', d => {
+                    // Adjust font size based on depth
+                    switch (d.depth) {
+                        case 0: return circleConfig.fontSize.total;
+                        case 1: return circleConfig.fontSize.level1;
+                        case 2: return circleConfig.fontSize.level2;
+                        case 3: return circleConfig.fontSize.level3;
+                        case 4: return circleConfig.fontSize.level4;
+                        default: return circleConfig.fontSize.other;
+                    }
+                })
+                .attr('fill', d => {
+                    // Adjust text color for better contrast
+                    if (d.depth === 0) return '#666666';
+                    
+                    // For levels with white/transparent circles, use dark text
+                    if (d.depth % 4 === 2 || (d.depth % 4 === 0 && d.depth > 0)) {
+                        return '#333333';
+                    }
+                    
+                    // For colored circles, use white text
+                    return themeColors.textLight;
+                })
+                .attr('fill-opacity', d => 0.90 - (d.depth * 0.05)) // Slightly reduce opacity with depth
+                .attr('pointer-events', 'none')
+                .text(d => {
+                    try {
+                        // Handle cases where volumetrics might be missing
+                        if (!d.data || !d.data.volumetrics || !(appState.currentMetric in d.data.volumetrics)) {
+                            return '0.00';
+                        }
+                        
+                        // Format value nicely with the appropriate unit
+                        const val = d.data.volumetrics[appState.currentMetric] || 0;
+                        let formatted;
+                        
+                        // Format based on magnitude with 2 decimal places
+                        if (val >= 1000000) {
+                            formatted = (val / 1000000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + 'M';
+                        } else if (val >= 1000) {
+                            formatted = (val / 1000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + 'k';
+                        } else {
+                            formatted = val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                        }
+                        
+                        return formatted;
+                    } catch (error) {
+                        console.error("Error formatting value label:", error);
+                        return '0.00';
+                    }
+                });
+        }
+    } catch (error) {
+        console.error("Error drawing circle packing:", error);
+        const container = document.getElementById('circle-diagram');
+        container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">Error rendering visualization. Please check console for details.</div>';
+    }
+}
+
+// Updated prepareHierarchicalData function to handle variable depth grouping
+function prepareHierarchicalData() {
+    // Make sure we have the current metric and data
+    const metricColumn = appState.currentMetric;
+    const data = appState.volumetricData ? appState.volumetricData.data : null;
+    
+    if (!data || !metricColumn) {
+        return { name: 'Total', children: [] }; // Return empty structure
+    }
+    
+    // Get the volume groups (now array of column names)
+    const volumeGroups = appState.volumetricData.volumeGroups || {};
+    const groupColumns = volumeGroups.columns || [];
+    
+    // Get all numeric columns that aren't identifiers or meta fields
+    const numericColumns = appState.columns.filter(col => {
+        const isGroupColumn = groupColumns.includes(col);
+        return !isGroupColumn && !col.startsWith('__');
+    });
+    
+    // Initialize totals for all numeric columns
+    const totalVolumetrics = {};
+    numericColumns.forEach(col => totalVolumetrics[col] = 0);
+
+    // Calculate total volumetrics
+    data.forEach(row => {
+        if (!row) return; // Skip if row is undefined
+        
+        numericColumns.forEach(col => {
+            // Skip if column doesn't exist in row
+            if (!(col in row)) return;
+            
+            // Parse value safely, handling different formats
+            let val = 0;
+            const rawVal = row[col];
+            
+            // Handle different data types
+            if (typeof rawVal === 'number') {
+                val = isNaN(rawVal) ? 0 : rawVal;
+            } else if (typeof rawVal === 'string') {
+                // Remove commas and try to parse as float
+                val = parseFloat(rawVal.replace(/,/g, '')) || 0;
+            }
+            
+            totalVolumetrics[col] += val;
+        });
+    });
+    
+    // Create the root node
+    const result = {
+        name: 'Total',
+        volumetrics: totalVolumetrics,
+        children: []
+    };
+    
+    // Make sure current metric exists in volumetrics
+    if (!(metricColumn in totalVolumetrics)) {
+        totalVolumetrics[metricColumn] = 0;
+    }
+    
+    // If no group columns, add rows as direct children of root
+    if (groupColumns.length === 0) {
+        data.forEach(row => {
+            if (!row) return; // Skip undefined rows
+            
+            const volumetrics = {};
+            numericColumns.forEach(col => {
+                volumetrics[col] = parseFloat(row[col]) || 0;
+            });
+            
+            // Ensure metric column exists
+            if (!(metricColumn in volumetrics)) {
+                volumetrics[metricColumn] = 0;
+            }
+            
+            result.children.push({
+                name: 'Item', // Generic name for leaf nodes
+                volumetrics: volumetrics,
+                value: parseFloat(row[metricColumn]) || 0
+            });
+        });
+        
+        return result;
+    }
+    
+    try {
+        // Group data by levels
+        buildHierarchy(data, groupColumns, 0, result, metricColumn, numericColumns);
+    } catch (error) {
+        console.error("Error building hierarchy:", error);
+        // Return minimal structure if an error occurs
+        return {
+            name: 'Total',
+            volumetrics: totalVolumetrics,
+            children: []
+        };
+    }
+    
+    return result;
+}
+
+// Helper function to recursively build the hierarchy
+function buildHierarchy(data, groupColumns, level, parentNode, metricColumn, numericColumns) {
+    if (!data || !data.length || level >= groupColumns.length || !groupColumns[level]) {
+        return;
+    }
+    
+    const currentColumn = groupColumns[level];
+    
+    // Group data by current column
+    const groups = {};
+    
+    data.forEach(row => {
+        if (!row) return; // Skip if row is undefined
+        
+        const groupValue = row[currentColumn] || 'Unspecified';
+        
+        if (!groups[groupValue]) {
+            groups[groupValue] = {
+                rows: [],
+                volumetrics: {}
+            };
+            
+            // Initialize volumetrics
+            numericColumns.forEach(col => {
+                groups[groupValue].volumetrics[col] = 0;
+            });
+        }
+        
+        // Add row to group
+        groups[groupValue].rows.push(row);
+        
+        // Accumulate volumetrics
+        numericColumns.forEach(col => {
+            if (!(col in row)) return; // Skip if column doesn't exist in row
+            const val = parseFloat(row[col]) || 0;
+            groups[groupValue].volumetrics[col] += val;
+        });
+    });
+    
+    // Ensure the metric column exists in all group volumetrics
+    Object.values(groups).forEach(group => {
+        if (!(metricColumn in group.volumetrics)) {
+            group.volumetrics[metricColumn] = 0;
+        }
+    });
+    
+    // Sort groups by the metric value for consistent ordering
+    const sortedGroups = Object.entries(groups).sort((a, b) => {
+        const aValue = a[1].volumetrics[metricColumn] || 0;
+        const bValue = b[1].volumetrics[metricColumn] || 0;
+        return bValue - aValue; // Descending order
+    });
+    
+    // Add group nodes to parent
+    sortedGroups.forEach(([groupValue, groupData]) => {
+        if (!groupData || !groupData.rows) return; // Skip invalid groups
+        
+        const groupNode = {
+            name: groupValue,
+            volumetrics: groupData.volumetrics || {},
+            value: parseFloat(groupData.volumetrics[metricColumn]) || 0,
+            children: []
+        };
+        
+        // Add to parent node
+        parentNode.children.push(groupNode);
+        
+        // Process next level recursively if we have more levels
+        if (level < groupColumns.length - 1) {
+            try {
+                buildHierarchy(
+                    groupData.rows, 
+                    groupColumns, 
+                    level + 1, 
+                    groupNode, 
+                    metricColumn,
+                    numericColumns
+                );
+            } catch (error) {
+                console.error(`Error building hierarchy for group '${groupValue}' at level ${level}:`, error);
+                // Continue to next group
+            }
+        }
+    });
+}
+
+// Modal management functions
+function showModal(modalId) {
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById(modalId).classList.remove('hidden');
+}
+
+function hideModal() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+    document.querySelectorAll('#modal-overlay > div').forEach(div => {
+        div.classList.add('hidden');
+    });
+}
+
+// Populate fields in the new case modal
+function populateNewCaseFields() {
+    const fieldSelector = document.getElementById('new-case-field');
+    fieldSelector.innerHTML = '';
+    
+    appState.fields.forEach(field => {
+        const option = document.createElement('option');
+        option.value = field;
+        option.textContent = field;
+        fieldSelector.appendChild(option);
+    });
+    
+    if (appState.currentField) {
+        fieldSelector.value = appState.currentField;
+    }
+    
+    // Initialize volume groups container
+    const container = document.getElementById('volume-group-container');
+    
+    // Clear any existing UI
+    container.innerHTML = '';
+    
+    // Set flag to prevent cascading
+    window._addingGroupLevel = true;
+    
+    // For a new case with no data yet, just add ONE initial empty level
+    addGroupLevel(container, []);
+    
+    // Clear flag after initialization
+    setTimeout(() => { window._addingGroupLevel = false; }, 50);
+}
+
+// Populate the field list in the manage fields modal
+function populateFieldList() {
+    const fieldList = document.getElementById('field-list');
+    fieldList.innerHTML = '';
+    
+    appState.fields.forEach(field => {
+        const item = document.createElement('li');
+        item.className = 'flex justify-between items-center p-3 hover:bg-gray-100';
+        
+        const fieldName = document.createElement('span');
+        fieldName.textContent = field;
+        item.appendChild(fieldName);
+        
+        const controls = document.createElement('div');
+        controls.className = 'flex space-x-2';
+        
+        // Edit button
+        const editBtn = document.createElement('button');
+        editBtn.className = 'text-blue-600 hover:text-blue-800';
+        editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+        editBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const newName = prompt('Enter new field name:', field);
+            if (newName && newName.trim() !== '') {
+                renameField(field, newName.trim());
+            }
+        });
+        controls.appendChild(editBtn);
+        
+        // Delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'text-red-600 hover:text-red-800';
+        deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+        deleteBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (confirm(`Are you sure you want to delete the field "${field}" and all its volumetric cases?`)) {
+                deleteField(field);
+            }
+        });
+        controls.appendChild(deleteBtn);
+        
+        item.appendChild(controls);
+        fieldList.appendChild(item);
+    });
+}
+
+// Add a new field
+function addNewField(fieldName) {
+    if (!appState.fields.includes(fieldName)) {
+        appState.fields.push(fieldName);
+        saveFields();
+        populateFieldSelector();
+    } else {
+        alert(`Field "${fieldName}" already exists.`);
+    }
+}
+
+// Rename a field
+function renameField(oldName, newName) {
+    if (oldName === newName) return;
+    
+    if (appState.fields.includes(newName)) {
+        alert(`Field "${newName}" already exists.`);
+        return;
+    }
+    
+    // Update fields array
+    const index = appState.fields.indexOf(oldName);
+    if (index !== -1) {
+        appState.fields[index] = newName;
+        saveFields();
+        
+        // Move cases to new field name
+        const oldKey = `volumetricCases_${oldName}`;
+        const newKey = `volumetricCases_${newName}`;
+        
+        if (localStorage.getItem(oldKey)) {
+            localStorage.setItem(newKey, localStorage.getItem(oldKey));
+            localStorage.removeItem(oldKey);
+        }
+        
+        // Also move case order if exists
+        const oldOrderKey = `volumetricCasesOrder_${oldName}`;
+        const newOrderKey = `volumetricCasesOrder_${newName}`;
+        
+        if (localStorage.getItem(oldOrderKey)) {
+            localStorage.setItem(newOrderKey, localStorage.getItem(oldOrderKey));
+            localStorage.removeItem(oldOrderKey);
+        }
+        
+        // Update current field if needed
+        if (appState.currentField === oldName) {
+            appState.currentField = newName;
+            saveSessionState();
+        }
+        
+        // Refresh UI
+        populateFieldSelector();
+        document.getElementById('field-selector').value = appState.currentField;
+        
+        populateFieldList();
+    }
+}
+
+// Delete a field
+function deleteField(fieldName) {
+    // Remove from fields array
+    const index = appState.fields.indexOf(fieldName);
+    if (index !== -1) {
+        appState.fields.splice(index, 1);
+        saveFields();
+        
+        // Remove associated cases
+        const fieldKey = `volumetricCases_${fieldName}`;
+        localStorage.removeItem(fieldKey);
+        
+        // Remove associated case order
+        const orderKey = `volumetricCasesOrder_${fieldName}`;
+        localStorage.removeItem(orderKey);
+        
+        // If current field is deleted, select another one
+        if (appState.currentField === fieldName) {
+            if (appState.fields.length > 0) {
+                appState.currentField = appState.fields[0];
+                loadCasesForField(appState.currentField);
+            } else {
+                appState.currentField = null;
+                appState.currentCase = null;
+                clearData();
+            }
+            saveSessionState();
+        }
+        
+        // Refresh UI
+        populateFieldSelector();
+        if (appState.currentField) {
+            document.getElementById('field-selector').value = appState.currentField;
+        }
+        
+        populateFieldList();
+    }
+}
+
+// Save fields to localStorage
+function saveFields() {
+    localStorage.setItem('volumetricFields', JSON.stringify(appState.fields));
+}
+
+// Simplified function to detect columns from data
+function detectColumnsFromData() {
+    const rawData = document.getElementById('new-case-data').value.trim();
+    if (!rawData) return;
+    
+    // Parse the first line to get headers
+    const lines = rawData.split('\n');
+    if (lines.length === 0) return;
+    
+    const headerLine = lines[0];
+    
+    // Parse headers to get clean names, units, and column mapping
+    const headerInfo = parseHeaders(headerLine);
+    let headers = headerInfo.headers;
+    
+    // Check if we have a data row to compare column counts
+    if (lines.length > 1) {
+        const dataLine = lines[1];
+        const dataCells = dataLine.split('\t');
+        
+        // If data has one more column than headers, add a placeholder as first column
+        if (dataCells.length === headers.length + 1) {
+            headers.unshift('Zones');
+            // Also update the units and columnMap for consistency
+            headerInfo.units['Zones'] = '';
+            headerInfo.columnMap['Zones'] = 'Zones';
+        }
+    }
+    
+    // Store all header information in appState
+    appState.detectedHeaders = headers;
+    appState.headerUnits = headerInfo.units;
+    appState.headerColumnMap = headerInfo.columnMap;
+    
+    // Update UI based on detected headers
+    updateGroupingSelectors(headers);
+}
+
+function updateGroupingSelectors(headers) {
+    // Skip if we're in the middle of adding a level manually
+    if (window._addingGroupLevel) {
+        console.log("Skipping updateGroupingSelectors during manual add operation");
+        return;
+    }
+    
+    // Identify potential grouping columns (exclude standard numeric columns)
+    let groupingColumns = [];
+    
+    // Add non-standard columns that might be useful for grouping
+    headers.forEach(header => {
+        if (header && 
+            !standardColumns.includes(header) && 
+            !header.startsWith('__')) {
+            groupingColumns.push(header);
+        }
+    });
+    
+    // If no grouping columns found, provide a helpful message
+    if (groupingColumns.length === 0) {
+        // Return an empty array instead of adding placeholders
+        groupingColumns = [];
+    }
+    
+    // Get the volume groups container
+    const container = document.getElementById('volume-group-container');
+    
+    // Get existing selected values before reinitializing
+    const existingGroups = getVolumeGroupsFromUI(container);
+    
+    // Reinitialize with detected columns but maintain selections where possible
+    initializeVolumeGroups(container, groupingColumns, existingGroups);
+}
+
+// Setup timestamp UI
+function setupTimestampUI() {
+    // Note: Now handled directly in the HTML with the updated structure
+}
+
+// Initialize timestamp for new case
+function initializeTimestampDisplay() {
+    const timestampDisplay = document.getElementById('timestamp-display');
+    const currentDate = new Date();
+    timestampDisplay.textContent = formatDate(currentDate) + ' ' + 
+        currentDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    
+    // Set the datetime-local input to current date/time
+    const customTimestamp = document.getElementById('custom-timestamp');
+    customTimestamp.value = formatDateTimeForInput(currentDate);
+    
+    // Toggle datetime picker when timestamp is clicked
+    timestampDisplay.addEventListener('click', function() {
+        const pickerContainer = document.getElementById('timestamp-picker-container');
+        pickerContainer.classList.toggle('hidden');
+    });
+}
+
+// Format date for datetime-local input
+function formatDateTimeForInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+// Update the page title in header and browser
+function updatePageTitle() {
+    const field = appState.currentField || '';
+    const caseName = appState.currentCase || '';
+    const title = field && caseName ? `${field} - ${caseName}` : 'Volumetric Data';
+    
+    // Update h1 heading
+    document.getElementById('app-title').textContent = title;
+    
+    // Update browser tab title
+    document.title = title + ' | Volumetric Data Visualization';
+    
+    // Update ball chart title
+    if (appState.currentCase) {
+        document.getElementById('ball-chart-title').textContent = appState.currentCase;
+        document.getElementById('ball-chart-subtitle').textContent = appState.currentField || '';
+    } else {
+        document.getElementById('ball-chart-title').textContent = 'Ball Chart';
+        document.getElementById('ball-chart-subtitle').textContent = 'No case selected';
+    }
+    
+    // Update description
+    updateCaseDescription();
+    
+    // Update navigation buttons state
+    updateNavigationButtons();
+}
+
+// Update case description to include author and timestamp
+function updateCaseDescription() {
+    const descriptionElement = document.getElementById('case-description');
+    const authorElement = document.getElementById('case-author-timestamp').querySelector('.author-name');
+    const timestampElement = document.getElementById('case-author-timestamp').querySelector('.timestamp-value');
+    
+    if (appState.currentField && appState.currentCase) {
+        const fieldKey = `volumetricCases_${appState.currentField}`;
+        if (localStorage.getItem(fieldKey)) {
+            const cases = JSON.parse(localStorage.getItem(fieldKey));
+            if (cases && cases[appState.currentCase]) {
+                // Show description if available
+                if (cases[appState.currentCase].description) {
+                    descriptionElement.textContent = cases[appState.currentCase].description;
+                } else {
+                    descriptionElement.innerHTML = '<span class="text-gray-400">No description available</span>';
+                }
+                
+                // Show author if available
+                if (cases[appState.currentCase].author) {
+                    authorElement.textContent = cases[appState.currentCase].author;
+                } else {
+                    authorElement.textContent = 'Not specified';
+                }
+                
+                // Show timestamp if available
+                if (cases[appState.currentCase].timestamp) {
+                    const timestamp = new Date(cases[appState.currentCase].timestamp);
+                    timestampElement.textContent = formatDate(timestamp) + ' ' + 
+                        timestamp.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                    
+                    // Make timestamp card clickable to edit
+                    document.getElementById('case-author-timestamp').onclick = function() {
+                        if (confirm('Do you want to edit this case?')) {
+                            showEditCaseModal(appState.currentField, appState.currentCase);
+                        }
+                    };
+                } else {
+                    timestampElement.textContent = 'No date available';
+                }
+                
+                return;
+            }
+        }
+    }
+    
+    // Show placeholders if no description/timestamp
+    descriptionElement.innerHTML = '<span class="text-gray-400">No description available</span>';
+    authorElement.textContent = 'Not specified';
+    timestampElement.textContent = 'No date available';
+}
+
+// Show modal to edit case details
+function showEditCaseModal(field, caseName) {
+    // Show the edit case modal
+    showModal('rename-case-modal');
+    
+    const fieldKey = `volumetricCases_${field}`;
+    if (localStorage.getItem(fieldKey)) {
+        const cases = JSON.parse(localStorage.getItem(fieldKey));
+        if (cases && cases[caseName]) {
+            const caseData = cases[caseName];
+            
+            // Populate form fields
+            document.getElementById('rename-case-title').value = caseName;
+            document.getElementById('edit-case-description').value = caseData.description || '';
+            document.getElementById('edit-case-author').value = caseData.author || '';
+            
+            // Get the columns from the case data
+            const columns = Object.keys(caseData.data[0]);
+            const groupingColumns = columns.filter(col => 
+                !standardColumns.includes(col) && col.trim() !== '' && !col.startsWith('__'));
+            
+            // Store these in appState to avoid recalculation
+            appState.currentEditingCaseColumns = groupingColumns;
+            
+            // Get volume groups from case data
+            const volumeGroups = caseData.volumeGroups || {};
+            const groupColumns = volumeGroups.columns || [];
+            
+            // Initialize volume groups UI with the current grouping columns
+            const container = document.getElementById('edit-volume-group-container');
+            container.innerHTML = ''; // Clear container
+            
+            // Prevent cascading events
+            window._addingGroupLevel = true;
+            
+            if (groupColumns.length > 0) {
+                // Create UI elements for each existing group level
+                groupColumns.forEach((columnName, index) => {
+                    addGroupLevel(container, groupingColumns, columnName);
+                });
+            } else {
+                // If no existing groups, initialize with up to 2 default levels
+                if (groupingColumns.length >= 2) {
+                    // Add first level
+                    addGroupLevel(container, groupingColumns);
+                    
+                    // Add second level with a slight delay
+                    setTimeout(() => {
+                        addGroupLevel(container, groupingColumns);
+                    }, 10);
+                } else if (groupingColumns.length === 1) {
+                    // Just add one level if only one column is available
+                    addGroupLevel(container, groupingColumns);
+                } else {
+                    // No valid columns - initialize with empty level
+                    addGroupLevel(container, []);
+                }
+            }
+            
+            // Clear flag
+            setTimeout(() => { window._addingGroupLevel = false; }, 100);
+            
+            // Set current timestamp
+            if (caseData.timestamp) {
+                const timestamp = new Date(caseData.timestamp);
+                document.getElementById('edit-timestamp').value = formatDateTimeForInput(timestamp);
+            } else {
+                document.getElementById('edit-timestamp').value = formatDateTimeForInput(new Date());
+            }
+        }
+    }
+}
+
+// Function to clear all fields in the Add Case modal
+function clearAddCaseFields() {
+    document.getElementById('new-case-title').value = '';
+    document.getElementById('new-case-description').value = '';
+    document.getElementById('new-case-data').value = '';
+    document.getElementById('divide-by-1000-toggle').checked = true;
+    
+    // Reset volume group container
+    const volumeGroupContainer = document.getElementById('volume-group-container');
+    volumeGroupContainer.innerHTML = '';
+    
+    // Set default author if available
+    const authorInput = document.getElementById('new-case-author');
+    if (appState.defaultAuthor) {
+        authorInput.value = appState.defaultAuthor;
+        document.getElementById('default-author-toggle').checked = true;
+        authorInput.disabled = true; // Disable input when using default author
+    } else {
+        authorInput.value = '';
+        document.getElementById('default-author-toggle').checked = false;
+        authorInput.disabled = false; // Enable input when not using default author
+    }
+    
+    // Reset timestamp to current time
+    const timestampDisplay = document.getElementById('timestamp-display');
+    const currentDate = new Date();
+    timestampDisplay.textContent = formatDate(currentDate) + ' ' + 
+        currentDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    
+    // Reset the datetime-local input to current date/time
+    const customTimestamp = document.getElementById('custom-timestamp');
+    customTimestamp.value = formatDateTimeForInput(currentDate);
+    
+    // Hide the timestamp picker if it was visible
+    document.getElementById('timestamp-picker-container').classList.add('hidden');
+}
+
+// New event listeners for timestamps and data import features
+function addNewEventListeners() {
+    // Initialize timestamp display when showing add case modal
+    document.getElementById('add-case-btn').addEventListener('click', function() {
+        initializeTimestampDisplay();
+    });
+    
+    // Update event listener for cancel-add-case to reset timestamp picker
+    document.getElementById('cancel-add-case').addEventListener('click', function() {
+        document.getElementById('timestamp-picker-container').classList.add('hidden');
+        hideModal();
+    });
+    
+    // Load default author into author field when modal opens
+    document.getElementById('add-case-btn').addEventListener('click', function() {
+        const authorInput = document.getElementById('new-case-author');
+        if (appState.defaultAuthor) {
+            authorInput.value = appState.defaultAuthor;
+            document.getElementById('default-author-toggle').checked = true;
+        }
+    });
+}
+
+// Updated addNewCase with multi-level volume groups
+function addNewCase() {
+    const field = document.getElementById('new-case-field').value;
+    const title = document.getElementById('new-case-title').value.trim();
+    const description = document.getElementById('new-case-description').value.trim();
+    const author = document.getElementById('new-case-author').value.trim();
+    let rawData = document.getElementById('new-case-data').value.trim();
+    const divideBy1000 = document.getElementById('divide-by-1000-toggle').checked;
+    const defaultAuthor = document.getElementById('default-author-toggle').checked;
+    
+    // Get volume groups from UI
+    const volumeGroupContainer = document.getElementById('volume-group-container');
+    const volumeGroupColumns = getVolumeGroupsFromUI(volumeGroupContainer);
+    
+    // Save default author if toggle is checked
+    if (defaultAuthor && author) {
+        appState.defaultAuthor = author;
+        localStorage.setItem('defaultAuthor', author);
+    }
+    
+    // Get timestamp
+    let timestamp;
+    if (document.getElementById('timestamp-picker-container').classList.contains('hidden')) {
+        timestamp = new Date().toISOString();
+    } else {
+        timestamp = new Date(document.getElementById('custom-timestamp').value).toISOString();
+    }
+
+    if (!field || !title) {
+        alert('Please enter both a field and case title.');
+        return;
+    }
+
+    if (!rawData) {
+        alert('Please enter volumetric data.');
+        return;
+    }
+    
+    // Split raw data into lines
+    let lines = rawData.split('\n').filter(line => line.trim() !== '');
+    if (lines.length === 0) {
+        alert('No valid data found. Please check your input.');
+        return;
+    }
+    
+    // Parse header line first using our custom function
+    const headerLine = lines[0];
+    const headerInfo = parseHeaders(headerLine);
+    let headers = headerInfo.headers;
+    const units = {}; // Will store processed units
+    
+    // Process each line manually
+    const dataRows = lines.slice(1);
+    const parsedData = [];
+    
+    // Process units based on divideBy1000 toggle
+    Object.entries(headerInfo.units).forEach(([label, rawUnit]) => {
+        if (divideBy1000 && rawUnit) {
+            // Scale up the unit when dividing by 1000
+            units[label] = getScaledUnit(rawUnit);
+        } else {
+            units[label] = rawUnit;
+        }
+    });
+    
+    // Process each data row
+    dataRows.forEach((row, rowIndex) => {
+        const columns = row.split('\t');
+        const dataObj = {};
+        
+        // Check if we need to add a first column for "Zones"
+        if (columns.length === headers.length + 1) {
+            if (rowIndex === 0) {
+                // Only add the header once, on the first row
+                headers.unshift('Zones');
+                units['Zones'] = '';
+            }
+            
+            // Map data directly by index, allowing for the extra first column
+            columns.forEach((value, colIndex) => {
+                if (colIndex < headers.length) {
+                    const header = headers[colIndex];
+                    
+                    // Process numeric values based on units
+                    if (units[header] && units[header] !== '') {
+                        // This is a numeric column with a unit
+                        let numValue = parseFloat(value);
+                        if (!isNaN(numValue)) {
+                            // Apply divide by 1000 if enabled
+                            if (divideBy1000) {
+                                numValue /= 1000;
+                            }
+                            dataObj[header] = numValue;
+                        } else {
+                            dataObj[header] = 0; // Default for invalid numbers
+                        }
+                    } else {
+                        // Non-numeric column, keep as is
+                        dataObj[header] = value;
+                    }
+                }
+            });
+        } else {
+            // Standard case - columns match headers
+            columns.forEach((value, colIndex) => {
+                if (colIndex < headers.length) {
+                    const header = headers[colIndex];
+                    
+                    // Process numeric values based on units
+                    if (units[header] && units[header] !== '') {
+                        // This is a numeric column with a unit
+                        let numValue = parseFloat(value);
+                        if (!isNaN(numValue)) {
+                            // Apply divide by 1000 if enabled
+                            if (divideBy1000) {
+                                numValue /= 1000;
+                            }
+                            dataObj[header] = numValue;
+                        } else {
+                            dataObj[header] = 0; // Default for invalid numbers
+                        }
+                    } else {
+                        // Non-numeric column, keep as is
+                        dataObj[header] = value;
+                    }
+                }
+            });
+        }
+        
+        // Add the processed row to our data
+        parsedData.push(dataObj);
+    });
+    
+    // Store the case data
+    const fieldKey = `volumetricCases_${field}`;
+    let cases = {};
+
+    if (localStorage.getItem(fieldKey)) {
+        cases = JSON.parse(localStorage.getItem(fieldKey));
+    }
+
+    // Add case metadata with new multi-level volume groups format
+    cases[title] = {
+        title: title,
+        description: description,
+        author: author,
+        data: parsedData,
+        units: units,
+        timestamp: timestamp,
+        volumeGroups: {
+            columns: volumeGroupColumns.filter(Boolean) // Filter out any undefined/empty entries
+        }
+    };
+
+    localStorage.setItem(fieldKey, JSON.stringify(cases));
+    
+    // Add new case to order list
+    updateCaseOrder(field, title);
+
+    // Update UI
+    appState.currentField = field;
+    document.getElementById('field-selector').value = field;
+    loadCasesForField(field);
+    appState.currentCase = title; // Set the newly created case as current
+    saveSessionState();
+    hideModal();
+}
+
+// Update case with new details including multi-level volume groups
+function updateCaseWithNewDetails(field, oldName, newName, description, author, volumeGroupColumns, timestamp) {
+    const fieldKey = `volumetricCases_${field}`;
+    
+    if (localStorage.getItem(fieldKey)) {
+        const cases = JSON.parse(localStorage.getItem(fieldKey));
+        
+        if (cases[oldName]) {
+            // Check if new name already exists and is different
+            if (oldName !== newName && cases[newName]) {
+                alert(`Case "${newName}" already exists for this field.`);
+                return false;
+            }
+            
+            // If only updating details for the same name
+            if (oldName === newName) {
+                cases[oldName].description = description;
+                cases[oldName].author = author;
+                cases[oldName].timestamp = timestamp.toISOString();
+                cases[oldName].volumeGroups = {
+                    columns: volumeGroupColumns
+                };
+                
+                // Save changes
+                localStorage.setItem(fieldKey, JSON.stringify(cases));
+                
+                // Refresh UI
+                loadCasesForField(field);
+                return true;
+            }
+            
+            // Copy case with new name and updated details
+            cases[newName] = { ...cases[oldName] };
+            cases[newName].title = newName;
+            cases[newName].description = description;
+            cases[newName].author = author;
+            cases[newName].timestamp = timestamp.toISOString();
+            cases[newName].volumeGroups = {
+                columns: volumeGroupColumns
+            };
+            
+            // Remove old case
+            delete cases[oldName];
+            
+            // Save changes
+            localStorage.setItem(fieldKey, JSON.stringify(cases));
+            
+            // Update current case
+            if (appState.currentCase === oldName) {
+                appState.currentCase = newName;
+                saveSessionState();
+            }
+            
+            // Update case in order list
+            updateCaseOrderOnRename(field, oldName, newName);
+            
+            // Refresh UI
+            loadCasesForField(field);
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Rename a volumetric case with updated multi-level volume groups
+function renameCase(field, oldName, newName, newDescription, newAuthor, volumeGroupColumns, timestamp) {
+    if (oldName === newName && !newDescription && !newAuthor && !volumeGroupColumns.length) return;
+    
+    // Update case with new details
+    updateCaseWithNewDetails(field, oldName, newName, newDescription, newAuthor, volumeGroupColumns, timestamp);
+}
+
+// Add a new case to the order list
+function updateCaseOrder(field, newCase) {
+    // Get current order
+    const orderKey = `volumetricCasesOrder_${field}`;
+    let order = [];
+    
+    if (localStorage.getItem(orderKey)) {
+        order = JSON.parse(localStorage.getItem(orderKey));
+    }
+    
+    // Add new case if not exists
+    if (!order.includes(newCase)) {
+        order.push(newCase);
+        localStorage.setItem(orderKey, JSON.stringify(order));
+    }
+}
+
+// Update case order when renaming a case
+function updateCaseOrderOnRename(field, oldName, newName) {
+    const orderKey = `volumetricCasesOrder_${field}`;
+    
+    if (localStorage.getItem(orderKey)) {
+        let order = JSON.parse(localStorage.getItem(orderKey));
+        
+        // Find and replace old name with new name
+        const index = order.indexOf(oldName);
+        if (index !== -1) {
+            order[index] = newName;
+            localStorage.setItem(orderKey, JSON.stringify(order));
+        }
+    }
+}
+
+// Delete a volumetric case
+function deleteCase(field, caseName) {
+    const fieldKey = `volumetricCases_${field}`;
+    
+    if (localStorage.getItem(fieldKey)) {
+        const cases = JSON.parse(localStorage.getItem(fieldKey));
+        
+        if (cases[caseName]) {
+            // Remove the case
+            delete cases[caseName];
+            
+            // Save changes
+            localStorage.setItem(fieldKey, JSON.stringify(cases));
+            
+            // Remove case from order list
+            removeCaseFromOrder(field, caseName);
+            
+            // Update current case if needed
+            if (appState.currentCase === caseName) {
+                // Select the next case if available
+                if (appState.availableCases.length > 1) {
+                    const currentIndex = appState.availableCases.indexOf(caseName);
+                    const newIndex = Math.min(currentIndex, appState.availableCases.length - 2);
+                    appState.currentCase = appState.availableCases[newIndex];
+                } else {
+                    appState.currentCase = null;
+                }
+                saveSessionState();
+            }
+            
+            // Refresh UI
+            loadCasesForField(field);
+        }
+    }
+}
+
+// Remove case from order list
+function removeCaseFromOrder(field, caseName) {
+    const orderKey = `volumetricCasesOrder_${field}`;
+    
+    if (localStorage.getItem(orderKey)) {
+        let order = JSON.parse(localStorage.getItem(orderKey));
+        
+        // Remove case from order
+        const index = order.indexOf(caseName);
+        if (index !== -1) {
+            order.splice(index, 1);
+            localStorage.setItem(orderKey, JSON.stringify(order));
+        }
+    }
+}
+</script>
+</body>
+</html>
