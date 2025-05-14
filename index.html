@@ -2843,13 +2843,17 @@ function setupLegendSlider(hierarchicalData, maxDepth, visibleNodes = null) {
     
     if (!slider) return;
     
+    // Update slider max to use appState.maxDepth instead of hierarchical maxDepth
+    slider.max = appState.maxDepth;
+    
     // Get saved layer or default to 1 (field-level storage)
     let currentLayer = 1;
     if (appState.currentField) {
         const savedLayer = localStorage.getItem(`legendLayer_${appState.currentField}`);
         if (savedLayer) {
             currentLayer = parseInt(savedLayer);
-            currentLayer = Math.max(1, Math.min(maxDepth, currentLayer)); // Clamp to valid range
+            // Clamp to valid range based on appState.maxDepth
+            currentLayer = Math.max(1, Math.min(appState.maxDepth, currentLayer));
         }
     }
     
@@ -2857,24 +2861,37 @@ function setupLegendSlider(hierarchicalData, maxDepth, visibleNodes = null) {
     slider.value = currentLayer;
     updateLegend(hierarchicalData, currentLayer, visibleNodes);
     
-    // Slider change handler
-    slider.addEventListener('input', function() {
+    // Remove existing event listeners to prevent duplicates
+    const newSlider = slider.cloneNode(true);
+    slider.parentNode.replaceChild(newSlider, slider);
+    
+    // Slider change handler - only save when user changes the slider
+    newSlider.addEventListener('input', function() {
         const layer = parseInt(this.value);
         updateLegend(hierarchicalData, layer, visibleNodes);
+        
+        // Save selection to localStorage at field level ONLY when user changes it
+        if (appState.currentField) {
+            const key = `legendLayer_${appState.currentField}`;
+            localStorage.setItem(key, layer.toString());
+        }
     });
 }
 
 // Function to create the legend HTML structure
 function createLegendHTML(maxDepth) {
+    // Use appState.maxDepth instead of the passed maxDepth parameter
+    const actualMaxDepth = appState.maxDepth;
+    
     let legendHTML = '<div class="circle-legend" id="circle-legend">';
     legendHTML += '<div class="text-xs font-light text-gray-500 mb-1.5 text-right uppercase tracking-wider legend-title-text">Legend</div>';
     legendHTML += '<div class="mb-3 pb-3 border-b border-gray-100 flex items-center gap-2">';
     legendHTML += '<div class="text-xs font-medium text-gray-600 min-w-fit" id="legend-layer-label">Layer 1</div>';
     legendHTML += '<div class="slider-container flex-1">';
     legendHTML += '<input type="range" class="layer-slider w-full" id="legend-layer-slider" ';
-    legendHTML += 'min="1" max="' + maxDepth + '" value="1" step="1">';
+    legendHTML += 'min="1" max="' + actualMaxDepth + '" value="1" step="1">';
     legendHTML += '</div>';
-    legendHTML += '<div class="text-xs text-gray-500 min-w-fit">' + maxDepth + '</div>';
+    legendHTML += '<div class="text-xs text-gray-500 min-w-fit">' + actualMaxDepth + '</div>';
     legendHTML += '</div>';
     legendHTML += '<div class="legend-items" id="legend-items">';
     legendHTML += '<!-- Legend items will be populated here -->';
@@ -2883,6 +2900,7 @@ function createLegendHTML(maxDepth) {
     
     return legendHTML;
 }
+
 // Function to populate the legend based on the selected layer
 function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
     const legendItems = document.getElementById('legend-items');
@@ -2909,7 +2927,7 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
         }
     }
     
-    // Get actual nodes (same logic as before)
+    // Get actual nodes
     let actualNodes = [];
     
     if (visibleNodes) {
@@ -3015,7 +3033,6 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
         const label = document.createElement('div');
         label.className = 'legend-label text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0';
         label.textContent = item.name;
-        // REMOVED: label.title = item.name; - No default tooltip
         
         itemDiv.appendChild(colorBox);
         itemDiv.appendChild(label);
@@ -3066,10 +3083,10 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
         slider.value = selectedLayer;
     }
     
-    // Save selection to localStorage at field level
-    if (appState.currentField) {
-        const key = `legendLayer_${appState.currentField}`;
-        localStorage.setItem(key, selectedLayer.toString());
+    // Update the max value display in the legend
+    const maxDisplay = document.querySelector('#circle-legend .text-xs.text-gray-500:last-child');
+    if (maxDisplay) {
+        maxDisplay.textContent = appState.maxDepth.toString();
     }
 }
 
@@ -3341,19 +3358,6 @@ function drawCirclePacking() {
         // Get the depth of the hierarchy
         const maxDepth = getMaxDepth(hierarchicalData);
         
-        // Clear any existing color mappings for this visualization
-        appState.colorMap.clear();
-
-        // Add legend after SVG is created
-        const legendHTML = createLegendHTML(maxDepth);
-        container.insertAdjacentHTML('beforeend', legendHTML);
-
-        // Set legend visibility based on setting
-        const legend = document.getElementById('circle-legend');
-        if (legend && !appState.showLegend) {
-            legend.classList.add('hidden');
-        }
-        
         // Update the max depth slider range
         const depthSlider = document.getElementById('max-depth-slider');
         if (depthSlider) {
@@ -3361,6 +3365,19 @@ function drawCirclePacking() {
             depthSlider.value = Math.min(appState.maxDepth, maxDepth);
             document.getElementById('max-depth-value').textContent = depthSlider.value;
             appState.maxDepth = parseInt(depthSlider.value);
+        }
+        
+        // Clear any existing color mappings for this visualization
+        appState.colorMap.clear();
+
+        // Add legend after SVG is created - now uses appState.maxDepth
+        const legendHTML = createLegendHTML(appState.maxDepth);
+        container.insertAdjacentHTML('beforeend', legendHTML);
+
+        // Set legend visibility based on setting
+        const legend = document.getElementById('circle-legend');
+        if (legend && !appState.showLegend) {
+            legend.classList.add('hidden');
         }
         
         const pack = d3.pack()
@@ -3393,11 +3410,22 @@ function drawCirclePacking() {
             return;
         }
 
-        // Set up legend slider interactions with visible nodes
-        setupLegendSlider(hierarchicalData, maxDepth, validDescendants);
+        // Set up legend slider interactions with appState.maxDepth
+        setupLegendSlider(hierarchicalData, appState.maxDepth, validDescendants);
         
-        // Initialize legend with layer 1 and visible nodes
-        updateLegend(hierarchicalData, 1, validDescendants);
+        // Get saved layer for initialization
+        let initialLayer = 1;
+        if (appState.currentField) {
+            const savedLayer = localStorage.getItem(`legendLayer_${appState.currentField}`);
+            if (savedLayer) {
+                initialLayer = parseInt(savedLayer);
+                // Clamp to valid range based on appState.maxDepth
+                initialLayer = Math.max(1, Math.min(appState.maxDepth, initialLayer));
+            }
+        }
+        
+        // Initialize legend with saved or default layer
+        updateLegend(hierarchicalData, initialLayer, validDescendants);
         
         // Add a margin transform to the visualization group
         const g = svg.append('g')
@@ -4724,6 +4752,8 @@ function loadFieldSettings() {
     const savedLegendLayer = localStorage.getItem(legendLayerKey);
     if (savedLegendLayer) {
         appState.savedLegendLayer = parseInt(savedLegendLayer);
+        // Validate against current max depth
+        appState.savedLegendLayer = Math.max(1, Math.min(appState.maxDepth, appState.savedLegendLayer));
     } else {
         appState.savedLegendLayer = 1; // Default to layer 1
     }
