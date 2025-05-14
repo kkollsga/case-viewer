@@ -3043,7 +3043,8 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
             
             // Build tooltip content (show full name in custom tooltip)
             let tooltipContent = `<div class="font-semibold">${item.name}</div>`;
-            tooltipContent += `<div>Sum: <strong>${formattedTotal} ${unit}</strong></div>`;
+            // CHANGED: Show metric name instead of "Sum"
+            tooltipContent += `<div>${currentMetric}: <strong>${formattedTotal} ${unit}</strong></div>`;
             
             // Sort parent breakdown by value and add to tooltip
             if (item.parentBreakdown.size > 0) {
