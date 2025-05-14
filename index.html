@@ -2975,7 +2975,7 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
     // Create legend items using the shared tooltip
     sortedItems.forEach(function(item) {
         const itemDiv = document.createElement('div');
-        itemDiv.className = 'legend-item flex items-center gap-2 relative cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1';
+        itemDiv.className = 'legend-item flex items-center gap-2 relative cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1 w-full min-w-0';
         
         // Format the total value
         let formattedTotal;
@@ -3007,8 +3007,10 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
         colorBox.style.opacity = item.opacity;
         
         const label = document.createElement('div');
-        label.className = 'legend-label text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis';
+        label.className = 'legend-label text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0';
         label.textContent = item.name;
+        // Add title attribute for full text on hover
+        label.title = item.name;
         
         itemDiv.appendChild(colorBox);
         itemDiv.appendChild(label);
@@ -3218,6 +3220,51 @@ function getValueTextColor(d) {
     }
     
     return themeColors.textDark;
+}
+
+// Helper function to truncate text to fit within a given width
+function truncateTextToFit(text, maxWidth, fontSize) {
+    if (!text) return '';
+    
+    // Create a temporary SVG text element to measure text width
+    const svg = d3.select('body').append('svg').style('position', 'absolute').style('visibility', 'hidden');
+    const textElement = svg.append('text')
+        .style('font-size', fontSize + 'px')
+        .text(text);
+    
+    let truncatedText = text;
+    let textWidth = textElement.node().getComputedTextLength();
+    
+    // If text fits, return as is
+    if (textWidth <= maxWidth) {
+        svg.remove();
+        return text;
+    }
+    
+    // Binary search for the right length
+    let left = 0;
+    let right = text.length;
+    const ellipsis = '...';
+    const ellipsisWidth = textElement.text(ellipsis).node().getComputedTextLength();
+    const targetWidth = maxWidth - ellipsisWidth;
+    
+    while (left < right) {
+        const mid = Math.floor((left + right + 1) / 2);
+        const testText = text.substring(0, mid);
+        textElement.text(testText);
+        const testWidth = textElement.node().getComputedTextLength();
+        
+        if (testWidth <= targetWidth) {
+            left = mid;
+        } else {
+            right = mid - 1;
+        }
+    }
+    
+    truncatedText = text.substring(0, left) + ellipsis;
+    svg.remove();
+    
+    return truncatedText;
 }
 
 // Draw the packed circle diagram with multi-level groups
@@ -3430,9 +3477,98 @@ function drawCirclePacking() {
                 sharedTooltip.transition().duration(500).style('opacity', 0);
             });
 
-        // Rest of the function remains the same...
-        // (Add text labels and value labels as before)
-        
+        // Add text labels to circles with truncation
+        g.selectAll('text.label')
+            .data(validDescendants.filter(d => {
+                // Only show labels for level 1 circles with sufficient size and positive value
+                return (d.depth === 1 && d.r > 25 && d.value > 0);
+            }))
+            .join('text')
+            .attr('class', 'label')
+            .attr('x', d => d.x)
+            .attr('y', d => d.y)
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'middle')
+            .attr('font-size', d => {
+                // Adjust font size based on depth
+                return circleConfig.fontSize.level1;
+            })
+            .attr('fill', d => getLabelTextColor(d))
+            .attr('pointer-events', 'none')
+            .text(d => {
+                if (!d.data || !d.data.name) return '';
+                
+                // Calculate available width (use 80% of diameter to leave some padding)
+                const maxWidth = d.r * 2 * 0.8;
+                const fontSize = circleConfig.fontSize.level1;
+                
+                return truncateTextToFit(d.data.name, maxWidth, fontSize);
+            });
+            
+        // Add value labels to circles if showValues is true
+        if (appState.showValues) {
+            // First calculate the total value to determine percentage thresholds
+            const totalValue = root.value || 0.0001; // Avoid division by zero
+            
+            g.selectAll('text.value')
+                .data(validDescendants.filter(d => {
+                    // Show values based on depth and size
+                    try {
+                        return (d.depth === 0) || 
+                            (d.depth === 1 && d.r > 30) ||
+                            (d.depth === 2 && d.r > circleConfig.minRadius.level2 && (d.value / totalValue) >= circleConfig.sizeThresholdPercent) ||
+                            (d.depth === 3 && d.r > circleConfig.minRadius.level3 && (d.value / totalValue) >= circleConfig.sizeThresholdPercent) ||
+                            (d.depth >= 4 && d.r > circleConfig.minRadius.other && (d.value / totalValue) >= circleConfig.sizeThresholdPercent * 2);
+                    } catch (error) {
+                        return false;
+                    }
+                }))
+                .join('text')
+                .attr('class', 'value')
+                .attr('x', d => d.x)
+                .attr('y', d => d.y - d.r + 16) // Position at top
+                .attr('text-anchor', 'middle')
+                .attr('font-size', d => {
+                    // Adjust font size based on depth
+                    switch (d.depth) {
+                        case 0: return circleConfig.fontSize.total;
+                        case 1: return circleConfig.fontSize.level1;
+                        case 2: return circleConfig.fontSize.level2;
+                        case 3: return circleConfig.fontSize.level3;
+                        case 4: return circleConfig.fontSize.level4;
+                        default: return circleConfig.fontSize.other;
+                    }
+                })
+                .attr('fill', d => getValueTextColor(d))
+                .attr('fill-opacity', d => 0.90) // Consistent opacity for text
+                .attr('pointer-events', 'none')
+                .text(d => {
+                    try {
+                        // Handle cases where volumetrics might be missing
+                        if (!d.data || !d.data.volumetrics || !(appState.currentMetric in d.data.volumetrics)) {
+                            return '0.00';
+                        }
+                        
+                        // Format value nicely with the appropriate unit
+                        const val = d.data.volumetrics[appState.currentMetric] || 0;
+                        let formatted;
+                        
+                        // Format based on magnitude with 2 decimal places
+                        if (val >= 1000000) {
+                            formatted = (val / 1000000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + 'M';
+                        } else if (val >= 1000) {
+                            formatted = (val / 1000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + 'k';
+                        } else {
+                            formatted = val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                        }
+                        
+                        return formatted;
+                    } catch (error) {
+                        console.error("Error formatting value label:", error);
+                        return '0.00';
+                    }
+                });
+        }
     } catch (error) {
         console.error("Error drawing circle packing:", error);
         const container = document.getElementById('circle-diagram');
