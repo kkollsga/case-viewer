@@ -957,18 +957,18 @@ const themeColors = {
     ],
     // Third color palette - Medium-bright colors from reds to light greens (position 6)
     palette3: [
+        '#FEE330', // Yellow (position 6)
         '#FF863F', // Orange (position 6)
-        '#FA5D4B', // Red (position 6)
         '#847AD1', // Violet (position 6)
+        '#FA5D4B', // Red (position 6)
+        '#30AEE4',  // Sky (position 6)
+        '#4FD894', // Emerald (position 6)
         '#91CA4A', // Green (position 6)
+        '#DD7BD0', // Fuchsia (position 6)
         '#CFDD30', // Lime (position 6)
         '#F4B930', // Amber (position 6)
-        '#FEE330', // Yellow (position 6)
         '#E93069', // Rose (position 6)
-        '#4FD894', // Emerald (position 6)
-        '#DD7BD0', // Fuchsia (position 6)
-        '#A580D6', // Purple (position 6)
-        '#30AEE4'  // Sky (position 6)
+        '#A580D6' // Purple (position 6)
     ],
     // Bas
     // Base colors
@@ -3171,7 +3171,7 @@ function getNodeOpacity(d) {
     if (d.depth === 0) return 1.0; // Total circle is fully opaque
     
     // All other levels have a consistent, high opacity
-    return 0.65;
+    return 1;
 }
 
 // Function to get stroke color for a node
