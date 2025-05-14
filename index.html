@@ -2972,6 +2972,12 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
     const units = appState.volumetricData?.units || {};
     const unit = units[currentMetric] || '';
     
+    // Helper function to truncate text
+    function truncateText(text, maxLength) {
+        if (!text) return '';
+        return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+    }
+    
     // Create legend items using the shared tooltip
     sortedItems.forEach(function(item) {
         const itemDiv = document.createElement('div');
@@ -3032,7 +3038,11 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
                 
                 parentArray.forEach(([parentName, value]) => {
                     const percentage = ((value / item.totalValue) * 100).toFixed(1);
-                    tooltipContent += `<div>${parentName}: <strong>${percentage}%</strong></div>`;
+                    // Truncate parent names to 20 characters
+                    const truncatedParentName = truncateText(parentName, 20);
+                    // Create a tooltip attribute for the full name
+                    const tooltipAttr = parentName.length > 20 ? ` title="${parentName}"` : '';
+                    tooltipContent += `<div${tooltipAttr}>${truncatedParentName}: <strong>${percentage}%</strong></div>`;
                 });
                 
                 tooltipContent += '</div>';
