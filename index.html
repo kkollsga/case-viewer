@@ -2843,10 +2843,10 @@ function setupLegendSlider(hierarchicalData, maxDepth, visibleNodes = null) {
     
     if (!slider) return;
     
-    // Get saved layer or default to 1
+    // Get saved layer or default to 1 (field-level storage)
     let currentLayer = 1;
     if (appState.currentField) {
-        const savedLayer = localStorage.getItem('legendLayer_' + appState.currentField);
+        const savedLayer = localStorage.getItem(`legendLayer_${appState.currentField}`);
         if (savedLayer) {
             currentLayer = parseInt(savedLayer);
             currentLayer = Math.max(1, Math.min(maxDepth, currentLayer)); // Clamp to valid range
@@ -3015,8 +3015,7 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
         const label = document.createElement('div');
         label.className = 'legend-label text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0';
         label.textContent = item.name;
-        // Add title attribute for full text on hover
-        label.title = item.name;
+        // REMOVED: label.title = item.name; - No default tooltip
         
         itemDiv.appendChild(colorBox);
         itemDiv.appendChild(label);
@@ -3025,7 +3024,7 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
         itemDiv.addEventListener('mouseenter', function() {
             sharedTooltip.transition().duration(200).style('opacity', 0.9);
             
-            // Build tooltip content
+            // Build tooltip content (show full name in custom tooltip)
             let tooltipContent = `<div class="font-semibold">${item.name}</div>`;
             tooltipContent += `<div>Sum: <strong>${formattedTotal} ${unit}</strong></div>`;
             
@@ -3040,9 +3039,7 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
                     const percentage = ((value / item.totalValue) * 100).toFixed(1);
                     // Truncate parent names to 20 characters
                     const truncatedParentName = truncateText(parentName, 20);
-                    // Create a tooltip attribute for the full name
-                    const tooltipAttr = parentName.length > 20 ? ` title="${parentName}"` : '';
-                    tooltipContent += `<div${tooltipAttr}>${truncatedParentName}: <strong>${percentage}%</strong></div>`;
+                    tooltipContent += `<div>${truncatedParentName}: <strong>${percentage}%</strong></div>`;
                 });
                 
                 tooltipContent += '</div>';
@@ -3058,7 +3055,7 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
         legendItems.appendChild(itemDiv);
     });
     
-    // Update layer label and slider (same as before)
+    // Update layer label and slider
     const layerLabel = document.getElementById('legend-layer-label');
     if (layerLabel) {
         layerLabel.textContent = 'Layer ' + selectedLayer;
@@ -3069,9 +3066,9 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
         slider.value = selectedLayer;
     }
     
-    // Save selection to localStorage
+    // Save selection to localStorage at field level
     if (appState.currentField) {
-        const key = 'legendLayer_' + appState.currentField;
+        const key = `legendLayer_${appState.currentField}`;
         localStorage.setItem(key, selectedLayer.toString());
     }
 }
@@ -4720,6 +4717,15 @@ function loadFieldSettings() {
             document.getElementById('metric-selector').value = appState.currentMetric;
             updateCurrentUnit();
         }
+    }
+    
+    // Load saved legend layer for this field
+    const legendLayerKey = `legendLayer_${appState.currentField}`;
+    const savedLegendLayer = localStorage.getItem(legendLayerKey);
+    if (savedLegendLayer) {
+        appState.savedLegendLayer = parseInt(savedLegendLayer);
+    } else {
+        appState.savedLegendLayer = 1; // Default to layer 1
     }
 }
 
