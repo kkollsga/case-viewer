@@ -22,6 +22,29 @@
             z-index: 100;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
+
+        /* ==================== FIELD SELECTOR ==================== */
+        #field-title {
+            cursor: pointer;
+            transition: color 0.15s ease;
+            position: relative;
+        }
+        #field-title:hover {
+            color: #2563eb !important;
+        }
+        #field-title:hover::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background-color: #2563eb;
+        }
+        #field-dropdown {
+            max-height: 300px;
+            overflow-y: auto;
+        }
     
         /* ==================== TOOLTIPS ==================== */
         /* Shared tooltip used by both circles and legend */
@@ -1112,7 +1135,7 @@ function parseHeaders(headerLine) {
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     setupEventListeners();
-    setupTimestampUI();
+    setupFieldNameDropdown();
     setupMultiLevelGroupsUI(); // Set up event handlers for group level UI
     
     // Initialize show values toggle
@@ -4051,9 +4074,88 @@ function updateGroupingSelectors(headers) {
     initializeVolumeGroups(container, groupingColumns, existingGroups);
 }
 
-// Setup timestamp UI
-function setupTimestampUI() {
-    // Note: Now handled directly in the HTML with the updated structure
+function setupFieldNameDropdown() {
+    const fieldTitle = document.getElementById('field-title');
+    
+    // Create dropdown element if it doesn't exist
+    let fieldDropdown = document.getElementById('field-dropdown');
+    if (!fieldDropdown) {
+        fieldDropdown = document.createElement('div');
+        fieldDropdown.id = 'field-dropdown';
+        fieldDropdown.className = 'absolute mt-2 w-56 bg-white rounded-md shadow-lg z-50 border border-gray-200 hidden';
+        document.body.appendChild(fieldDropdown);
+    }
+    
+    // Update dropdown position when field title is clicked
+    fieldTitle.addEventListener('click', function(e) {
+        e.stopPropagation();
+        
+        // Only show dropdown if we have fields
+        if (appState.fields.length === 0) return;
+        
+        // Toggle dropdown visibility
+        if (fieldDropdown.classList.contains('hidden')) {
+            // Update dropdown content
+            updateFieldDropdown(fieldDropdown);
+            
+            // Position dropdown below field title
+            const rect = fieldTitle.getBoundingClientRect();
+            fieldDropdown.style.top = (rect.bottom + window.scrollY) + 'px';
+            fieldDropdown.style.left = (rect.left + window.scrollX) + 'px';
+            
+            // Show dropdown
+            fieldDropdown.classList.remove('hidden');
+        } else {
+            fieldDropdown.classList.add('hidden');
+        }
+    });
+    
+    // Hide dropdown when clicking elsewhere
+    document.addEventListener('click', function(e) {
+        if (fieldDropdown && !fieldDropdown.contains(e.target) && e.target !== fieldTitle) {
+            fieldDropdown.classList.add('hidden');
+        }
+    });
+}
+
+// Helper function to update the field dropdown content
+function updateFieldDropdown(dropdownElement) {
+    // Clear previous content
+    dropdownElement.innerHTML = '';
+    
+    // Add heading
+    const heading = document.createElement('div');
+    heading.className = 'px-4 py-2 text-sm text-gray-700 font-medium border-b border-gray-200';
+    heading.textContent = 'Select Field';
+    dropdownElement.appendChild(heading);
+    
+    // Add fields
+    appState.fields.forEach(fieldName => {
+        const item = document.createElement('div');
+        item.className = 'px-4 py-2 text-sm hover:bg-blue-50 cursor-pointer';
+        
+        // Highlight current field
+        if (fieldName === appState.currentField) {
+            item.className += ' bg-blue-100 font-medium text-blue-700';
+        } else {
+            item.className += ' text-gray-700';
+        }
+        
+        item.textContent = fieldName;
+        
+        // Handle field selection
+        item.addEventListener('click', function() {
+            if (fieldName !== appState.currentField) {
+                appState.currentField = fieldName;
+                document.getElementById('field-selector').value = fieldName;
+                loadCasesForField(fieldName);
+                saveSessionState();
+            }
+            dropdownElement.classList.add('hidden');
+        });
+        
+        dropdownElement.appendChild(item);
+    });
 }
 
 // Initialize timestamp for new case
@@ -4172,11 +4274,9 @@ function updateCaseDescription() {
                     timestampElement.textContent = formatDate(timestamp) + ' ' + 
                         timestamp.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
                     
-                    // Make timestamp card clickable to edit
+                    // CHANGED: Make timestamp card clickable to directly open edit modal without confirmation
                     document.getElementById('case-author-timestamp').onclick = function() {
-                        if (confirm('Do you want to edit this case?')) {
-                            showEditCaseModal(appState.currentField, appState.currentCase);
-                        }
+                        showEditCaseModal(appState.currentField, appState.currentCase);
                     };
                 } else {
                     timestampElement.textContent = 'No date available';
