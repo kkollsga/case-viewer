@@ -70,6 +70,10 @@
         .legend-shared-tooltip {
             z-index: 1000; /* Higher z-index for legend usage */
         }
+        /* Cross plot specific tooltip styling */
+        .cross-plot-tooltip {
+            z-index: 1010; /* Even higher for cross plot */
+        }
 
         /* Tooltip content styling */
         .tooltip .font-semibold,
@@ -562,6 +566,89 @@
         select:valid {
             color: #111827;
         }
+        
+        /* ==================== CROSS PLOT STYLES ==================== */
+        .metric-dropdown {
+            position: absolute;
+            z-index: 1000;
+            min-width: 150px;
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        
+        .axis-title {
+            fill: #4b5563;
+            font-size: 12px;
+            cursor: pointer;
+            transition: fill 0.2s ease;
+        }
+        
+        .axis-title:hover {
+            fill: #2563eb;
+        }
+        
+        .grid line {
+            stroke: #e5e7eb;
+        }
+        
+        .cross-plot-circle {
+            transition: opacity 0.2s ease, stroke-width 0.2s ease;
+        }
+
+        /* Cross plot container styling */
+        #cross-plot-container {
+            overflow: visible;
+            height: auto;
+        }
+
+        #cross-plot {
+            width: 100%;
+            height: auto;
+            position: relative;
+        }
+
+        /* Cross plot legend styling */
+        #cross-plot-legend {
+            position: relative;
+            z-index: 10;
+        }
+
+        .cross-plot-point {
+            transition: opacity 0.2s ease, stroke-width 0.2s ease;
+        }
+
+        /* Metric dropdown styling */
+        .metric-dropdown {
+            width: 180px !important;
+            pointer-events: auto !important;
+            max-height: 300px;
+            overflow-y: auto;
+            bottom: 5rem !important;
+            right: 1rem !important;
+            position: fixed !important;
+        }
+
+        /* Legend item styling */
+        .legend-item {
+            transition: all 0.2s ease;
+        }
+
+        .legend-item:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .legend-item.opacity-50 .text-gray-700 {
+            color: #9ca3af;
+        }
+
+        /* Style the legend title just like bubble chart legend */
+        .legend-title-text {
+            letter-spacing: 0.05em;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -726,6 +813,26 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cross Plot Area with Toggle -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-6 overflow-x-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Cross Plot</h2>
+                <div class="flex items-center">
+                    <button id="toggle-cross-plot" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Cross Plot Container - Hidden by Default -->
+            <div id="cross-plot-container" class="hidden transition-all duration-300">
+                <!-- Removed the original grouping selector -->
+                <div id="cross-plot" class="w-full h-[500px] relative">
+                    <!-- SVG will be inserted here -->
                 </div>
             </div>
         </div>
@@ -929,7 +1036,9 @@
     </div>
 
 <script>
-// Application state
+// =================================================================
+// APPLICATION STATE
+// =================================================================
 const appState = {
     fields: [],
     currentField: null,
@@ -951,9 +1060,14 @@ const appState = {
     colorUsageByLayer: new Map(), // Track which colors are used per layer
     colorIndexByLayer: new Map(), // Track next color index per layer
     showLegend: true, // Default to showing legend
-    showExtendedSettings: false // Default to hiding extended settings
+    showExtendedSettings: false, // Default to hiding extended settings
+    crossPlotXMetric: 'bulkVolume', // Default X metric for cross plot
+    crossPlotYMetric: 'stoiip' // Default Y metric for cross plot
 };
 
+// =================================================================
+// CONSTANTS
+// =================================================================
 // Theme colors for visualizations
 const themeColors = {
     // First color palette - Cool colors (Blues, Greens, Cyans)
@@ -1021,6 +1135,7 @@ const themeColors = {
         d3.interpolateSpectral
     ]
 };
+
 // Unit multipliers for calculations
 const unitMultipliers = {
     'CM': 1,
@@ -1037,137 +1152,9 @@ const standardColumns = [
     'NTG', 'Por', 'So', 'Sg', '1/Bo', '1/Bg', 'GRV'
 ];
 
-// Function to standardize units to CM, KCM, MCM, BCM, TCM format
-function standardizeUnit(rawUnit) {
-    if (!rawUnit) return '';
-    
-    // Handle scientific notation format like [*10^3 m3]
-    // Strip the brackets first to simplify matching
-    const unitsWithoutBrackets = rawUnit.replace(/\[|\]/g, '').trim();
-    
-    // Check for scientific notation pattern
-    if (unitsWithoutBrackets.includes('*10^')) {
-        // Extract the power part
-        const powerMatch = unitsWithoutBrackets.match(/\*10\^(\d+)/);
-        if (powerMatch) {
-            const power = parseInt(powerMatch[1]);
-            
-            // Map power to standard unit
-            switch (power) {
-                case 0: return 'CM';  // Base unit
-                case 3: return 'KCM'; // Thousand
-                case 6: return 'MCM'; // Million
-                case 9: return 'BCM'; // Billion
-                case 12: return 'TCM'; // Trillion
-                default: return 'CM'; // Default to base unit
-            }
-        }
-    }
-    
-    // Handle standard unit formats directly (in case they're already in our format)
-    if (Object.keys(unitMultipliers).includes(rawUnit)) {
-        return rawUnit; // Already in our standard format
-    }
-    
-    // Default case - just use CM if we couldn't determine the unit
-    return 'CM';
-}
-
-// Function to get unit multiplier from unit string
-function getUnitMultiplier(unitStr) {
-    if (!unitStr) return 1;
-    
-    // Use the unitMultipliers object to avoid duplication
-    return unitMultipliers[unitStr] || 1;
-}
-
-// Function to scale up unit when dividing by 1000
-function getScaledUnit(unit) {
-    if (!unit) return unit;
-    
-    // Map each unit to the next larger unit
-    const scaleUpMap = {
-        'CM': 'KCM',
-        'KCM': 'MCM',
-        'MCM': 'BCM',
-        'BCM': 'TCM',
-        'TCM': 'TCM' // Can't scale up further
-    };
-    
-    // Return the scaled-up unit or the original if not found
-    return scaleUpMap[unit] || unit;
-}
-
-// Updated parseHeaders to use the simplified standardizeUnit
-function parseHeaders(headerLine) {
-    // Parse headers using tab as delimiter
-    let rawHeaders = headerLine.split('\t');
-    
-    // Initialize return objects
-    const cleanHeaders = [];
-    const units = {};
-    const columnMap = {}; // Maps cleaned header name to original header
-    
-    // Process each header
-    rawHeaders.forEach(header => {
-        if (!header) {
-            cleanHeaders.push('');
-            return;
-        }
-        
-        const match = header.match(/^(.+?)\s*\[\s*(.*?)\s*\]$/);
-        if (match) {
-            // Header has units in brackets
-            const cleanLabel = match[1].trim();
-            const rawUnit = match[2].trim();
-            const standardUnit = standardizeUnit(rawUnit);
-            
-            cleanHeaders.push(cleanLabel);
-            units[cleanLabel] = standardUnit;
-            columnMap[cleanLabel] = header;
-        } else {
-            // Header without units
-            const cleanLabel = header.trim();
-            cleanHeaders.push(cleanLabel);
-            units[cleanLabel] = '';
-            columnMap[cleanLabel] = header;
-        }
-    });
-    
-    return {
-        headers: cleanHeaders,
-        units: units,
-        columnMap: columnMap
-    };
-}
-
-function setupSettingsPanel() {
-    // Add toggle functionality for extended settings
-    const settingsHeader = document.getElementById('settings-header');
-    if (settingsHeader) {
-        settingsHeader.addEventListener('click', function() {
-            const extendedSettings = document.getElementById('extended-settings');
-            const settingsArrow = document.getElementById('settings-arrow');
-            
-            // Toggle visibility
-            if (extendedSettings.classList.contains('hidden')) {
-                extendedSettings.classList.remove('hidden');
-                settingsHeader.classList.add('text-blue-500'); // Highlight header when open
-                settingsArrow.classList.add('transform', 'rotate-180'); // Rotate arrow up
-                appState.showExtendedSettings = true;
-            } else {
-                extendedSettings.classList.add('hidden');
-                settingsHeader.classList.remove('text-blue-500');
-                settingsArrow.classList.remove('transform', 'rotate-180'); // Rotate arrow down
-                appState.showExtendedSettings = false;
-            }
-            
-            // Save settings
-            saveCircleSettings();
-        });
-    }
-}
-
+// =================================================================
+// INITIALIZATION AND EVENT LISTENERS
+// =================================================================
 // Function to ensure active case styling immediately after initialization
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -1175,6 +1162,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupFieldNameDropdown();
     setupMultiLevelGroupsUI(); // Set up event handlers for group level UI
     setupSettingsPanel(); // Add this line
+    setupCrossPlot(); // Set up cross plot functionality
     
     // Initialize show values toggle
     document.getElementById('show-values-toggle').checked = appState.showValues;
@@ -1198,48 +1186,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, 200);
 });
-
-// Initialize Sortable.js for case list
-function initializeSortable() {
-    const caseList = document.getElementById('case-list');
-    
-    Sortable.create(caseList, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        // Entire case item is dragable, no handle required
-        onEnd: function(evt) {
-            // Get new order of cases
-            const items = Array.from(evt.to.children).map(item => 
-                item.querySelector('.case-name').textContent);
-            
-            // Save new order to localStorage
-            if (appState.currentField && items.length > 0) {
-                saveCaseOrder(appState.currentField, items);
-            }
-        }
-    });
-}
-
-// Save case order to localStorage
-function saveCaseOrder(field, caseOrder) {
-    const fieldKey = `volumetricCasesOrder_${field}`;
-    localStorage.setItem(fieldKey, JSON.stringify(caseOrder));
-    
-    // Update availableCases array with new order
-    appState.availableCases = caseOrder;
-    
-    // Update navigation buttons
-    updateNavigationButtons();
-}
-
-// Get case order from localStorage
-function getCaseOrder(field) {
-    const fieldKey = `volumetricCasesOrder_${field}`;
-    if (localStorage.getItem(fieldKey)) {
-        return JSON.parse(localStorage.getItem(fieldKey));
-    }
-    return null;
-}
 
 // Select the first field by default and load the last case by default
 function initializeApp() {
@@ -1295,253 +1241,31 @@ function initializeApp() {
     
     // Set initial page title
     updatePageTitle();
+    
+    // Initialize cross plot state
+    appState.crossPlotXMetric = 'bulkVolume';
+    appState.crossPlotYMetric = 'stoiip';
 }
 
-// Setup event handlers for multi-level group UI
-function setupMultiLevelGroupsUI() {
-    // For the "Add New Case" modal
-    const addLevelBtn = document.getElementById('add-group-level');
-    const editLevelBtn = document.getElementById('edit-add-group-level');
+// Initialize Sortable.js for case list
+function initializeSortable() {
+    const caseList = document.getElementById('case-list');
     
-    // Remove existing listeners (if any) to prevent duplicates
-    addLevelBtn.replaceWith(addLevelBtn.cloneNode(true));
-    editLevelBtn.replaceWith(editLevelBtn.cloneNode(true));
-    
-    // Get fresh references after replacement
-    const newAddLevelBtn = document.getElementById('add-group-level');
-    const newEditLevelBtn = document.getElementById('edit-add-group-level');
-    
-    // Add single event listener for add case modal
-    newAddLevelBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        console.log('Add Level button (add-case-modal) clicked at:', new Date().toISOString());
-        
-        const container = document.getElementById('volume-group-container');
-        const columns = getAvailableGroupColumns();
-        
-        // Set a flag to prevent recursive calls
-        window._addingGroupLevel = true;
-        
-        // Add a single level without reinitializing
-        addGroupLevel(container, columns);
-        
-        // Clear the flag
-        setTimeout(() => { window._addingGroupLevel = false; }, 50);
-    });
-
-    // Add single event listener for edit case modal
-    newEditLevelBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        console.log('Add Level button (edit-case-modal) clicked at:', new Date().toISOString());
-        
-        const container = document.getElementById('edit-volume-group-container');
-        const columns = appState.currentEditingCaseColumns || getAvailableGroupColumns();
-        
-        // Set a flag to prevent recursive calls
-        window._addingGroupLevel = true;
-        
-        // Add a single level without reinitializing
-        addGroupLevel(container, columns);
-        
-        // Clear the flag
-        setTimeout(() => { window._addingGroupLevel = false; }, 50);
-    });
-}
-
-// Helper function to get columns that can be used for grouping
-function getAvailableGroupColumns() {
-    // If we have detected columns from data, use those
-    if (appState.detectedHeaders) {
-        return appState.detectedHeaders.filter(header => 
-            !standardColumns.includes(header) && 
-            header.trim() !== '' && 
-            !header.startsWith('__')
-        );
-    }
-    
-    // Fallback to some default values if no columns detected
-    return [];
-}
-
-// Initialize volume group selectors
-function initializeVolumeGroups(container, columns, existingGroups = []) {
-    // Skip if we're in the middle of adding a level manually
-    if (window._addingGroupLevel) {
-        console.log("Skipping initializeVolumeGroups during manual add operation");
-        return;
-    }
-    
-    // Clear the container
-    container.innerHTML = '';
-    
-    // If no existing groups, add at least one level
-    if (existingGroups.length === 0) {
-        addGroupLevel(container, columns);
-    } else {
-        // Add a level for each existing group
-        existingGroups.forEach((column, index) => {
-            addGroupLevel(container, columns, column);
-        });
-    }
-}
-
-// Add a new group level selector
-function addGroupLevel(container, columns, selectedValue = null) {
-    console.log("Adding group level!");
-    
-    // Determine the level number
-    const levelNumber = container.children.length + 1;
-    
-    // Create group level container
-    const levelContainer = document.createElement('div');
-    levelContainer.className = 'flex items-center gap-2 mb-2';
-    levelContainer.dataset.level = levelNumber;
-    
-    // Create label
-    const label = document.createElement('label');
-    label.className = 'block text-sm font-medium text-gray-700 w-24';
-    label.textContent = `Level ${levelNumber}`;
-    
-    // Create select dropdown with a required attribute to enable :invalid selector
-    const select = document.createElement('select');
-    select.className = 'flex-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border';
-    select.id = `volume-group-level-${container.id}-${levelNumber}`;
-    select.required = true; // Make it required so we can use :invalid selector
-    
-    // Add placeholder option
-    const placeholderOption = document.createElement('option');
-    placeholderOption.value = '';
-    placeholderOption.textContent = `-- Select Level ${levelNumber} group --`;
-    placeholderOption.selected = true; // Make it selected by default
-    select.appendChild(placeholderOption);
-    
-    // Add options from columns
-    let hasValidOptions = false;
-    columns.forEach(column => {
-        if (!standardColumns.includes(column) && column.trim() !== '' && !column.startsWith('__')) {
-            const option = document.createElement('option');
-            option.value = column;
-            option.textContent = column;
-            select.appendChild(option);
-            hasValidOptions = true;
-        }
-    });
-    
-    // Set selected value if provided and valid
-    if (selectedValue && columns.includes(selectedValue)) {
-        select.value = selectedValue;
-    } else if (hasValidOptions && columns.length > 0) {
-        // Auto-select the first option for simplicity (can be empty for the user to choose)
-        select.value = '';
-    }
-    
-    // Create remove button (only show for levels beyond the first)
-    const removeButton = document.createElement('button');
-    removeButton.type = 'button';
-    removeButton.className = 'text-red-600 hover:text-red-800 p-2';
-    removeButton.innerHTML = '<i class="fas fa-minus-circle"></i>';
-    removeButton.title = 'Remove this level';
-    
-    // Only enable remove button if not the first level
-    if (levelNumber === 1) {
-        removeButton.disabled = true;
-        removeButton.classList.add('opacity-50', 'cursor-not-allowed');
-    } else {
-        removeButton.addEventListener('click', function() {
-            removeGroupLevel(container, levelContainer);
-        });
-    }
-    
-    // Assemble the level container
-    levelContainer.appendChild(label);
-    levelContainer.appendChild(select);
-    levelContainer.appendChild(removeButton);
-    
-    // Add to the main container
-    container.appendChild(levelContainer);
-    
-    // Return the level container
-    return levelContainer;
-}
-
-// Remove a group level
-function removeGroupLevel(container, levelElement) {
-    // Remove the level element
-    container.removeChild(levelElement);
-    
-    // Update the level numbers for remaining levels
-    Array.from(container.children).forEach((child, index) => {
-        const newLevel = index + 1;
-        child.dataset.level = newLevel;
-        
-        // Update label
-        const label = child.querySelector('label');
-        label.textContent = `Level ${newLevel}`;
-        
-        // Update select ID
-        const select = child.querySelector('select');
-        select.id = `volume-group-level-${container.id}-${newLevel}`;
-        
-        // Update remove button state
-        const removeButton = child.querySelector('button');
-        if (newLevel === 1) {
-            removeButton.disabled = true;
-            removeButton.classList.add('opacity-50', 'cursor-not-allowed');
-        } else {
-            removeButton.disabled = false;
-            removeButton.classList.remove('opacity-50', 'cursor-not-allowed');
-        }
-    });
-}
-
-// Get volume groups from UI
-function getVolumeGroupsFromUI(container) {
-    const groups = [];
-    
-    // Get all select elements in the container
-    Array.from(container.children).forEach(levelElement => {
-        const select = levelElement.querySelector('select');
-        // Only add to groups if the selection has a non-empty value
-        if (select && select.value && select.value.trim() !== '') {
-            groups.push(select.value);
-        }
-    });
-    
-    return groups;
-}
-
-// Save session state to localStorage
-function saveSessionState() {
-    const sessionState = {
-        currentField: appState.currentField,
-        currentCase: appState.currentCase
-    };
-    
-    localStorage.setItem('volumetricSessionState', JSON.stringify(sessionState));
-}
-
-// Load session state from localStorage
-function loadSessionState() {
-    const savedState = localStorage.getItem('volumetricSessionState');
-    
-    if (savedState) {
-        const state = JSON.parse(savedState);
-        
-        // Apply saved field and case if they exist
-        if (state.currentField && appState.fields.includes(state.currentField)) {
-            appState.currentField = state.currentField;
+    Sortable.create(caseList, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        // Entire case item is dragable, no handle required
+        onEnd: function(evt) {
+            // Get new order of cases
+            const items = Array.from(evt.to.children).map(item => 
+                item.querySelector('.case-name').textContent);
             
-            // We'll set currentCase later in loadCasesForField to ensure the case exists
-            if (state.currentCase) {
-                // Store it temporarily so loadCasesForField can use it
-                appState.savedCase = state.currentCase;
+            // Save new order to localStorage
+            if (appState.currentField && items.length > 0) {
+                saveCaseOrder(appState.currentField, items);
             }
         }
-    }
+    });
 }
 
 // Set up all event listeners
@@ -1687,8 +1411,6 @@ function setupEventListeners() {
         showModal('manage-fields-modal');
         populateFieldList();
     });
-
-
 
     // Modal buttons
     document.getElementById('cancel-add-case').addEventListener('click', function() {
@@ -1867,7 +1589,131 @@ function setupEventListeners() {
             contextMenu.style.left = `${rect.left - contextMenu.offsetWidth + rect.width}px`;
             contextMenu.style.top = `${rect.top - contextMenu.offsetHeight}px`;
         }
+        
+        // Update cross plot
+        updateCrossPlot();
     });
+    
+    // Update cross plot when changing field or case
+    const originalLoadCasesForField = loadCasesForField;
+    loadCasesForField = function(field, selectLast = false) {
+        originalLoadCasesForField.call(this, field, selectLast);
+        populateCrossPlotGroupingLevels();
+        updateCrossPlot();
+    };
+    
+    const originalLoadVolumetricData = loadVolumetricData;
+    loadVolumetricData = function() {
+        originalLoadVolumetricData.call(this);
+        updateCrossPlot();
+    };
+}
+
+// =================================================================
+// DATA PROCESSING AND UNIT HANDLING
+// =================================================================
+// Function to standardize units to CM, KCM, MCM, BCM, TCM format
+function standardizeUnit(rawUnit) {
+    if (!rawUnit) return '';
+    
+    // Handle scientific notation format like [*10^3 m3]
+    // Strip the brackets first to simplify matching
+    const unitsWithoutBrackets = rawUnit.replace(/\[|\]/g, '').trim();
+    
+    // Check for scientific notation pattern
+    if (unitsWithoutBrackets.includes('*10^')) {
+        // Extract the power part
+        const powerMatch = unitsWithoutBrackets.match(/\*10\^(\d+)/);
+        if (powerMatch) {
+            const power = parseInt(powerMatch[1]);
+            
+            // Map power to standard unit
+            switch (power) {
+                case 0: return 'CM';  // Base unit
+                case 3: return 'KCM'; // Thousand
+                case 6: return 'MCM'; // Million
+                case 9: return 'BCM'; // Billion
+                case 12: return 'TCM'; // Trillion
+                default: return 'CM'; // Default to base unit
+            }
+        }
+    }
+    
+    // Handle standard unit formats directly (in case they're already in our format)
+    if (Object.keys(unitMultipliers).includes(rawUnit)) {
+        return rawUnit; // Already in our standard format
+    }
+    
+    // Default case - just use CM if we couldn't determine the unit
+    return 'CM';
+}
+
+// Function to get unit multiplier from unit string
+function getUnitMultiplier(unitStr) {
+    if (!unitStr) return 1;
+    
+    // Use the unitMultipliers object to avoid duplication
+    return unitMultipliers[unitStr] || 1;
+}
+
+// Function to scale up unit when dividing by 1000
+function getScaledUnit(unit) {
+    if (!unit) return unit;
+    
+    // Map each unit to the next larger unit
+    const scaleUpMap = {
+        'CM': 'KCM',
+        'KCM': 'MCM',
+        'MCM': 'BCM',
+        'BCM': 'TCM',
+        'TCM': 'TCM' // Can't scale up further
+    };
+    
+    // Return the scaled-up unit or the original if not found
+    return scaleUpMap[unit] || unit;
+}
+
+// Updated parseHeaders to use the simplified standardizeUnit
+function parseHeaders(headerLine) {
+    // Parse headers using tab as delimiter
+    let rawHeaders = headerLine.split('\t');
+    
+    // Initialize return objects
+    const cleanHeaders = [];
+    const units = {};
+    const columnMap = {}; // Maps cleaned header name to original header
+    
+    // Process each header
+    rawHeaders.forEach(header => {
+        if (!header) {
+            cleanHeaders.push('');
+            return;
+        }
+        
+        const match = header.match(/^(.+?)\s*\[\s*(.*?)\s*\]$/);
+        if (match) {
+            // Header has units in brackets
+            const cleanLabel = match[1].trim();
+            const rawUnit = match[2].trim();
+            const standardUnit = standardizeUnit(rawUnit);
+            
+            cleanHeaders.push(cleanLabel);
+            units[cleanLabel] = standardUnit;
+            columnMap[cleanLabel] = header;
+        } else {
+            // Header without units
+            const cleanLabel = header.trim();
+            cleanHeaders.push(cleanLabel);
+            units[cleanLabel] = '';
+            columnMap[cleanLabel] = header;
+        }
+    });
+    
+    return {
+        headers: cleanHeaders,
+        units: units,
+        columnMap: columnMap
+    };
 }
 
 // Function to update the current unit display
@@ -1903,6 +1749,39 @@ function updateCurrentUnit() {
     unitEl.textContent = `Total ${appState.currentMetric}: ${formattedTotal} ${currentUnit}`;
 }
 
+// =================================================================
+// SETTINGS PANEL SETUP
+// =================================================================
+function setupSettingsPanel() {
+    // Add toggle functionality for extended settings
+    const settingsHeader = document.getElementById('settings-header');
+    if (settingsHeader) {
+        settingsHeader.addEventListener('click', function() {
+            const extendedSettings = document.getElementById('extended-settings');
+            const settingsArrow = document.getElementById('settings-arrow');
+            
+            // Toggle visibility
+            if (extendedSettings.classList.contains('hidden')) {
+                extendedSettings.classList.remove('hidden');
+                settingsHeader.classList.add('text-blue-500'); // Highlight header when open
+                settingsArrow.classList.add('transform', 'rotate-180'); // Rotate arrow up
+                appState.showExtendedSettings = true;
+            } else {
+                extendedSettings.classList.add('hidden');
+                settingsHeader.classList.remove('text-blue-500');
+                settingsArrow.classList.remove('transform', 'rotate-180'); // Rotate arrow down
+                appState.showExtendedSettings = false;
+            }
+            
+            // Save settings
+            saveCircleSettings();
+        });
+    }
+}
+
+// =================================================================
+// FIELD AND CASE NAVIGATION
+// =================================================================
 // Navigate between cases
 function navigateToCase(direction) {
     if (!appState.currentField || !appState.availableCases.length) return;
@@ -2250,6 +2129,9 @@ function processVolumetricData() {
         document.getElementById('circle-diagram').innerHTML = 
             '<div class="flex items-center justify-center h-full text-gray-500">Error rendering visualization</div>';
     }
+    
+    // Update the cross plot as well
+    updateCrossPlot();
 }
 
 // Clear all data visualizations
@@ -2259,11 +2141,15 @@ function clearData() {
     document.getElementById('pivot-body').innerHTML = '';
     document.getElementById('circle-diagram').innerHTML = '';
     document.getElementById('current-unit').textContent = '';
+    document.getElementById('cross-plot').innerHTML = '';
     
     // Update description and page title with empty state
     updatePageTitle();
 }
 
+// =================================================================
+// PIVOT TABLE CREATION
+// =================================================================
 // Calculate volumetric parameters based on raw volumetric data
 function calculateParameters(row, units) {
     const get = (key) => (parseFloat(row[key]) || 0) * (getUnitMultiplier(units[key]) || 1);
@@ -2833,6 +2719,9 @@ function renderMultiLevelPivotTable(container, nestedData, level, groupColumns, 
     });
 }
 
+// =================================================================
+// CIRCLE PACKING VISUALIZATION
+// =================================================================
 function getNodesAtDepth(node, targetDepth, currentDepth = 0) {
     if (!node) return [];
     
@@ -3833,6 +3722,1640 @@ function buildHierarchy(data, groupColumns, level, parentNode, metricColumn, num
     });
 }
 
+// =================================================================
+// MULTI-LEVEL VOLUME GROUP HANDLING
+// =================================================================
+// Setup event handlers for multi-level group UI
+function setupMultiLevelGroupsUI() {
+    // For the "Add New Case" modal
+    const addLevelBtn = document.getElementById('add-group-level');
+    const editLevelBtn = document.getElementById('edit-add-group-level');
+    
+    // Remove existing listeners (if any) to prevent duplicates
+    addLevelBtn.replaceWith(addLevelBtn.cloneNode(true));
+    editLevelBtn.replaceWith(editLevelBtn.cloneNode(true));
+    
+    // Get fresh references after replacement
+    const newAddLevelBtn = document.getElementById('add-group-level');
+    const newEditLevelBtn = document.getElementById('edit-add-group-level');
+    
+    // Add single event listener for add case modal
+    newAddLevelBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('Add Level button (add-case-modal) clicked at:', new Date().toISOString());
+        
+        const container = document.getElementById('volume-group-container');
+        const columns = getAvailableGroupColumns();
+        
+        // Set a flag to prevent recursive calls
+        window._addingGroupLevel = true;
+        
+        // Add a single level without reinitializing
+        addGroupLevel(container, columns);
+        
+        // Clear the flag
+        setTimeout(() => { window._addingGroupLevel = false; }, 50);
+    });
+
+    // Add single event listener for edit case modal
+    newEditLevelBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('Add Level button (edit-case-modal) clicked at:', new Date().toISOString());
+        
+        const container = document.getElementById('edit-volume-group-container');
+        const columns = appState.currentEditingCaseColumns || getAvailableGroupColumns();
+        
+        // Set a flag to prevent recursive calls
+        window._addingGroupLevel = true;
+        
+        // Add a single level without reinitializing
+        addGroupLevel(container, columns);
+        
+        // Clear the flag
+        setTimeout(() => { window._addingGroupLevel = false; }, 50);
+    });
+}
+
+// Helper function to get columns that can be used for grouping
+function getAvailableGroupColumns() {
+    // If we have detected columns from data, use those
+    if (appState.detectedHeaders) {
+        return appState.detectedHeaders.filter(header => 
+            !standardColumns.includes(header) && 
+            header.trim() !== '' && 
+            !header.startsWith('__')
+        );
+    }
+    
+    // Fallback to some default values if no columns detected
+    return [];
+}
+
+// Initialize volume group selectors
+function initializeVolumeGroups(container, columns, existingGroups = []) {
+    // Skip if we're in the middle of adding a level manually
+    if (window._addingGroupLevel) {
+        console.log("Skipping initializeVolumeGroups during manual add operation");
+        return;
+    }
+    
+    // Clear the container
+    container.innerHTML = '';
+    
+    // If no existing groups, add at least one level
+    if (existingGroups.length === 0) {
+        addGroupLevel(container, columns);
+    } else {
+        // Add a level for each existing group
+        existingGroups.forEach((column, index) => {
+            addGroupLevel(container, columns, column);
+        });
+    }
+}
+
+// Add a new group level selector
+function addGroupLevel(container, columns, selectedValue = null) {
+    console.log("Adding group level!");
+    
+    // Determine the level number
+    const levelNumber = container.children.length + 1;
+    
+    // Create group level container
+    const levelContainer = document.createElement('div');
+    levelContainer.className = 'flex items-center gap-2 mb-2';
+    levelContainer.dataset.level = levelNumber;
+    
+    // Create label
+    const label = document.createElement('label');
+    label.className = 'block text-sm font-medium text-gray-700 w-24';
+    label.textContent = `Level ${levelNumber}`;
+    
+    // Create select dropdown with a required attribute to enable :invalid selector
+    const select = document.createElement('select');
+    select.className = 'flex-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border';
+    select.id = `volume-group-level-${container.id}-${levelNumber}`;
+    select.required = true; // Make it required so we can use :invalid selector
+    
+    // Add placeholder option
+    const placeholderOption = document.createElement('option');
+    placeholderOption.value = '';
+    placeholderOption.textContent = `-- Select Level ${levelNumber} group --`;
+    placeholderOption.selected = true; // Make it selected by default
+    select.appendChild(placeholderOption);
+    
+    // Add options from columns
+    let hasValidOptions = false;
+    columns.forEach(column => {
+        if (!standardColumns.includes(column) && column.trim() !== '' && !column.startsWith('__')) {
+            const option = document.createElement('option');
+            option.value = column;
+            option.textContent = column;
+            select.appendChild(option);
+            hasValidOptions = true;
+        }
+    });
+    
+    // Set selected value if provided and valid
+    if (selectedValue && columns.includes(selectedValue)) {
+        select.value = selectedValue;
+    } else if (hasValidOptions && columns.length > 0) {
+        // Auto-select the first option for simplicity (can be empty for the user to choose)
+        select.value = '';
+    }
+    
+    // Create remove button (only show for levels beyond the first)
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'text-red-600 hover:text-red-800 p-2';
+    removeButton.innerHTML = '<i class="fas fa-minus-circle"></i>';
+    removeButton.title = 'Remove this level';
+    
+    // Only enable remove button if not the first level
+    if (levelNumber === 1) {
+        removeButton.disabled = true;
+        removeButton.classList.add('opacity-50', 'cursor-not-allowed');
+    } else {
+        removeButton.addEventListener('click', function() {
+            removeGroupLevel(container, levelContainer);
+        });
+    }
+    
+    // Assemble the level container
+    levelContainer.appendChild(label);
+    levelContainer.appendChild(select);
+    levelContainer.appendChild(removeButton);
+    
+    // Add to the main container
+    container.appendChild(levelContainer);
+    
+    // Return the level container
+    return levelContainer;
+}
+
+// Remove a group level
+function removeGroupLevel(container, levelElement) {
+    // Remove the level element
+    container.removeChild(levelElement);
+    
+    // Update the level numbers for remaining levels
+    Array.from(container.children).forEach((child, index) => {
+        const newLevel = index + 1;
+        child.dataset.level = newLevel;
+        
+        // Update label
+        const label = child.querySelector('label');
+        label.textContent = `Level ${newLevel}`;
+        
+        // Update select ID
+        const select = child.querySelector('select');
+        select.id = `volume-group-level-${container.id}-${newLevel}`;
+        
+        // Update remove button state
+        const removeButton = child.querySelector('button');
+        if (newLevel === 1) {
+            removeButton.disabled = true;
+            removeButton.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            removeButton.disabled = false;
+            removeButton.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    });
+}
+
+// Get volume groups from UI
+function getVolumeGroupsFromUI(container) {
+    const groups = [];
+    
+    // Get all select elements in the container
+    Array.from(container.children).forEach(levelElement => {
+        const select = levelElement.querySelector('select');
+        // Only add to groups if the selection has a non-empty value
+        if (select && select.value && select.value.trim() !== '') {
+            groups.push(select.value);
+        }
+    });
+    
+    return groups;
+}
+
+// =================================================================
+// CROSS PLOT FUNCTIONALITY 
+// =================================================================
+// Set up cross plot functionality
+function setupCrossPlot() {
+    // Toggle cross plot visibility
+    document.getElementById('toggle-cross-plot').addEventListener('click', function() {
+        const container = document.getElementById('cross-plot-container');
+        const icon = this.querySelector('i');
+        
+        if (container.classList.contains('hidden')) {
+            container.classList.remove('hidden');
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+            
+            // Draw/update the cross plot when revealed
+            updateCrossPlot();
+        } else {
+            container.classList.add('hidden');
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        }
+    });
+    
+    // Initialize grouping level selector
+    populateCrossPlotGroupingLevels();
+    
+    // Add change event for grouping level
+    document.getElementById('cross-plot-grouping').addEventListener('change', function() {
+        updateCrossPlot();
+    });
+}
+
+function populateCrossPlotGroupingLevels() {
+    const selector = document.getElementById('cross-plot-grouping');
+    if (!selector) return;
+    
+    selector.innerHTML = '';
+    
+    // Get maximum grouping levels from current field cases
+    let maxLevels = 1;
+    
+    if (appState.currentField) {
+        const fieldKey = `volumetricCases_${appState.currentField}`;
+        const cases = JSON.parse(localStorage.getItem(fieldKey) || '{}');
+        
+        // Find max levels across all cases
+        Object.values(cases).forEach(caseData => {
+            const volumeGroups = caseData.volumeGroups || {};
+            const groupColumns = volumeGroups.columns || [];
+            maxLevels = Math.max(maxLevels, groupColumns.length);
+        });
+    }
+    
+    // Populate the dropdown
+    for (let i = 1; i <= maxLevels; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = `Level ${i}`;
+        selector.appendChild(option);
+    }
+    
+    // Select Level 1 by default
+    selector.value = 1;
+}
+
+function extractGroupsForCrossPlot() {
+    // Get the grouping level from localStorage or use the default (Level 1)
+    const groupingLevel = parseInt(localStorage.getItem(`crossPlotGroupingLevel_${appState.currentField}`) || '1');
+    const groups = [];
+    
+    if (!appState.currentField) return groups;
+    
+    const fieldKey = `volumetricCases_${appState.currentField}`;
+    const cases = JSON.parse(localStorage.getItem(fieldKey) || '{}');
+    
+    // Process each case
+    Object.entries(cases).forEach(([caseName, caseData]) => {
+        // Skip if no data or invalid structure
+        if (!caseData || !caseData.data || !Array.isArray(caseData.data)) return;
+        
+        const volumeGroups = caseData.volumeGroups || {};
+        const groupColumns = volumeGroups.columns || [];
+        
+        // Skip if we don't have the requested grouping level
+        if (groupingLevel > groupColumns.length) return;
+        
+        // Get the column name for this level
+        const groupColumn = groupColumns[groupingLevel - 1];
+        if (!groupColumn) return;
+        
+        // Extract unique groups and their data
+        const groupMap = new Map();
+        
+        caseData.data.forEach(row => {
+            if (!row) return;
+            
+            const groupName = row[groupColumn] || 'Unspecified';
+            
+            if (!groupMap.has(groupName)) {
+                groupMap.set(groupName, {
+                    bulkVolume: 0,
+                    netVolume: 0,
+                    poreVolume: 0,
+                    hcpvOil: 0,
+                    hcpvGas: 0,
+                    stoiip: 0,
+                    giip: 0,
+                    ntg: 0,
+                    porosity: 0,
+                    soOil: 0,
+                    sgGas: 0,
+                    boOil: 0,
+                    bgGas: 0,
+                    count: 0
+                });
+            }
+            
+            const groupData = groupMap.get(groupName);
+            
+            // Accumulate volumes
+            groupData.bulkVolume += parseFloat(row['Bulk volume']) || 0;
+            groupData.netVolume += parseFloat(row['Net volume']) || 0;
+            groupData.poreVolume += parseFloat(row['Pore volume']) || 0;
+            groupData.hcpvOil += parseFloat(row['HCPV oil']) || 0;
+            groupData.hcpvGas += parseFloat(row['HCPV gas']) || 0;
+            groupData.stoiip += parseFloat(row['STOIIP']) || 0;
+            groupData.giip += parseFloat(row['GIIP']) || 0;
+            groupData.count++;
+        });
+        
+        // Calculate average parameters for each group
+        groupMap.forEach((data, name) => {
+            if (data.count > 0) {
+                // Calculate parameters
+                data.ntg = data.bulkVolume > 0 ? data.netVolume / data.bulkVolume : 0;
+                data.porosity = data.netVolume > 0 ? data.poreVolume / data.netVolume : 0;
+                data.soOil = data.poreVolume > 0 ? data.hcpvOil / data.poreVolume : 0;
+                data.sgGas = data.poreVolume > 0 ? data.hcpvGas / data.poreVolume : 0;
+                data.boOil = data.hcpvOil > 0 ? data.stoiip / data.hcpvOil : 0;
+                data.bgGas = data.hcpvGas > 0 ? data.giip / data.hcpvGas : 0;
+                
+                // Add to result with case name
+                groups.push({
+                    caseName: caseName,
+                    groupName: name,
+                    data: data,
+                    groupColumn: groupColumn
+                });
+            }
+        });
+    });
+    
+    return groups;
+}
+
+function updateCrossPlot() {
+    const container = document.getElementById('cross-plot');
+    if (!container || container.closest('#cross-plot-container').classList.contains('hidden')) {
+        return; // Don't update if container is hidden
+    }
+    
+    // Store the visible state of groups and cases
+    if (!appState.crossPlotVisibility) {
+        appState.crossPlotVisibility = {
+            groups: {},
+            cases: {}
+        };
+    }
+    
+    // Get the groups data
+    const groups = extractGroupsForCrossPlot();
+    if (groups.length === 0) {
+        container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">No group data available</div>';
+        return;
+    }
+    
+    // Use default metrics if not already set
+    if (!appState.crossPlotXMetric) {
+        appState.crossPlotXMetric = 'bulkVolume';
+    }
+    if (!appState.crossPlotYMetric) {
+        appState.crossPlotYMetric = 'stoiip';
+    }
+    
+    // Clear container
+    container.innerHTML = '';
+    
+    // Add centered title
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'text-center font-semibold text-lg mb-2 text-gray-700';
+    titleDiv.textContent = 'Case Comparison Chart';
+    container.appendChild(titleDiv);
+    
+    // Create the SVG - Increased height to 600px
+    const width = container.clientWidth;
+    const height = 600;
+    const margin = { top: 40, right: 40, bottom: 60, left: 80 };
+    
+    const svg = d3.select('#cross-plot')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('viewBox', [0, 0, width, height]);
+    
+    // Calculate inner dimensions
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    
+    // Extract unique cases and create shape mapping
+    const uniqueCases = [...new Set(groups.map(g => g.caseName))];
+    const symbolTypes = [
+        d3.symbolCircle, 
+        d3.symbolSquare, 
+        d3.symbolTriangle, 
+        d3.symbolDiamond, 
+        d3.symbolStar, 
+        d3.symbolWye,
+        d3.symbolCross
+    ];
+    
+    const caseToSymbol = {};
+    uniqueCases.forEach((caseName, i) => {
+        caseToSymbol[caseName] = symbolTypes[i % symbolTypes.length];
+    });
+    
+    // Extract unique groups
+    const uniqueGroups = [...new Set(groups.map(g => g.groupName))].sort();
+    
+    // Initialize visibility states if needed
+    uniqueGroups.forEach(group => {
+        if (appState.crossPlotVisibility.groups[group] === undefined) {
+            appState.crossPlotVisibility.groups[group] = true;
+        }
+    });
+    
+    uniqueCases.forEach(caseName => {
+        if (appState.crossPlotVisibility.cases[caseName] === undefined) {
+            appState.crossPlotVisibility.cases[caseName] = true;
+        }
+    });
+    
+    // Create scales
+    const xValues = groups
+        .filter(g => appState.crossPlotVisibility.groups[g.groupName] && 
+                    appState.crossPlotVisibility.cases[g.caseName])
+        .map(g => g.data[appState.crossPlotXMetric]);
+    
+    const yValues = groups
+        .filter(g => appState.crossPlotVisibility.groups[g.groupName] && 
+                    appState.crossPlotVisibility.cases[g.caseName])
+        .map(g => g.data[appState.crossPlotYMetric]);
+    
+    // Add a small padding to the domain
+    const xExtent = d3.extent(xValues.length ? xValues : [0, 1]);
+    const yExtent = d3.extent(yValues.length ? yValues : [0, 1]);
+    
+    // Add 5% padding to the domains
+    const xPadding = (xExtent[1] - xExtent[0]) * 0.05;
+    const yPadding = (yExtent[1] - yExtent[0]) * 0.05;
+    
+    const xScale = d3.scaleLinear()
+        .domain([Math.max(0, xExtent[0] - xPadding), xExtent[1] + xPadding])
+        .range([0, innerWidth]);
+    
+    const yScale = d3.scaleLinear()
+        .domain([Math.max(0, yExtent[0] - yPadding), yExtent[1] + yPadding])
+        .range([innerHeight, 0]);
+    
+    // Group element for the inner plot area
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+    
+    // Create axis elements
+    const xAxis = g.append('g')
+        .attr('transform', `translate(0,${innerHeight})`)
+        .call(d3.axisBottom(xScale));
+    
+    const yAxis = g.append('g')
+        .call(d3.axisLeft(yScale));
+    
+    // Add axis titles
+    const xTitle = svg.append('text')
+        .attr('class', 'axis-title x-axis-title')
+        .attr('text-anchor', 'middle')
+        .attr('x', width / 2)
+        .attr('y', height - 10)
+        .style('font-size', '12px')
+        .style('cursor', 'pointer')
+        .text(formatMetricName(appState.crossPlotXMetric));
+    
+    const yTitle = svg.append('text')
+        .attr('class', 'axis-title y-axis-title')
+        .attr('text-anchor', 'middle')
+        .attr('transform', `translate(${margin.left / 3},${height / 2}) rotate(-90)`)
+        .style('font-size', '12px')
+        .style('cursor', 'pointer')
+        .text(formatMetricName(appState.crossPlotYMetric));
+    
+    // Create or use shared tooltip
+    let tooltip;
+    if (window.sharedVisualizationTooltip) {
+        tooltip = window.sharedVisualizationTooltip;
+    } else {
+        // Remove any existing tooltips
+        d3.selectAll('.cross-plot-tooltip').remove();
+        
+        // Create fixed-position tooltip
+        tooltip = d3.select('body')
+            .append('div')
+            .attr('class', 'legend-shared-tooltip cross-plot-tooltip')
+            .style('opacity', 0);
+    }
+    
+    // Create symbol generator
+    const symbolGenerator = d3.symbol().size(160);
+    
+    // Create data points with shapes instead of circles - filter by visibility
+    g.selectAll('.data-point')
+        .data(groups.filter(g => 
+            appState.crossPlotVisibility.groups[g.groupName] && 
+            appState.crossPlotVisibility.cases[g.caseName]))
+        .join('path')
+        .attr('class', d => `cross-plot-point group-${d.groupName.replace(/\s+/g, '-')} case-${d.caseName.replace(/\s+/g, '-')}`)
+        .attr('transform', d => `translate(${xScale(d.data[appState.crossPlotXMetric])},${yScale(d.data[appState.crossPlotYMetric])})`)
+        .attr('d', d => symbolGenerator.type(caseToSymbol[d.caseName])())
+        .attr('fill', d => getColorForGroup(d.groupName, d.groupColumn))
+        .attr('stroke', '#333')
+        .attr('stroke-width', 1)
+        .attr('opacity', 0.85)
+        .on('mouseover', function(event, d) {
+            // Transition the tooltip
+            tooltip.transition()
+                .duration(200)
+                .style('opacity', 0.9);
+                
+            // Format tooltip content
+            const content = `
+                <div class="font-semibold">${d.groupName} (${d.caseName})</div>
+                <div>${formatMetricName(appState.crossPlotXMetric)}: <strong>${formatNumber(d.data[appState.crossPlotXMetric])}</strong></div>
+                <div>${formatMetricName(appState.crossPlotYMetric)}: <strong>${formatNumber(d.data[appState.crossPlotYMetric])}</strong></div>
+                <div class="border-t border-gray-200 mt-2 pt-2">
+                    <div>NTG: <strong>${formatPercent(d.data.ntg)}</strong></div>
+                    <div>Porosity: <strong>${formatPercent(d.data.porosity)}</strong></div>
+                    <div>So: <strong>${formatPercent(d.data.soOil)}</strong></div>
+                    <div>Sg: <strong>${formatPercent(d.data.sgGas)}</strong></div>
+                    <div>1/Bo: <strong>${formatNumber(d.data.boOil)}</strong></div>
+                    <div>1/Bg: <strong>${formatNumber(d.data.bgGas)}</strong></div>
+                </div>
+            `;
+            
+            // Set content without repositioning
+            tooltip.html(content);
+                
+            // Highlight all points with the same group name
+            g.selectAll('.cross-plot-point')
+                .filter(c => c.groupName === d.groupName)
+                .attr('stroke-width', 2)
+                .attr('opacity', 1);
+        })
+        .on('mouseout', function() {
+            tooltip.transition()
+                .duration(500)
+                .style('opacity', 0);
+                
+            // Reset highlight for all points
+            g.selectAll('.cross-plot-point')
+                .attr('stroke-width', 1)
+                .attr('opacity', 0.85);
+        });
+    
+    // Add click event to axis titles to show metric selection dropdown
+    xTitle.on('click', function() {
+        showMetricDropdown('x', this);
+    });
+    
+    yTitle.on('click', function() {
+        showMetricDropdown('y', this);
+    });
+    
+    // Add grid lines
+    g.append('g')
+        .attr('class', 'grid')
+        .attr('opacity', 0.2)
+        .call(d3.axisBottom(xScale)
+            .tickSize(innerHeight)
+            .tickFormat(''))
+        .selectAll('line')
+        .attr('stroke', '#ddd');
+    
+    g.append('g')
+        .attr('class', 'grid')
+        .attr('opacity', 0.2)
+        .call(d3.axisLeft(yScale)
+            .tickSize(-innerWidth)
+            .tickFormat(''))
+        .selectAll('line')
+        .attr('stroke', '#ddd');
+        
+    // Add compact legend below the plot
+    createCompactCrossPlotLegend(container, groups, caseToSymbol);
+}
+
+
+function updateCrossPlot() {
+    const container = document.getElementById('cross-plot');
+    if (!container || container.closest('#cross-plot-container').classList.contains('hidden')) {
+        return; // Don't update if container is hidden
+    }
+    
+    // Get the groups data
+    const groups = extractGroupsForCrossPlot();
+    if (groups.length === 0) {
+        container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">No group data available</div>';
+        return;
+    }
+    
+    // Use default metrics if not already set
+    if (!appState.crossPlotXMetric) {
+        appState.crossPlotXMetric = 'bulkVolume';
+    }
+    if (!appState.crossPlotYMetric) {
+        appState.crossPlotYMetric = 'stoiip';
+    }
+    
+    // Clear container
+    container.innerHTML = '';
+    
+    // Add centered title
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'text-center font-semibold text-lg mb-2 text-gray-700';
+    titleDiv.textContent = 'Case Comparison Chart';
+    container.appendChild(titleDiv);
+    
+    // Create the SVG - Set a fixed height
+    const width = container.clientWidth;
+    const height = 550;
+    const margin = { top: 40, right: 40, bottom: 60, left: 80 };
+    
+    const svg = d3.select('#cross-plot')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('viewBox', [0, 0, width, height]);
+    
+    // Calculate inner dimensions
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    
+    // Extract unique cases and create shape mapping
+    const uniqueCases = [...new Set(groups.map(g => g.caseName))];
+    const symbolTypes = [
+        d3.symbolCircle, 
+        d3.symbolSquare, 
+        d3.symbolTriangle, 
+        d3.symbolDiamond, 
+        d3.symbolStar, 
+        d3.symbolWye,
+        d3.symbolCross
+    ];
+    
+    const caseToSymbol = {};
+    uniqueCases.forEach((caseName, i) => {
+        caseToSymbol[caseName] = symbolTypes[i % symbolTypes.length];
+    });
+    
+    // Create scales
+    const xValues = groups.map(g => g.data[appState.crossPlotXMetric]);
+    const yValues = groups.map(g => g.data[appState.crossPlotYMetric]);
+    
+    // Add a small padding to the domain
+    const xExtent = d3.extent(xValues);
+    const yExtent = d3.extent(yValues);
+    
+    // Add 5% padding to the domains
+    const xPadding = (xExtent[1] - xExtent[0]) * 0.05;
+    const yPadding = (yExtent[1] - yExtent[0]) * 0.05;
+    
+    const xScale = d3.scaleLinear()
+        .domain([Math.max(0, xExtent[0] - xPadding), xExtent[1] + xPadding])
+        .range([0, innerWidth]);
+    
+    const yScale = d3.scaleLinear()
+        .domain([Math.max(0, yExtent[0] - yPadding), yExtent[1] + yPadding])
+        .range([innerHeight, 0]);
+    
+    // Group element for the inner plot area
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+    
+    // Create axis elements
+    const xAxis = g.append('g')
+        .attr('transform', `translate(0,${innerHeight})`)
+        .call(d3.axisBottom(xScale));
+    
+    const yAxis = g.append('g')
+        .call(d3.axisLeft(yScale));
+    
+    // Add axis titles
+    const xTitle = svg.append('text')
+        .attr('class', 'axis-title x-axis-title')
+        .attr('text-anchor', 'middle')
+        .attr('x', width / 2)
+        .attr('y', height - 10)
+        .style('font-size', '12px')
+        .style('cursor', 'pointer')
+        .text(formatMetricName(appState.crossPlotXMetric));
+    
+    const yTitle = svg.append('text')
+        .attr('class', 'axis-title y-axis-title')
+        .attr('text-anchor', 'middle')
+        .attr('transform', `translate(${margin.left / 3},${height / 2}) rotate(-90)`)
+        .style('font-size', '12px')
+        .style('cursor', 'pointer')
+        .text(formatMetricName(appState.crossPlotYMetric));
+    
+    // Create or use shared tooltip
+    let tooltip;
+    if (window.sharedVisualizationTooltip) {
+        tooltip = window.sharedVisualizationTooltip;
+    } else {
+        // Remove any existing tooltips
+        d3.selectAll('.cross-plot-tooltip').remove();
+        
+        // Create fixed-position tooltip
+        tooltip = d3.select('body')
+            .append('div')
+            .attr('class', 'legend-shared-tooltip cross-plot-tooltip')
+            .style('opacity', 0);
+    }
+    
+    // Create symbol generator
+    const symbolGenerator = d3.symbol().size(160);
+    
+    // Create data points with shapes instead of circles
+    g.selectAll('.data-point')
+        .data(groups)
+        .join('path')
+        .attr('class', 'cross-plot-point')
+        .attr('transform', d => `translate(${xScale(d.data[appState.crossPlotXMetric])},${yScale(d.data[appState.crossPlotYMetric])})`)
+        .attr('d', d => symbolGenerator.type(caseToSymbol[d.caseName])())
+        .attr('fill', d => getColorForGroup(d.groupName, d.groupColumn))
+        .attr('stroke', '#333')
+        .attr('stroke-width', 1)
+        .attr('opacity', 0.85)
+        .on('mouseover', function(event, d) {
+            // Transition the tooltip
+            tooltip.transition()
+                .duration(200)
+                .style('opacity', 0.9);
+                
+            // Format tooltip content
+            const content = `
+                <div class="font-semibold">${d.groupName} (${d.caseName})</div>
+                <div>${formatMetricName(appState.crossPlotXMetric)}: <strong>${formatNumber(d.data[appState.crossPlotXMetric])}</strong></div>
+                <div>${formatMetricName(appState.crossPlotYMetric)}: <strong>${formatNumber(d.data[appState.crossPlotYMetric])}</strong></div>
+                <div class="border-t border-gray-200 mt-2 pt-2">
+                    <div>NTG: <strong>${formatPercent(d.data.ntg)}</strong></div>
+                    <div>Porosity: <strong>${formatPercent(d.data.porosity)}</strong></div>
+                    <div>So: <strong>${formatPercent(d.data.soOil)}</strong></div>
+                    <div>Sg: <strong>${formatPercent(d.data.sgGas)}</strong></div>
+                    <div>1/Bo: <strong>${formatNumber(d.data.boOil)}</strong></div>
+                    <div>1/Bg: <strong>${formatNumber(d.data.bgGas)}</strong></div>
+                </div>
+            `;
+            
+            // Set content without repositioning
+            tooltip.html(content);
+                
+            // Highlight all points with the same group name
+            g.selectAll('.cross-plot-point')
+                .filter(c => c.groupName === d.groupName)
+                .attr('stroke-width', 2)
+                .attr('opacity', 1);
+        })
+        .on('mouseout', function() {
+            tooltip.transition()
+                .duration(500)
+                .style('opacity', 0);
+                
+            // Reset highlight for all points
+            g.selectAll('.cross-plot-point')
+                .attr('stroke-width', 1)
+                .attr('opacity', 0.85);
+        });
+    
+    // Add click event to axis titles to show metric selection dropdown
+    xTitle.on('click', function() {
+        showMetricDropdown('x', this);
+    });
+    
+    yTitle.on('click', function() {
+        showMetricDropdown('y', this);
+    });
+    
+    // Add grid lines
+    g.append('g')
+        .attr('class', 'grid')
+        .attr('opacity', 0.2)
+        .call(d3.axisBottom(xScale)
+            .tickSize(innerHeight)
+            .tickFormat(''))
+        .selectAll('line')
+        .attr('stroke', '#ddd');
+    
+    g.append('g')
+        .attr('class', 'grid')
+        .attr('opacity', 0.2)
+        .call(d3.axisLeft(yScale)
+            .tickSize(-innerWidth)
+            .tickFormat(''))
+        .selectAll('line')
+        .attr('stroke', '#ddd');
+        
+    // Add compact legend below the plot
+    createCompactCrossPlotLegend(container, groups, caseToSymbol);
+}
+
+function createCompactCrossPlotLegend(container, groups, caseToSymbol) {
+    // Remove any existing legend
+    d3.select('#cross-plot-legend').remove();
+    
+    // Get unique cases and groups for legend
+    const uniqueCases = [...new Set(groups.map(g => g.caseName))];
+    const uniqueGroups = [...new Set(groups.map(g => g.groupName))].sort();
+    
+    // Create legend container
+    const legendContainer = document.createElement('div');
+    legendContainer.id = 'cross-plot-legend';
+    legendContainer.className = 'bg-white/95 border border-gray-200 rounded-lg p-3 shadow-sm mt-1 relative';
+    
+    // Add legend title styled like bubble chart legend
+    const legendTitle = document.createElement('div');
+    legendTitle.className = 'text-xs font-light text-gray-500 mb-3 text-right uppercase tracking-wider legend-title-text';
+    legendTitle.textContent = 'Legend';
+    legendContainer.appendChild(legendTitle);
+    
+    // Add grouping selector positioned absolutely
+    const groupingSelector = document.createElement('div');
+    groupingSelector.className = 'absolute top-3 left-3 flex items-center gap-2';
+    
+    const groupingLabel = document.createElement('label');
+    groupingLabel.className = 'text-xs text-gray-700';
+    groupingLabel.textContent = 'Grouping:';
+    groupingSelector.appendChild(groupingLabel);
+    
+    // Get the grouping level for the cross plot
+    const groupingLevel = parseInt(localStorage.getItem(`crossPlotGroupingLevel_${appState.currentField}`) || '1');
+    
+    // Create a new selector
+    const selector = document.createElement('select');
+    selector.id = 'cross-plot-grouping';
+    selector.className = 'text-xs border border-gray-300 rounded py-0.5 px-2';
+    
+    // Get maximum grouping levels from current field cases
+    let maxLevels = 1;
+    
+    if (appState.currentField) {
+        const fieldKey = `volumetricCases_${appState.currentField}`;
+        const cases = JSON.parse(localStorage.getItem(fieldKey) || '{}');
+        
+        // Find max levels across all cases
+        Object.values(cases).forEach(caseData => {
+            const volumeGroups = caseData.volumeGroups || {};
+            const groupColumns = volumeGroups.columns || [];
+            maxLevels = Math.max(maxLevels, groupColumns.length);
+        });
+    }
+    
+    // Populate the dropdown
+    for (let i = 1; i <= maxLevels; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = `Level ${i}`;
+        option.selected = (i === groupingLevel);
+        selector.appendChild(option);
+    }
+    
+    // Add event listener
+    selector.addEventListener('change', function() {
+        const level = parseInt(this.value);
+        // Save the selected level
+        if (appState.currentField) {
+            localStorage.setItem(`crossPlotGroupingLevel_${appState.currentField}`, level.toString());
+        }
+        updateCrossPlot();
+    });
+    
+    groupingSelector.appendChild(selector);
+    legendContainer.appendChild(groupingSelector);
+    
+    // Symbol generator for legend
+    const symbolGenerator = d3.symbol().size(80);
+    
+    // GROUP SECTION
+    const groupSection = document.createElement('div');
+    groupSection.className = 'mb-3';
+    
+    // Group title with "Show more" toggle on the right
+    const groupTitleRow = document.createElement('div');
+    groupTitleRow.className = 'flex justify-between items-center mb-1';
+    
+    const groupTitle = document.createElement('div');
+    groupTitle.className = 'text-xs font-semibold text-gray-700';
+    groupTitle.textContent = 'Groups (Colors)';
+    groupTitleRow.appendChild(groupTitle);
+    
+    // Determine if we need collapsible section
+    const maxInitialGroups = 8;
+    const hasExtraGroups = uniqueGroups.length > maxInitialGroups;
+    
+    // Add toggle button to the title row if needed
+    if (hasExtraGroups) {
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'text-xs text-blue-600 hover:text-blue-800';
+        toggleButton.textContent = 'Show more';
+        toggleButton.onclick = function() {
+            const container = document.getElementById('group-legend-extra');
+            const isHidden = container.classList.contains('hidden');
+            
+            if (isHidden) {
+                container.classList.remove('hidden');
+                this.textContent = 'Show fewer';
+            } else {
+                container.classList.add('hidden');
+                this.textContent = 'Show more';
+            }
+        };
+        
+        groupTitleRow.appendChild(toggleButton);
+    }
+    
+    groupSection.appendChild(groupTitleRow);
+    
+    // Create group legend items container - single line layout
+    const groupItemsContainer = document.createElement('div');
+    groupItemsContainer.className = 'flex flex-wrap gap-x-4 gap-y-1';
+    
+    // Add initial groups (up to maxInitialGroups)
+    uniqueGroups.slice(0, maxInitialGroups).forEach(groupName => {
+        const groupColumn = groups.find(g => g.groupName === groupName)?.groupColumn || '';
+        const color = getColorForGroup(groupName, groupColumn);
+        
+        // Check visibility state
+        const isVisible = appState.crossPlotVisibility?.groups[groupName] !== false;
+        
+        const item = createColorLegendItem(groupName, color, isVisible);
+        
+        // Add click handler to toggle visibility
+        item.addEventListener('click', function() {
+            const isCurrentlyVisible = appState.crossPlotVisibility.groups[groupName] !== false;
+            appState.crossPlotVisibility.groups[groupName] = !isCurrentlyVisible;
+            
+            // Update the plot
+            updateCrossPlot();
+        });
+        
+        groupItemsContainer.appendChild(item);
+    });
+    
+    groupSection.appendChild(groupItemsContainer);
+    
+    // Add collapsible section for extra groups if needed
+    if (hasExtraGroups) {
+        const collapsibleContainer = document.createElement('div');
+        collapsibleContainer.className = 'mt-1 overflow-hidden hidden';
+        collapsibleContainer.id = 'group-legend-extra';
+        
+        const extraItemsContainer = document.createElement('div');
+        extraItemsContainer.className = 'flex flex-wrap gap-x-4 gap-y-1';
+        
+        uniqueGroups.slice(maxInitialGroups).forEach(groupName => {
+            const groupColumn = groups.find(g => g.groupName === groupName)?.groupColumn || '';
+            const color = getColorForGroup(groupName, groupColumn);
+            
+            // Check visibility state
+            const isVisible = appState.crossPlotVisibility?.groups[groupName] !== false;
+            
+            const item = createColorLegendItem(groupName, color, isVisible);
+            
+            // Add click handler to toggle visibility
+            item.addEventListener('click', function() {
+                const isCurrentlyVisible = appState.crossPlotVisibility.groups[groupName] !== false;
+                appState.crossPlotVisibility.groups[groupName] = !isCurrentlyVisible;
+                
+                // Update the plot
+                updateCrossPlot();
+            });
+            
+            extraItemsContainer.appendChild(item);
+        });
+        
+        collapsibleContainer.appendChild(extraItemsContainer);
+        groupSection.appendChild(collapsibleContainer);
+    }
+    
+    legendContainer.appendChild(groupSection);
+    
+    // CASE SECTION
+    const caseSection = document.createElement('div');
+    
+    const caseTitleRow = document.createElement('div');
+    caseTitleRow.className = 'flex justify-between items-center mb-1';
+    
+    const caseTitle = document.createElement('div');
+    caseTitle.className = 'text-xs font-semibold text-gray-700';
+    caseTitle.textContent = 'Cases (Shapes)';
+    caseTitleRow.appendChild(caseTitle);
+    
+    // Determine if we need collapsible section for cases
+    const maxInitialCases = 5;
+    const hasExtraCases = uniqueCases.length > maxInitialCases;
+    
+    // Add toggle button to the case title row if needed
+    if (hasExtraCases) {
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'text-xs text-blue-600 hover:text-blue-800';
+        toggleButton.textContent = 'Show more';
+        toggleButton.onclick = function() {
+            const container = document.getElementById('case-legend-extra');
+            const isHidden = container.classList.contains('hidden');
+            
+            if (isHidden) {
+                container.classList.remove('hidden');
+                this.textContent = 'Show fewer';
+            } else {
+                container.classList.add('hidden');
+                this.textContent = 'Show more';
+            }
+        };
+        
+        caseTitleRow.appendChild(toggleButton);
+    }
+    
+    caseSection.appendChild(caseTitleRow);
+    
+    // Create case legend items container - single line layout
+    const caseItemsContainer = document.createElement('div');
+    caseItemsContainer.className = 'flex flex-wrap gap-x-4 gap-y-1';
+    
+    // Add initial cases (up to maxInitialCases)
+    uniqueCases.slice(0, maxInitialCases).forEach(caseName => {
+        // Check visibility state
+        const isVisible = appState.crossPlotVisibility?.cases[caseName] !== false;
+        
+        const item = createLegendItem(caseName, '#aaaaaa', caseToSymbol[caseName], symbolGenerator, isVisible);
+        
+        // Add click handler to toggle visibility
+        item.addEventListener('click', function() {
+            const isCurrentlyVisible = appState.crossPlotVisibility.cases[caseName] !== false;
+            appState.crossPlotVisibility.cases[caseName] = !isCurrentlyVisible;
+            
+            // Update the plot
+            updateCrossPlot();
+        });
+        
+        caseItemsContainer.appendChild(item);
+    });
+    
+    caseSection.appendChild(caseItemsContainer);
+    
+    // Add collapsible section for extra cases if needed
+    if (hasExtraCases) {
+        const collapsibleContainer = document.createElement('div');
+        collapsibleContainer.className = 'mt-1 overflow-hidden hidden';
+        collapsibleContainer.id = 'case-legend-extra';
+        
+        const extraItemsContainer = document.createElement('div');
+        extraItemsContainer.className = 'flex flex-wrap gap-x-4 gap-y-1';
+        
+        uniqueCases.slice(maxInitialCases).forEach(caseName => {
+            // Check visibility state
+            const isVisible = appState.crossPlotVisibility?.cases[caseName] !== false;
+            
+            const item = createLegendItem(caseName, '#aaaaaa', caseToSymbol[caseName], symbolGenerator, isVisible);
+            
+            // Add click handler to toggle visibility
+            item.addEventListener('click', function() {
+                const isCurrentlyVisible = appState.crossPlotVisibility.cases[caseName] !== false;
+                appState.crossPlotVisibility.cases[caseName] = !isCurrentlyVisible;
+                
+                // Update the plot
+                updateCrossPlot();
+            });
+            
+            extraItemsContainer.appendChild(item);
+        });
+        
+        collapsibleContainer.appendChild(extraItemsContainer);
+        caseSection.appendChild(collapsibleContainer);
+    }
+    
+    legendContainer.appendChild(caseSection);
+    
+    // Append the legend container to the main container
+    container.appendChild(legendContainer);
+}
+
+// Helper function to create a shape legend item
+function createLegendItem(name, color, symbolType, symbolGenerator, isVisible = true) {
+    const item = document.createElement('div');
+    item.className = `flex items-center gap-1 cursor-pointer legend-item ${isVisible ? '' : 'opacity-50 line-through'}`;
+    item.title = isVisible ? "Click to hide" : "Click to show";
+    item.dataset.name = name;
+    
+    // Create SVG for the shape
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '16');
+    svg.setAttribute('height', '16');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.style.minWidth = '16px';
+    
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('transform', 'translate(8, 8)');
+    path.setAttribute('d', symbolGenerator.type(symbolType)());
+    path.setAttribute('fill', color);
+    path.setAttribute('stroke', '#333');
+    path.setAttribute('stroke-width', '1');
+    
+    svg.appendChild(path);
+    item.appendChild(svg);
+    
+    const label = document.createElement('span');
+    label.className = 'text-xs text-gray-700 truncate max-w-[100px]';
+    label.title = name; // Add full name as tooltip
+    label.textContent = name;
+    item.appendChild(label);
+    
+    return item;
+}
+
+// Helper function to create a color legend item
+function createColorLegendItem(name, color, isVisible = true) {
+    const item = document.createElement('div');
+    item.className = `flex items-center gap-1 cursor-pointer legend-item ${isVisible ? '' : 'opacity-50 line-through'}`;
+    item.title = isVisible ? "Click to hide" : "Click to show";
+    item.dataset.name = name;
+    
+    const colorBox = document.createElement('div');
+    colorBox.className = 'w-3 h-3 rounded border border-gray-300 flex-shrink-0';
+    colorBox.style.backgroundColor = color;
+    item.appendChild(colorBox);
+    
+    const label = document.createElement('span');
+    label.className = 'text-xs text-gray-700 truncate max-w-[100px]';
+    label.title = name; // Add full name as tooltip
+    label.textContent = name;
+    item.appendChild(label);
+    
+    return item;
+}
+
+// Helper functions for cross plot
+function formatMetricName(metric) {
+    const nameMap = {
+        'bulkVolume': 'Bulk Volume',
+        'netVolume': 'Net Volume',
+        'poreVolume': 'Pore Volume',
+        'hcpvOil': 'HCPV Oil',
+        'hcpvGas': 'HCPV Gas',
+        'stoiip': 'STOIIP',
+        'giip': 'GIIP',
+        'ntg': 'NTG',
+        'porosity': 'Porosity',
+        'soOil': 'So',
+        'sgGas': 'Sg',
+        'boOil': '1/Bo',
+        'bgGas': '1/Bg'
+    };
+    
+    return nameMap[metric] || metric;
+}
+
+function formatNumber(value) {
+    return value.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+function formatPercent(value) {
+    return (value * 100).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }) + '%';
+}
+
+function getColorForGroup(groupName, groupColumn) {
+    // Reuse the existing color mapping logic from the circle packing
+    const colorKey = `depth1_${groupName}`;
+    
+    if (appState.colorMap.has(colorKey)) {
+        return appState.colorMap.get(colorKey);
+    }
+    
+    // If not found, create a new color for this group
+    const layerKey = 'layer_1';
+    if (!appState.colorUsageByLayer.has(layerKey)) {
+        appState.colorUsageByLayer.set(layerKey, new Set());
+        appState.colorIndexByLayer.set(layerKey, 0);
+    }
+    
+    const usedColors = appState.colorUsageByLayer.get(layerKey);
+    let colorIndex = appState.colorIndexByLayer.get(layerKey);
+    let color;
+    
+    const palette = themeColors.palette1;
+    
+    // If all colors have been used, start reusing
+    if (usedColors.size >= palette.length) {
+        // Use a hash to get a consistent index when reusing colors
+        const nameHash = getStringHash(groupName);
+        colorIndex = Math.abs(nameHash) % palette.length;
+        color = palette[colorIndex];
+    } else {
+        // Find the next unused color
+        while (usedColors.has(palette[colorIndex % palette.length])) {
+            colorIndex++;
+        }
+        color = palette[colorIndex % palette.length];
+        usedColors.add(color);
+        appState.colorIndexByLayer.set(layerKey, (colorIndex + 1) % palette.length);
+    }
+    
+    // Store the color for consistency
+    appState.colorMap.set(colorKey, color);
+    
+    return color;
+}
+
+function getColorForCase(caseName) {
+    // Generate a deterministic but different color for each case
+    const hash = getStringHash(caseName);
+    const palette = themeColors.palette3; // Use palette3 for case outlines
+    return palette[Math.abs(hash) % palette.length];
+}
+
+function showMetricDropdown(axis, element) {
+    // Remove any existing dropdown
+    d3.selectAll('.metric-dropdown').remove();
+    
+    // Create dropdown
+    const metrics = [
+        { value: 'bulkVolume', label: 'Bulk Volume' },
+        { value: 'netVolume', label: 'Net Volume' },
+        { value: 'poreVolume', label: 'Pore Volume' },
+        { value: 'hcpvOil', label: 'HCPV Oil' },
+        { value: 'hcpvGas', label: 'HCPV Gas' },
+        { value: 'stoiip', label: 'STOIIP' },
+        { value: 'giip', label: 'GIIP' },
+        { value: 'ntg', label: 'NTG' },
+        { value: 'porosity', label: 'Porosity' },
+        { value: 'soOil', label: 'So' },
+        { value: 'sgGas', label: 'Sg' },
+        { value: 'boOil', label: '1/Bo' },
+        { value: 'bgGas', label: '1/Bg' }
+    ];
+    
+    // Create dropdown in fixed position like tooltips - bottom right
+    const dropdown = d3.select('body')
+        .append('div')
+        .attr('class', 'legend-shared-tooltip metric-dropdown')
+        .style('opacity', 1)
+        .style('z-index', 1100)
+        .style('width', '180px')
+        .style('max-height', '300px')
+        .style('overflow-y', 'auto')
+        .style('pointer-events', 'auto') // Allow interactions
+        .style('bottom', '5rem') // Position at bottom
+        .style('right', '1rem'); // Position at right
+    
+    // Add title to dropdown
+    dropdown.append('div')
+        .attr('class', 'font-semibold border-b border-gray-200 pb-1 mb-1')
+        .text(`Select ${axis.toUpperCase()}-Axis Metric`);
+    
+    // Add options
+    metrics.forEach(metric => {
+        dropdown.append('div')
+            .attr('class', 'px-2 py-1.5 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0')
+            .text(metric.label)
+            .on('click', function() {
+                if (axis === 'x') {
+                    appState.crossPlotXMetric = metric.value;
+                } else {
+                    appState.crossPlotYMetric = metric.value;
+                }
+                
+                // Save cross plot settings
+                saveFieldSettings();
+                
+                updateCrossPlot();
+                dropdown.remove();
+            });
+    });
+    
+    // Close dropdown when clicking elsewhere
+    d3.select('body').on('click.dropdown', function(event) {
+        if (!dropdown.node().contains(event.target) && event.target !== element) {
+            dropdown.remove();
+            d3.select('body').on('click.dropdown', null);
+        }
+    });
+}
+
+// =================================================================
+// SESSION AND SETTINGS MANAGEMENT
+// =================================================================
+// Save session state to localStorage
+function saveSessionState() {
+    const sessionState = {
+        currentField: appState.currentField,
+        currentCase: appState.currentCase
+    };
+    
+    localStorage.setItem('volumetricSessionState', JSON.stringify(sessionState));
+}
+
+// Load session state from localStorage
+function loadSessionState() {
+    const savedState = localStorage.getItem('volumetricSessionState');
+    
+    if (savedState) {
+        const state = JSON.parse(savedState);
+        
+        // Apply saved field and case if they exist
+        if (state.currentField && appState.fields.includes(state.currentField)) {
+            appState.currentField = state.currentField;
+            
+            // We'll set currentCase later in loadCasesForField to ensure the case exists
+            if (state.currentCase) {
+                // Store it temporarily so loadCasesForField can use it
+                appState.savedCase = state.currentCase;
+            }
+        }
+    }
+}
+
+// Save field-level settings (like metric)
+function saveFieldSettings() {
+    if (!appState.currentField) return;
+    
+    const settingsKey = `fieldSettings_${appState.currentField}`;
+    const settings = {
+        currentMetric: appState.currentMetric
+    };
+    
+    localStorage.setItem(settingsKey, JSON.stringify(settings));
+    
+    // Save cross plot settings
+    if (appState.currentField) {
+        const crossPlotSettingsKey = `crossPlotSettings_${appState.currentField}`;
+        const settings = {
+            xMetric: appState.crossPlotXMetric,
+            yMetric: appState.crossPlotYMetric
+        };
+        
+        localStorage.setItem(crossPlotSettingsKey, JSON.stringify(settings));
+    }
+}
+
+// Load field-level settings (like metric)
+function loadFieldSettings() {
+    if (!appState.currentField) return;
+    
+    const settingsKey = `fieldSettings_${appState.currentField}`;
+    const savedSettings = localStorage.getItem(settingsKey);
+    
+    if (savedSettings) {
+        const settings = JSON.parse(savedSettings);
+        
+        // Update state and UI
+        if (settings.currentMetric) {
+            appState.currentMetric = settings.currentMetric;
+            document.getElementById('metric-selector').value = appState.currentMetric;
+            updateCurrentUnit();
+        }
+    }
+    
+    // Load saved legend layer for this field
+    const legendLayerKey = `legendLayer_${appState.currentField}`;
+    const savedLegendLayer = localStorage.getItem(legendLayerKey);
+    if (savedLegendLayer) {
+        appState.savedLegendLayer = parseInt(savedLegendLayer);
+        // Validate against current max depth
+        appState.savedLegendLayer = Math.max(1, Math.min(appState.maxDepth, appState.savedLegendLayer));
+    } else {
+        appState.savedLegendLayer = 1; // Default to layer 1
+    }
+    
+    // Load cross plot settings
+    const crossPlotSettingsKey = `crossPlotSettings_${appState.currentField}`;
+    const savedCrossPlotSettings = localStorage.getItem(crossPlotSettingsKey);
+    
+    if (savedCrossPlotSettings) {
+        const settings = JSON.parse(savedCrossPlotSettings);
+        
+        if (settings.xMetric) appState.crossPlotXMetric = settings.xMetric;
+        if (settings.yMetric) appState.crossPlotYMetric = settings.yMetric;
+    }
+}
+
+// Save circle diagram settings for current case (without metric)
+function saveCircleSettings() {
+    if (!appState.currentField || !appState.currentCase) return;
+    
+    const settingsKey = `circleSettings_${appState.currentField}_${appState.currentCase}`;
+    const settings = {
+        showValues: appState.showValues,
+        zoomEnabled: appState.zoomEnabled,
+        maxDepth: appState.maxDepth,
+        showExtendedSettings: appState.showExtendedSettings
+    };
+    
+    localStorage.setItem(settingsKey, JSON.stringify(settings));
+    
+    // Save field-level settings
+    const fieldSettingsKey = `fieldCircleSettings_${appState.currentField}`;
+    const fieldSettings = {
+        showLegend: appState.showLegend
+    };
+    
+    localStorage.setItem(fieldSettingsKey, JSON.stringify(fieldSettings));
+}
+
+// Load circle diagram settings for current case (without metric)
+function loadCircleSettings() {
+    if (!appState.currentField || !appState.currentCase) return;
+    
+    // Load case-level settings
+    const settingsKey = `circleSettings_${appState.currentField}_${appState.currentCase}`;
+    const savedSettings = localStorage.getItem(settingsKey);
+    
+    if (savedSettings) {
+        const settings = JSON.parse(savedSettings);
+        
+        // Update state
+        appState.showValues = settings.showValues !== undefined ? settings.showValues : true;
+        appState.zoomEnabled = settings.zoomEnabled !== undefined ? settings.zoomEnabled : false;
+        appState.maxDepth = settings.maxDepth !== undefined ? settings.maxDepth : 5;
+        appState.showExtendedSettings = settings.showExtendedSettings !== undefined ? settings.showExtendedSettings : false;
+        
+        // Update UI controls
+        document.getElementById('show-values-toggle').checked = appState.showValues;
+        document.getElementById('enable-zoom-toggle').checked = appState.zoomEnabled;
+        document.getElementById('max-depth-slider').value = appState.maxDepth;
+        document.getElementById('max-depth-value').textContent = appState.maxDepth;
+        
+        // Update extended settings visibility based on saved state
+        const extendedSettings = document.getElementById('extended-settings');
+        const settingsHeader = document.getElementById('settings-header');
+        const settingsArrow = document.getElementById('settings-arrow');
+        
+        if (extendedSettings && settingsHeader && settingsArrow) {
+            if (appState.showExtendedSettings) {
+                extendedSettings.classList.remove('hidden');
+                settingsHeader.classList.add('text-blue-500');
+                settingsArrow.classList.add('transform', 'rotate-180');
+            } else {
+                extendedSettings.classList.add('hidden');
+                settingsHeader.classList.remove('text-blue-500');
+                settingsArrow.classList.remove('transform', 'rotate-180');
+            }
+        }
+    }
+    
+    // Load field-level settings
+    const fieldSettingsKey = `fieldCircleSettings_${appState.currentField}`;
+    const savedFieldSettings = localStorage.getItem(fieldSettingsKey);
+    
+    if (savedFieldSettings) {
+        const fieldSettings = JSON.parse(savedFieldSettings);
+        appState.showLegend = fieldSettings.showLegend !== undefined ? fieldSettings.showLegend : true;
+    } else {
+        appState.showLegend = true; // Default to showing legend
+    }
+    
+    // Update legend toggle UI
+    const legendToggle = document.getElementById('show-legend-toggle');
+    if (legendToggle) {
+        legendToggle.checked = appState.showLegend;
+    }
+}
+
+// =================================================================
+// CASE ORDER MANAGEMENT
+// =================================================================
+// Save case order to localStorage
+function saveCaseOrder(field, caseOrder) {
+    const fieldKey = `volumetricCasesOrder_${field}`;
+    localStorage.setItem(fieldKey, JSON.stringify(caseOrder));
+    
+    // Update availableCases array with new order
+    appState.availableCases = caseOrder;
+    
+    // Update navigation buttons
+    updateNavigationButtons();
+}
+
+// Get case order from localStorage
+function getCaseOrder(field) {
+    const fieldKey = `volumetricCasesOrder_${field}`;
+    if (localStorage.getItem(fieldKey)) {
+        return JSON.parse(localStorage.getItem(fieldKey));
+    }
+    return null;
+}
+
+// Remove case from order list
+function removeCaseFromOrder(field, caseName) {
+    const orderKey = `volumetricCasesOrder_${field}`;
+    
+    if (localStorage.getItem(orderKey)) {
+        let order = JSON.parse(localStorage.getItem(orderKey));
+        
+        // Remove case from order
+        const index = order.indexOf(caseName);
+        if (index !== -1) {
+            order.splice(index, 1);
+            localStorage.setItem(orderKey, JSON.stringify(order));
+        }
+    }
+}
+
+// =================================================================
+// FIELD UI DROPDOWN
+// =================================================================
+function setupFieldNameDropdown() {
+    const fieldTitle = document.getElementById('field-title');
+    
+    // Create dropdown element if it doesn't exist
+    let fieldDropdown = document.getElementById('field-dropdown');
+    if (!fieldDropdown) {
+        fieldDropdown = document.createElement('div');
+        fieldDropdown.id = 'field-dropdown';
+        fieldDropdown.className = 'absolute mt-2 w-56 bg-white rounded-md shadow-lg z-50 border border-gray-200 hidden';
+        document.body.appendChild(fieldDropdown);
+    }
+    
+    // Update dropdown position when field title is clicked
+    fieldTitle.addEventListener('click', function(e) {
+        e.stopPropagation();
+        
+        // Only show dropdown if we have fields
+        if (appState.fields.length === 0) return;
+        
+        // Toggle dropdown visibility
+        if (fieldDropdown.classList.contains('hidden')) {
+            // Update dropdown content
+            updateFieldDropdown(fieldDropdown);
+            
+            // Position dropdown below field title
+            const rect = fieldTitle.getBoundingClientRect();
+            fieldDropdown.style.top = (rect.bottom + window.scrollY) + 'px';
+            fieldDropdown.style.left = (rect.left + window.scrollX) + 'px';
+            
+            // Show dropdown
+            fieldDropdown.classList.remove('hidden');
+        } else {
+            fieldDropdown.classList.add('hidden');
+        }
+    });
+    
+    // Hide dropdown when clicking elsewhere
+    document.addEventListener('click', function(e) {
+        if (fieldDropdown && !fieldDropdown.contains(e.target) && e.target !== fieldTitle) {
+            fieldDropdown.classList.add('hidden');
+        }
+    });
+}
+
+// Helper function to update the field dropdown content
+function updateFieldDropdown(dropdownElement) {
+    // Clear previous content
+    dropdownElement.innerHTML = '';
+    
+    // Add heading
+    const heading = document.createElement('div');
+    heading.className = 'px-4 py-2 text-sm text-gray-700 font-medium border-b border-gray-200';
+    heading.textContent = 'Select Field';
+    dropdownElement.appendChild(heading);
+    
+    // Add fields
+    appState.fields.forEach(fieldName => {
+        const item = document.createElement('div');
+        item.className = 'px-4 py-2 text-sm hover:bg-blue-50 cursor-pointer';
+        
+        // Highlight current field
+        if (fieldName === appState.currentField) {
+            item.className += ' bg-blue-100 font-medium text-blue-700';
+        } else {
+            item.className += ' text-gray-700';
+        }
+        
+        item.textContent = fieldName;
+        
+        // Handle field selection
+        item.addEventListener('click', function() {
+            if (fieldName !== appState.currentField) {
+                appState.currentField = fieldName;
+                document.getElementById('field-selector').value = fieldName;
+                loadCasesForField(fieldName);
+                saveSessionState();
+            }
+            dropdownElement.classList.add('hidden');
+        });
+        
+        dropdownElement.appendChild(item);
+    });
+}
+
+// =================================================================
+// MODAL HANDLING
+// =================================================================
 // Modal management functions
 function showModal(modalId) {
     document.getElementById('modal-overlay').classList.remove('hidden');
@@ -3846,6 +5369,254 @@ function hideModal() {
     });
 }
 
+// Initialize timestamp for new case
+function initializeTimestampDisplay() {
+    const timestampDisplay = document.getElementById('timestamp-display');
+    const currentDate = new Date();
+    timestampDisplay.textContent = formatDate(currentDate) + ' ' + 
+        currentDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    
+    // Set the datetime-local input to current date/time
+    const customTimestamp = document.getElementById('custom-timestamp');
+    customTimestamp.value = formatDateTimeForInput(currentDate);
+    
+    // Toggle datetime picker when timestamp is clicked
+    timestampDisplay.addEventListener('click', function() {
+        const pickerContainer = document.getElementById('timestamp-picker-container');
+        pickerContainer.classList.toggle('hidden');
+    });
+}
+
+// Format date for datetime-local input
+function formatDateTimeForInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+// Update the page title in header and browser
+function updatePageTitle() {
+    const field = appState.currentField || '';
+    const caseName = appState.currentCase || '';
+    
+    // Update field title
+    const fieldTitle = document.getElementById('field-title');
+    const separator = document.getElementById('separator');
+    
+    if (field) {
+        fieldTitle.textContent = field;
+        fieldTitle.classList.remove('text-gray-400');
+        fieldTitle.classList.add('text-gray-600');
+    } else {
+        fieldTitle.textContent = 'No field selected';
+        fieldTitle.classList.remove('text-gray-600');
+        fieldTitle.classList.add('text-gray-400');
+    }
+    
+    // Update case title
+    const caseTitle = document.getElementById('case-title');
+    if (caseName) {
+        caseTitle.textContent = caseName;
+        caseTitle.classList.remove('text-gray-400');
+        caseTitle.classList.add('text-gray-800');
+        separator.style.display = 'inline'; // Show separator when both field and case exist
+    } else if (field) {
+        caseTitle.textContent = 'No case selected';
+        caseTitle.classList.remove('text-gray-800');
+        caseTitle.classList.add('text-gray-400');
+        separator.style.display = 'inline';
+    } else {
+        caseTitle.textContent = '';
+        separator.style.display = 'none'; // Hide separator when no field
+    }
+    
+    // Update browser tab title
+    const browserTitle = field && caseName ? `${field} - ${caseName}` : 'Volumetric Data';
+    document.title = browserTitle + ' | Volumetric Data Visualization';
+    
+    // Update ball chart title
+    if (appState.currentCase) {
+        document.getElementById('ball-chart-title').textContent = appState.currentCase;
+        document.getElementById('ball-chart-subtitle').textContent = appState.currentField || '';
+    } else {
+        document.getElementById('ball-chart-title').textContent = 'Ball Chart';
+        document.getElementById('ball-chart-subtitle').textContent = 'No case selected';
+    }
+    
+    // Update description
+    updateCaseDescription();
+    
+    // Update navigation buttons state
+    updateNavigationButtons();
+}
+
+// Update case description to include author and timestamp
+function updateCaseDescription() {
+    const descriptionElement = document.getElementById('case-description');
+    const authorElement = document.getElementById('case-author-timestamp').querySelector('.author-name');
+    const timestampElement = document.getElementById('case-author-timestamp').querySelector('.timestamp-value');
+    
+    if (appState.currentField && appState.currentCase) {
+        const fieldKey = `volumetricCases_${appState.currentField}`;
+        if (localStorage.getItem(fieldKey)) {
+            const cases = JSON.parse(localStorage.getItem(fieldKey));
+            if (cases && cases[appState.currentCase]) {
+                // Show description if available
+                if (cases[appState.currentCase].description) {
+                    descriptionElement.textContent = cases[appState.currentCase].description;
+                } else {
+                    descriptionElement.innerHTML = '<span class="text-gray-400">No description available</span>';
+                }
+                
+                // Show author if available
+                if (cases[appState.currentCase].author) {
+                    authorElement.textContent = cases[appState.currentCase].author;
+                } else {
+                    authorElement.textContent = 'Not specified';
+                }
+                
+                // Show timestamp if available
+                if (cases[appState.currentCase].timestamp) {
+                    const timestamp = new Date(cases[appState.currentCase].timestamp);
+                    timestampElement.textContent = formatDate(timestamp) + ' ' + 
+                        timestamp.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                    
+                    // CHANGED: Make timestamp card clickable to directly open edit modal without confirmation
+                    document.getElementById('case-author-timestamp').onclick = function() {
+                        showEditCaseModal(appState.currentField, appState.currentCase);
+                    };
+                } else {
+                    timestampElement.textContent = 'No date available';
+                }
+                
+                return;
+            }
+        }
+    }
+    
+    // Show placeholders if no description/timestamp
+    descriptionElement.innerHTML = '<span class="text-gray-400">No description available</span>';
+    authorElement.textContent = 'Not specified';
+    timestampElement.textContent = 'No date available';
+}
+
+// Show modal to edit case details
+function showEditCaseModal(field, caseName) {
+    // Show the edit case modal
+    showModal('rename-case-modal');
+    
+    const fieldKey = `volumetricCases_${field}`;
+    if (localStorage.getItem(fieldKey)) {
+        const cases = JSON.parse(localStorage.getItem(fieldKey));
+        if (cases && cases[caseName]) {
+            const caseData = cases[caseName];
+            
+            // Populate form fields
+            document.getElementById('rename-case-title').value = caseName;
+            document.getElementById('edit-case-description').value = caseData.description || '';
+            document.getElementById('edit-case-author').value = caseData.author || '';
+            
+            // Get the columns from the case data
+            const columns = Object.keys(caseData.data[0]);
+            const groupingColumns = columns.filter(col => 
+                !standardColumns.includes(col) && col.trim() !== '' && !col.startsWith('__'));
+            
+            // Store these in appState to avoid recalculation
+            appState.currentEditingCaseColumns = groupingColumns;
+            
+            // Get volume groups from case data
+            const volumeGroups = caseData.volumeGroups || {};
+            const groupColumns = volumeGroups.columns || [];
+            
+            // Initialize volume groups UI with the current grouping columns
+            const container = document.getElementById('edit-volume-group-container');
+            container.innerHTML = ''; // Clear container
+            
+            // Prevent cascading events
+            window._addingGroupLevel = true;
+            
+            if (groupColumns.length > 0) {
+                // Create UI elements for each existing group level
+                groupColumns.forEach((columnName, index) => {
+                    addGroupLevel(container, groupingColumns, columnName);
+                });
+            } else {
+                // If no existing groups, initialize with up to 2 default levels
+                if (groupingColumns.length >= 2) {
+                    // Add first level
+                    addGroupLevel(container, groupingColumns);
+                    
+                    // Add second level with a slight delay
+                    setTimeout(() => {
+                        addGroupLevel(container, groupingColumns);
+                    }, 10);
+                } else if (groupingColumns.length === 1) {
+                    // Just add one level if only one column is available
+                    addGroupLevel(container, groupingColumns);
+                } else {
+                    // No valid columns - initialize with empty level
+                    addGroupLevel(container, []);
+                }
+            }
+            
+            // Clear flag
+            setTimeout(() => { window._addingGroupLevel = false; }, 100);
+            
+            // Set current timestamp
+            if (caseData.timestamp) {
+                const timestamp = new Date(caseData.timestamp);
+                document.getElementById('edit-timestamp').value = formatDateTimeForInput(timestamp);
+            } else {
+                document.getElementById('edit-timestamp').value = formatDateTimeForInput(new Date());
+            }
+        }
+    }
+}
+
+// Function to clear all fields in the Add Case modal
+function clearAddCaseFields() {
+    document.getElementById('new-case-title').value = '';
+    document.getElementById('new-case-description').value = '';
+    document.getElementById('new-case-data').value = '';
+    document.getElementById('divide-by-1000-toggle').checked = true;
+    
+    // Reset volume group container
+    const volumeGroupContainer = document.getElementById('volume-group-container');
+    volumeGroupContainer.innerHTML = '';
+    
+    // Set default author if available
+    const authorInput = document.getElementById('new-case-author');
+    if (appState.defaultAuthor) {
+        authorInput.value = appState.defaultAuthor;
+        document.getElementById('default-author-toggle').checked = true;
+        authorInput.disabled = true; // Disable input when using default author
+    } else {
+        authorInput.value = '';
+        document.getElementById('default-author-toggle').checked = false;
+        authorInput.disabled = false; // Enable input when not using default author
+    }
+    
+    // Reset timestamp to current time
+    const timestampDisplay = document.getElementById('timestamp-display');
+    const currentDate = new Date();
+    timestampDisplay.textContent = formatDate(currentDate) + ' ' + 
+        currentDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    
+    // Reset the datetime-local input to current date/time
+    const customTimestamp = document.getElementById('custom-timestamp');
+    customTimestamp.value = formatDateTimeForInput(currentDate);
+    
+    // Hide the timestamp picker if it was visible
+    document.getElementById('timestamp-picker-container').classList.add('hidden');
+}
+
+// =================================================================
+// CASE MANAGEMENT
+// =================================================================
 // Populate fields in the new case modal
 function populateNewCaseFields() {
     const fieldSelector = document.getElementById('new-case-field');
@@ -4110,358 +5881,6 @@ function updateGroupingSelectors(headers) {
     
     // Reinitialize with detected columns but maintain selections where possible
     initializeVolumeGroups(container, groupingColumns, existingGroups);
-}
-
-function setupFieldNameDropdown() {
-    const fieldTitle = document.getElementById('field-title');
-    
-    // Create dropdown element if it doesn't exist
-    let fieldDropdown = document.getElementById('field-dropdown');
-    if (!fieldDropdown) {
-        fieldDropdown = document.createElement('div');
-        fieldDropdown.id = 'field-dropdown';
-        fieldDropdown.className = 'absolute mt-2 w-56 bg-white rounded-md shadow-lg z-50 border border-gray-200 hidden';
-        document.body.appendChild(fieldDropdown);
-    }
-    
-    // Update dropdown position when field title is clicked
-    fieldTitle.addEventListener('click', function(e) {
-        e.stopPropagation();
-        
-        // Only show dropdown if we have fields
-        if (appState.fields.length === 0) return;
-        
-        // Toggle dropdown visibility
-        if (fieldDropdown.classList.contains('hidden')) {
-            // Update dropdown content
-            updateFieldDropdown(fieldDropdown);
-            
-            // Position dropdown below field title
-            const rect = fieldTitle.getBoundingClientRect();
-            fieldDropdown.style.top = (rect.bottom + window.scrollY) + 'px';
-            fieldDropdown.style.left = (rect.left + window.scrollX) + 'px';
-            
-            // Show dropdown
-            fieldDropdown.classList.remove('hidden');
-        } else {
-            fieldDropdown.classList.add('hidden');
-        }
-    });
-    
-    // Hide dropdown when clicking elsewhere
-    document.addEventListener('click', function(e) {
-        if (fieldDropdown && !fieldDropdown.contains(e.target) && e.target !== fieldTitle) {
-            fieldDropdown.classList.add('hidden');
-        }
-    });
-}
-
-// Helper function to update the field dropdown content
-function updateFieldDropdown(dropdownElement) {
-    // Clear previous content
-    dropdownElement.innerHTML = '';
-    
-    // Add heading
-    const heading = document.createElement('div');
-    heading.className = 'px-4 py-2 text-sm text-gray-700 font-medium border-b border-gray-200';
-    heading.textContent = 'Select Field';
-    dropdownElement.appendChild(heading);
-    
-    // Add fields
-    appState.fields.forEach(fieldName => {
-        const item = document.createElement('div');
-        item.className = 'px-4 py-2 text-sm hover:bg-blue-50 cursor-pointer';
-        
-        // Highlight current field
-        if (fieldName === appState.currentField) {
-            item.className += ' bg-blue-100 font-medium text-blue-700';
-        } else {
-            item.className += ' text-gray-700';
-        }
-        
-        item.textContent = fieldName;
-        
-        // Handle field selection
-        item.addEventListener('click', function() {
-            if (fieldName !== appState.currentField) {
-                appState.currentField = fieldName;
-                document.getElementById('field-selector').value = fieldName;
-                loadCasesForField(fieldName);
-                saveSessionState();
-            }
-            dropdownElement.classList.add('hidden');
-        });
-        
-        dropdownElement.appendChild(item);
-    });
-}
-
-// Initialize timestamp for new case
-function initializeTimestampDisplay() {
-    const timestampDisplay = document.getElementById('timestamp-display');
-    const currentDate = new Date();
-    timestampDisplay.textContent = formatDate(currentDate) + ' ' + 
-        currentDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    
-    // Set the datetime-local input to current date/time
-    const customTimestamp = document.getElementById('custom-timestamp');
-    customTimestamp.value = formatDateTimeForInput(currentDate);
-    
-    // Toggle datetime picker when timestamp is clicked
-    timestampDisplay.addEventListener('click', function() {
-        const pickerContainer = document.getElementById('timestamp-picker-container');
-        pickerContainer.classList.toggle('hidden');
-    });
-}
-
-// Format date for datetime-local input
-function formatDateTimeForInput(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-// Update the page title in header and browser
-function updatePageTitle() {
-    const field = appState.currentField || '';
-    const caseName = appState.currentCase || '';
-    
-    // Update field title
-    const fieldTitle = document.getElementById('field-title');
-    const separator = document.getElementById('separator');
-    
-    if (field) {
-        fieldTitle.textContent = field;
-        fieldTitle.classList.remove('text-gray-400');
-        fieldTitle.classList.add('text-gray-600');
-    } else {
-        fieldTitle.textContent = 'No field selected';
-        fieldTitle.classList.remove('text-gray-600');
-        fieldTitle.classList.add('text-gray-400');
-    }
-    
-    // Update case title
-    const caseTitle = document.getElementById('case-title');
-    if (caseName) {
-        caseTitle.textContent = caseName;
-        caseTitle.classList.remove('text-gray-400');
-        caseTitle.classList.add('text-gray-800');
-        separator.style.display = 'inline'; // Show separator when both field and case exist
-    } else if (field) {
-        caseTitle.textContent = 'No case selected';
-        caseTitle.classList.remove('text-gray-800');
-        caseTitle.classList.add('text-gray-400');
-        separator.style.display = 'inline';
-    } else {
-        caseTitle.textContent = '';
-        separator.style.display = 'none'; // Hide separator when no field
-    }
-    
-    // Update browser tab title
-    const browserTitle = field && caseName ? `${field} - ${caseName}` : 'Volumetric Data';
-    document.title = browserTitle + ' | Volumetric Data Visualization';
-    
-    // Update ball chart title
-    if (appState.currentCase) {
-        document.getElementById('ball-chart-title').textContent = appState.currentCase;
-        document.getElementById('ball-chart-subtitle').textContent = appState.currentField || '';
-    } else {
-        document.getElementById('ball-chart-title').textContent = 'Ball Chart';
-        document.getElementById('ball-chart-subtitle').textContent = 'No case selected';
-    }
-    
-    // Update description
-    updateCaseDescription();
-    
-    // Update navigation buttons state
-    updateNavigationButtons();
-}
-
-// Update case description to include author and timestamp
-function updateCaseDescription() {
-    const descriptionElement = document.getElementById('case-description');
-    const authorElement = document.getElementById('case-author-timestamp').querySelector('.author-name');
-    const timestampElement = document.getElementById('case-author-timestamp').querySelector('.timestamp-value');
-    
-    if (appState.currentField && appState.currentCase) {
-        const fieldKey = `volumetricCases_${appState.currentField}`;
-        if (localStorage.getItem(fieldKey)) {
-            const cases = JSON.parse(localStorage.getItem(fieldKey));
-            if (cases && cases[appState.currentCase]) {
-                // Show description if available
-                if (cases[appState.currentCase].description) {
-                    descriptionElement.textContent = cases[appState.currentCase].description;
-                } else {
-                    descriptionElement.innerHTML = '<span class="text-gray-400">No description available</span>';
-                }
-                
-                // Show author if available
-                if (cases[appState.currentCase].author) {
-                    authorElement.textContent = cases[appState.currentCase].author;
-                } else {
-                    authorElement.textContent = 'Not specified';
-                }
-                
-                // Show timestamp if available
-                if (cases[appState.currentCase].timestamp) {
-                    const timestamp = new Date(cases[appState.currentCase].timestamp);
-                    timestampElement.textContent = formatDate(timestamp) + ' ' + 
-                        timestamp.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-                    
-                    // CHANGED: Make timestamp card clickable to directly open edit modal without confirmation
-                    document.getElementById('case-author-timestamp').onclick = function() {
-                        showEditCaseModal(appState.currentField, appState.currentCase);
-                    };
-                } else {
-                    timestampElement.textContent = 'No date available';
-                }
-                
-                return;
-            }
-        }
-    }
-    
-    // Show placeholders if no description/timestamp
-    descriptionElement.innerHTML = '<span class="text-gray-400">No description available</span>';
-    authorElement.textContent = 'Not specified';
-    timestampElement.textContent = 'No date available';
-}
-
-// Show modal to edit case details
-function showEditCaseModal(field, caseName) {
-    // Show the edit case modal
-    showModal('rename-case-modal');
-    
-    const fieldKey = `volumetricCases_${field}`;
-    if (localStorage.getItem(fieldKey)) {
-        const cases = JSON.parse(localStorage.getItem(fieldKey));
-        if (cases && cases[caseName]) {
-            const caseData = cases[caseName];
-            
-            // Populate form fields
-            document.getElementById('rename-case-title').value = caseName;
-            document.getElementById('edit-case-description').value = caseData.description || '';
-            document.getElementById('edit-case-author').value = caseData.author || '';
-            
-            // Get the columns from the case data
-            const columns = Object.keys(caseData.data[0]);
-            const groupingColumns = columns.filter(col => 
-                !standardColumns.includes(col) && col.trim() !== '' && !col.startsWith('__'));
-            
-            // Store these in appState to avoid recalculation
-            appState.currentEditingCaseColumns = groupingColumns;
-            
-            // Get volume groups from case data
-            const volumeGroups = caseData.volumeGroups || {};
-            const groupColumns = volumeGroups.columns || [];
-            
-            // Initialize volume groups UI with the current grouping columns
-            const container = document.getElementById('edit-volume-group-container');
-            container.innerHTML = ''; // Clear container
-            
-            // Prevent cascading events
-            window._addingGroupLevel = true;
-            
-            if (groupColumns.length > 0) {
-                // Create UI elements for each existing group level
-                groupColumns.forEach((columnName, index) => {
-                    addGroupLevel(container, groupingColumns, columnName);
-                });
-            } else {
-                // If no existing groups, initialize with up to 2 default levels
-                if (groupingColumns.length >= 2) {
-                    // Add first level
-                    addGroupLevel(container, groupingColumns);
-                    
-                    // Add second level with a slight delay
-                    setTimeout(() => {
-                        addGroupLevel(container, groupingColumns);
-                    }, 10);
-                } else if (groupingColumns.length === 1) {
-                    // Just add one level if only one column is available
-                    addGroupLevel(container, groupingColumns);
-                } else {
-                    // No valid columns - initialize with empty level
-                    addGroupLevel(container, []);
-                }
-            }
-            
-            // Clear flag
-            setTimeout(() => { window._addingGroupLevel = false; }, 100);
-            
-            // Set current timestamp
-            if (caseData.timestamp) {
-                const timestamp = new Date(caseData.timestamp);
-                document.getElementById('edit-timestamp').value = formatDateTimeForInput(timestamp);
-            } else {
-                document.getElementById('edit-timestamp').value = formatDateTimeForInput(new Date());
-            }
-        }
-    }
-}
-
-// Function to clear all fields in the Add Case modal
-function clearAddCaseFields() {
-    document.getElementById('new-case-title').value = '';
-    document.getElementById('new-case-description').value = '';
-    document.getElementById('new-case-data').value = '';
-    document.getElementById('divide-by-1000-toggle').checked = true;
-    
-    // Reset volume group container
-    const volumeGroupContainer = document.getElementById('volume-group-container');
-    volumeGroupContainer.innerHTML = '';
-    
-    // Set default author if available
-    const authorInput = document.getElementById('new-case-author');
-    if (appState.defaultAuthor) {
-        authorInput.value = appState.defaultAuthor;
-        document.getElementById('default-author-toggle').checked = true;
-        authorInput.disabled = true; // Disable input when using default author
-    } else {
-        authorInput.value = '';
-        document.getElementById('default-author-toggle').checked = false;
-        authorInput.disabled = false; // Enable input when not using default author
-    }
-    
-    // Reset timestamp to current time
-    const timestampDisplay = document.getElementById('timestamp-display');
-    const currentDate = new Date();
-    timestampDisplay.textContent = formatDate(currentDate) + ' ' + 
-        currentDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    
-    // Reset the datetime-local input to current date/time
-    const customTimestamp = document.getElementById('custom-timestamp');
-    customTimestamp.value = formatDateTimeForInput(currentDate);
-    
-    // Hide the timestamp picker if it was visible
-    document.getElementById('timestamp-picker-container').classList.add('hidden');
-}
-
-// New event listeners for timestamps and data import features
-function addNewEventListeners() {
-    // Initialize timestamp display when showing add case modal
-    document.getElementById('add-case-btn').addEventListener('click', function() {
-        initializeTimestampDisplay();
-    });
-    
-    // Update event listener for cancel-add-case to reset timestamp picker
-    document.getElementById('cancel-add-case').addEventListener('click', function() {
-        document.getElementById('timestamp-picker-container').classList.add('hidden');
-        hideModal();
-    });
-    
-    // Load default author into author field when modal opens
-    document.getElementById('add-case-btn').addEventListener('click', function() {
-        const authorInput = document.getElementById('new-case-author');
-        if (appState.defaultAuthor) {
-            authorInput.value = appState.defaultAuthor;
-            document.getElementById('default-author-toggle').checked = true;
-        }
-    });
 }
 
 // Updated addNewCase with multi-level volume groups
@@ -4820,146 +6239,6 @@ function deleteCase(field, caseName) {
             
             // Refresh UI
             loadCasesForField(field);
-        }
-    }
-}
-
-// Save field-level settings (like metric)
-function saveFieldSettings() {
-    if (!appState.currentField) return;
-    
-    const settingsKey = `fieldSettings_${appState.currentField}`;
-    const settings = {
-        currentMetric: appState.currentMetric
-    };
-    
-    localStorage.setItem(settingsKey, JSON.stringify(settings));
-}
-
-// Load field-level settings (like metric)
-function loadFieldSettings() {
-    if (!appState.currentField) return;
-    
-    const settingsKey = `fieldSettings_${appState.currentField}`;
-    const savedSettings = localStorage.getItem(settingsKey);
-    
-    if (savedSettings) {
-        const settings = JSON.parse(savedSettings);
-        
-        // Update state and UI
-        if (settings.currentMetric) {
-            appState.currentMetric = settings.currentMetric;
-            document.getElementById('metric-selector').value = appState.currentMetric;
-            updateCurrentUnit();
-        }
-    }
-    
-    // Load saved legend layer for this field
-    const legendLayerKey = `legendLayer_${appState.currentField}`;
-    const savedLegendLayer = localStorage.getItem(legendLayerKey);
-    if (savedLegendLayer) {
-        appState.savedLegendLayer = parseInt(savedLegendLayer);
-        // Validate against current max depth
-        appState.savedLegendLayer = Math.max(1, Math.min(appState.maxDepth, appState.savedLegendLayer));
-    } else {
-        appState.savedLegendLayer = 1; // Default to layer 1
-    }
-}
-
-// Save circle diagram settings for current case (without metric)
-function saveCircleSettings() {
-    if (!appState.currentField || !appState.currentCase) return;
-    
-    const settingsKey = `circleSettings_${appState.currentField}_${appState.currentCase}`;
-    const settings = {
-        showValues: appState.showValues,
-        zoomEnabled: appState.zoomEnabled,
-        maxDepth: appState.maxDepth,
-        showExtendedSettings: appState.showExtendedSettings // Add this line
-    };
-    
-    localStorage.setItem(settingsKey, JSON.stringify(settings));
-    
-    // Save field-level settings
-    const fieldSettingsKey = `fieldCircleSettings_${appState.currentField}`;
-    const fieldSettings = {
-        showLegend: appState.showLegend
-    };
-    
-    localStorage.setItem(fieldSettingsKey, JSON.stringify(fieldSettings));
-}
-
-// Load circle diagram settings for current case (without metric)
-function loadCircleSettings() {
-    if (!appState.currentField || !appState.currentCase) return;
-    
-    // Load case-level settings
-    const settingsKey = `circleSettings_${appState.currentField}_${appState.currentCase}`;
-    const savedSettings = localStorage.getItem(settingsKey);
-    
-    if (savedSettings) {
-        const settings = JSON.parse(savedSettings);
-        
-        // Update state
-        appState.showValues = settings.showValues !== undefined ? settings.showValues : true;
-        appState.zoomEnabled = settings.zoomEnabled !== undefined ? settings.zoomEnabled : false;
-        appState.maxDepth = settings.maxDepth !== undefined ? settings.maxDepth : 5;
-        appState.showExtendedSettings = settings.showExtendedSettings !== undefined ? settings.showExtendedSettings : false; // Add this line
-        
-        // Update UI controls
-        document.getElementById('show-values-toggle').checked = appState.showValues;
-        document.getElementById('enable-zoom-toggle').checked = appState.zoomEnabled;
-        document.getElementById('max-depth-slider').value = appState.maxDepth;
-        document.getElementById('max-depth-value').textContent = appState.maxDepth;
-        
-        // Update extended settings visibility based on saved state
-        const extendedSettings = document.getElementById('extended-settings');
-        const settingsHeader = document.getElementById('settings-header');
-        const settingsArrow = document.getElementById('settings-arrow');
-        
-        if (extendedSettings && settingsHeader && settingsArrow) {
-            if (appState.showExtendedSettings) {
-                extendedSettings.classList.remove('hidden');
-                settingsHeader.classList.add('text-blue-500');
-                settingsArrow.classList.add('transform', 'rotate-180');
-            } else {
-                extendedSettings.classList.add('hidden');
-                settingsHeader.classList.remove('text-blue-500');
-                settingsArrow.classList.remove('transform', 'rotate-180');
-            }
-        }
-    }
-    
-    // Load field-level settings
-    const fieldSettingsKey = `fieldCircleSettings_${appState.currentField}`;
-    const savedFieldSettings = localStorage.getItem(fieldSettingsKey);
-    
-    if (savedFieldSettings) {
-        const fieldSettings = JSON.parse(savedFieldSettings);
-        appState.showLegend = fieldSettings.showLegend !== undefined ? fieldSettings.showLegend : true;
-    } else {
-        appState.showLegend = true; // Default to showing legend
-    }
-    
-    // Update legend toggle UI
-    const legendToggle = document.getElementById('show-legend-toggle');
-    if (legendToggle) {
-        legendToggle.checked = appState.showLegend;
-    }
-}
-
-// Remove case from order list
-function removeCaseFromOrder(field, caseName) {
-    const orderKey = `volumetricCasesOrder_${field}`;
-    
-    if (localStorage.getItem(orderKey)) {
-        let order = JSON.parse(localStorage.getItem(orderKey));
-        
-        // Remove case from order
-        const index = order.indexOf(caseName);
-        if (index !== -1) {
-            order.splice(index, 1);
-            localStorage.setItem(orderKey, JSON.stringify(order));
         }
     }
 }
