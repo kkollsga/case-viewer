@@ -644,40 +644,49 @@
                             <p id="ball-chart-subtitle" class="text-sm text-gray-500">Field Name</p>
                         </div>
                         <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm space-y-3 min-w-[200px]" style="pointer-events: auto;">
-                            <!-- Control panel content -->
+                            <!-- Settings header - styled like legend header -->
+                            <div class="text-xs font-light text-gray-500 mb-1.5 text-right uppercase tracking-wider cursor-pointer flex items-center justify-end" id="settings-header">
+                                <span>Metric</span>
+                                <i class="fas fa-chevron-down ml-1 text-[8px] transition-transform duration-200" id="settings-arrow"></i>
+                            </div>
+                            
+                            <!-- Always visible section - metric selection and total -->
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Circle Size Metric</label>
                                 <select id="metric-selector" class="block w-full pl-3 pr-10 py-2 text-sm text-gray-700 bg-blue-50 border border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 rounded-md font-medium">
                                     <!-- Metrics will be populated here -->
                                 </select>
                             </div>
                             <div id="current-unit" class="text-xs text-gray-700 font-medium bg-white px-3 py-1 rounded border border-gray-200"></div>
-                            <div class="flex items-center">
-                                <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
-                                    <input type="checkbox" id="show-values-toggle" class="sr-only peer">
-                                    <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                                    <span class="ml-2">Show Values</span>
-                                </label>
-                            </div>
-                            <div class="flex items-center">
-                                <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
-                                    <input type="checkbox" id="enable-zoom-toggle" class="sr-only peer">
-                                    <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                                    <span class="ml-2">Enable Zoom</span>
-                                </label>
-                            </div>
-                            <div class="flex items-center">
-                                <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
-                                    <input type="checkbox" id="show-legend-toggle" class="sr-only peer">
-                                    <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                                    <span class="ml-2">Show Legend</span>
-                                </label>
-                            </div>
-                            <div class="w-full">
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Max Depth</label>
-                                <div class="flex items-center space-x-2">
-                                    <input type="range" id="max-depth-slider" min="1" max="5" value="5" class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                                    <span id="max-depth-value" class="text-sm text-gray-700 w-8 text-center bg-white px-2 py-1 rounded border border-gray-200">5</span>
+                            
+                            <!-- Extended settings section - hidden by default -->
+                            <div id="extended-settings" class="space-y-3 hidden">
+                                <div class="flex items-center">
+                                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                        <input type="checkbox" id="show-values-toggle" class="sr-only peer">
+                                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                                        <span class="ml-2">Show Values</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center">
+                                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                        <input type="checkbox" id="enable-zoom-toggle" class="sr-only peer">
+                                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                                        <span class="ml-2">Enable Zoom</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center">
+                                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                        <input type="checkbox" id="show-legend-toggle" class="sr-only peer">
+                                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                                        <span class="ml-2">Show Legend</span>
+                                    </label>
+                                </div>
+                                <div class="w-full">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Max Depth</label>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="range" id="max-depth-slider" min="1" max="5" value="5" class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                        <span id="max-depth-value" class="text-sm text-gray-700 w-8 text-center bg-white px-2 py-1 rounded border border-gray-200">5</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -941,7 +950,8 @@ const appState = {
     colorMap: new Map(), // Store consistent colors by name
     colorUsageByLayer: new Map(), // Track which colors are used per layer
     colorIndexByLayer: new Map(), // Track next color index per layer
-    showLegend: true // Default to showing legend
+    showLegend: true, // Default to showing legend
+    showExtendedSettings: false // Default to hiding extended settings
 };
 
 // Theme colors for visualizations
@@ -1131,12 +1141,40 @@ function parseHeaders(headerLine) {
     };
 }
 
+function setupSettingsPanel() {
+    // Add toggle functionality for extended settings
+    const settingsHeader = document.getElementById('settings-header');
+    if (settingsHeader) {
+        settingsHeader.addEventListener('click', function() {
+            const extendedSettings = document.getElementById('extended-settings');
+            const settingsArrow = document.getElementById('settings-arrow');
+            
+            // Toggle visibility
+            if (extendedSettings.classList.contains('hidden')) {
+                extendedSettings.classList.remove('hidden');
+                settingsHeader.classList.add('text-blue-500'); // Highlight header when open
+                settingsArrow.classList.add('transform', 'rotate-180'); // Rotate arrow up
+                appState.showExtendedSettings = true;
+            } else {
+                extendedSettings.classList.add('hidden');
+                settingsHeader.classList.remove('text-blue-500');
+                settingsArrow.classList.remove('transform', 'rotate-180'); // Rotate arrow down
+                appState.showExtendedSettings = false;
+            }
+            
+            // Save settings
+            saveCircleSettings();
+        });
+    }
+}
+
 // Function to ensure active case styling immediately after initialization
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     setupEventListeners();
     setupFieldNameDropdown();
     setupMultiLevelGroupsUI(); // Set up event handlers for group level UI
+    setupSettingsPanel(); // Add this line
     
     // Initialize show values toggle
     document.getElementById('show-values-toggle').checked = appState.showValues;
@@ -4836,7 +4874,8 @@ function saveCircleSettings() {
     const settings = {
         showValues: appState.showValues,
         zoomEnabled: appState.zoomEnabled,
-        maxDepth: appState.maxDepth
+        maxDepth: appState.maxDepth,
+        showExtendedSettings: appState.showExtendedSettings // Add this line
     };
     
     localStorage.setItem(settingsKey, JSON.stringify(settings));
@@ -4865,12 +4904,30 @@ function loadCircleSettings() {
         appState.showValues = settings.showValues !== undefined ? settings.showValues : true;
         appState.zoomEnabled = settings.zoomEnabled !== undefined ? settings.zoomEnabled : false;
         appState.maxDepth = settings.maxDepth !== undefined ? settings.maxDepth : 5;
+        appState.showExtendedSettings = settings.showExtendedSettings !== undefined ? settings.showExtendedSettings : false; // Add this line
         
         // Update UI controls
         document.getElementById('show-values-toggle').checked = appState.showValues;
         document.getElementById('enable-zoom-toggle').checked = appState.zoomEnabled;
         document.getElementById('max-depth-slider').value = appState.maxDepth;
         document.getElementById('max-depth-value').textContent = appState.maxDepth;
+        
+        // Update extended settings visibility based on saved state
+        const extendedSettings = document.getElementById('extended-settings');
+        const settingsHeader = document.getElementById('settings-header');
+        const settingsArrow = document.getElementById('settings-arrow');
+        
+        if (extendedSettings && settingsHeader && settingsArrow) {
+            if (appState.showExtendedSettings) {
+                extendedSettings.classList.remove('hidden');
+                settingsHeader.classList.add('text-blue-500');
+                settingsArrow.classList.add('transform', 'rotate-180');
+            } else {
+                extendedSettings.classList.add('hidden');
+                settingsHeader.classList.remove('text-blue-500');
+                settingsArrow.classList.remove('transform', 'rotate-180');
+            }
+        }
     }
     
     // Load field-level settings
