@@ -614,7 +614,6 @@
         /* Cross plot legend styling */
         #cross-plot-legend {
             position: relative;
-            z-index: 10;
         }
 
         .cross-plot-point {
@@ -834,7 +833,7 @@
 
     <!-- Settings Menu Button (Right-click activation) -->
     <div class="fixed bottom-4 right-4">
-        <button id="settings-button" class="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg">
+        <button id="settings-button" class="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg" style="z-index: 1200;">
             <i class="fas fa-cog"></i>
         </button>
     </div>
@@ -4708,15 +4707,30 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     legendContainer.id = 'cross-plot-legend';
     legendContainer.className = 'bg-white/95 border border-gray-200 rounded-lg p-3 shadow-sm mt-1 relative';
     
-    // Add legend title styled like bubble chart legend
-    const legendTitle = document.createElement('div');
-    legendTitle.className = 'text-xs font-light text-gray-500 mb-3 text-right uppercase tracking-wider legend-title-text';
-    legendTitle.textContent = 'Legend';
-    legendContainer.appendChild(legendTitle);
+    // Create symbol generator for legend items
+    const symbolGenerator = d3.symbol().size(80);
     
-    // Add grouping selector positioned absolutely
+    // GROUP SECTION
+    const groupSection = document.createElement('div');
+    groupSection.className = 'mb-3';
+    
+    // Group title with "Show more" toggle and grouping selector on the same row
+    const groupTitleRow = document.createElement('div');
+    groupTitleRow.className = 'flex justify-between items-center mb-1';
+    
+    // Left side - just the title now
+    const groupTitle = document.createElement('div');
+    groupTitle.className = 'text-xs font-light text-gray-500 uppercase tracking-wider legend-title-text';
+    groupTitle.textContent = 'Groups (Colors)';
+    groupTitleRow.appendChild(groupTitle);
+    
+    // Right side - contains both the grouping selector and the show more button
+    const rightSide = document.createElement('div');
+    rightSide.className = 'flex items-center gap-3';
+    
+    // Create the grouping selector (now on the right)
     const groupingSelector = document.createElement('div');
-    groupingSelector.className = 'absolute top-3 left-3 flex items-center gap-2';
+    groupingSelector.className = 'flex items-center gap-2';
     
     const groupingLabel = document.createElement('label');
     groupingLabel.className = 'text-xs text-gray-700';
@@ -4726,7 +4740,7 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     // Get the grouping level for the cross plot
     const groupingLevel = parseInt(localStorage.getItem(`crossPlotGroupingLevel_${appState.currentField}`) || '1');
     
-    // Create a new selector
+    // Create a selector
     const selector = document.createElement('select');
     selector.id = 'cross-plot-grouping';
     selector.className = 'text-xs border border-gray-300 rounded py-0.5 px-2';
@@ -4766,29 +4780,13 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     });
     
     groupingSelector.appendChild(selector);
-    legendContainer.appendChild(groupingSelector);
-    
-    // Symbol generator for legend
-    const symbolGenerator = d3.symbol().size(80);
-    
-    // GROUP SECTION
-    const groupSection = document.createElement('div');
-    groupSection.className = 'mb-3';
-    
-    // Group title with "Show more" toggle on the right
-    const groupTitleRow = document.createElement('div');
-    groupTitleRow.className = 'flex justify-between items-center mb-1';
-    
-    const groupTitle = document.createElement('div');
-    groupTitle.className = 'text-xs font-semibold text-gray-700';
-    groupTitle.textContent = 'Groups (Colors)';
-    groupTitleRow.appendChild(groupTitle);
+    rightSide.appendChild(groupingSelector);
     
     // Determine if we need collapsible section
     const maxInitialGroups = 8;
     const hasExtraGroups = uniqueGroups.length > maxInitialGroups;
     
-    // Add toggle button to the title row if needed
+    // Add toggle button to the right side if needed
     if (hasExtraGroups) {
         const toggleButton = document.createElement('button');
         toggleButton.className = 'text-xs text-blue-600 hover:text-blue-800';
@@ -4806,28 +4804,26 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
             }
         };
         
-        groupTitleRow.appendChild(toggleButton);
+        rightSide.appendChild(toggleButton);
     }
+    
+    // Add the right side to the title row
+    groupTitleRow.appendChild(rightSide);
     
     groupSection.appendChild(groupTitleRow);
     
-    // Create group legend items container - single line layout
+    // Rest of the code remains the same...
     const groupItemsContainer = document.createElement('div');
     groupItemsContainer.className = 'flex flex-wrap gap-x-4 gap-y-1';
     
-    // Add initial groups (up to maxInitialGroups)
+    // Add initial groups
     uniqueGroups.slice(0, maxInitialGroups).forEach(groupName => {
         const groupColumn = groups.find(g => g.groupName === groupName)?.groupColumn || '';
         const color = getColorForGroup(groupName, groupColumn);
-        
-        // Check visibility state with null safety
         const isVisible = appState.crossPlotVisibility?.groups?.[groupName] !== false;
-        
         const item = createColorLegendItem(groupName, color, isVisible);
         
-        // Add click handler to toggle visibility with null safety
         item.addEventListener('click', function() {
-            // Ensure the objects exist
             if (!appState.crossPlotVisibility) {
                 appState.crossPlotVisibility = { groups: {}, cases: {} };
             }
@@ -4835,16 +4831,13 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
                 appState.crossPlotVisibility.groups = {};
             }
             
-            // Toggle visibility state
             const isCurrentlyVisible = appState.crossPlotVisibility.groups[groupName] !== false;
             appState.crossPlotVisibility.groups[groupName] = !isCurrentlyVisible;
             
-            // Update item appearance
             this.classList.toggle('opacity-50', !appState.crossPlotVisibility.groups[groupName]);
             this.classList.toggle('line-through', !appState.crossPlotVisibility.groups[groupName]);
             this.title = appState.crossPlotVisibility.groups[groupName] ? "Click to hide" : "Click to show";
             
-            // Update the plot's visibility without redrawing
             if (updateCallback) {
                 updateCallback();
             }
@@ -4867,15 +4860,10 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
         uniqueGroups.slice(maxInitialGroups).forEach(groupName => {
             const groupColumn = groups.find(g => g.groupName === groupName)?.groupColumn || '';
             const color = getColorForGroup(groupName, groupColumn);
-            
-            // Check visibility state with null safety
             const isVisible = appState.crossPlotVisibility?.groups?.[groupName] !== false;
-            
             const item = createColorLegendItem(groupName, color, isVisible);
             
-            // Add click handler to toggle visibility with null safety
             item.addEventListener('click', function() {
-                // Ensure the objects exist
                 if (!appState.crossPlotVisibility) {
                     appState.crossPlotVisibility = { groups: {}, cases: {} };
                 }
@@ -4883,16 +4871,13 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
                     appState.crossPlotVisibility.groups = {};
                 }
                 
-                // Toggle visibility state
                 const isCurrentlyVisible = appState.crossPlotVisibility.groups[groupName] !== false;
                 appState.crossPlotVisibility.groups[groupName] = !isCurrentlyVisible;
                 
-                // Update item appearance
                 this.classList.toggle('opacity-50', !appState.crossPlotVisibility.groups[groupName]);
                 this.classList.toggle('line-through', !appState.crossPlotVisibility.groups[groupName]);
                 this.title = appState.crossPlotVisibility.groups[groupName] ? "Click to hide" : "Click to show";
                 
-                // Update the plot's visibility without redrawing
                 if (updateCallback) {
                     updateCallback();
                 }
@@ -4914,7 +4899,8 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     caseTitleRow.className = 'flex justify-between items-center mb-1';
     
     const caseTitle = document.createElement('div');
-    caseTitle.className = 'text-xs font-semibold text-gray-700';
+    // Apply the legend title styling to the case title
+    caseTitle.className = 'text-xs font-light text-gray-500 uppercase tracking-wider legend-title-text';
     caseTitle.textContent = 'Cases (Shapes)';
     caseTitleRow.appendChild(caseTitle);
     
@@ -4945,11 +4931,11 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     
     caseSection.appendChild(caseTitleRow);
     
-    // Create case legend items container - single line layout
+    // Create case legend items container
     const caseItemsContainer = document.createElement('div');
     caseItemsContainer.className = 'flex flex-wrap gap-x-4 gap-y-1';
     
-    // Add initial cases (up to maxInitialCases)
+    // Add initial cases
     uniqueCases.slice(0, maxInitialCases).forEach(caseName => {
         // Check visibility state with null safety
         const isVisible = appState.crossPlotVisibility?.cases?.[caseName] !== false;
@@ -4992,6 +4978,7 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
         caseItemsContainer.appendChild(item);
     });
     
+    // Append the case items container to the case section
     caseSection.appendChild(caseItemsContainer);
     
     // Add collapsible section for extra cases if needed
