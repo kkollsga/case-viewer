@@ -3039,7 +3039,12 @@ function updateLegend(hierarchicalData, selectedLayer, visibleNodes = null) {
     // Update layer label and slider
     const layerLabel = document.getElementById('legend-layer-label');
     if (layerLabel) {
-        layerLabel.textContent = 'Layer ' + selectedLayer;
+        // MODIFIED: Show grouping type instead of "Layer X"
+        if (layerColumnName) {
+            layerLabel.textContent = layerColumnName;
+        } else {
+            layerLabel.textContent = `Layer ${selectedLayer}`;
+        }
     }
     
     const slider = document.getElementById('legend-layer-slider');
@@ -4005,16 +4010,25 @@ function populateCrossPlotGroupingLevels() {
     
     // Get maximum grouping levels from current field cases
     let maxLevels = 1;
+    let groupColumnsByLevel = {}; // Store column names by level
     
     if (appState.currentField) {
         const fieldKey = `volumetricCases_${appState.currentField}`;
         const cases = JSON.parse(localStorage.getItem(fieldKey) || '{}');
         
-        // Find max levels across all cases
+        // Find max levels across all cases and collect column names
         Object.values(cases).forEach(caseData => {
             const volumeGroups = caseData.volumeGroups || {};
             const groupColumns = volumeGroups.columns || [];
             maxLevels = Math.max(maxLevels, groupColumns.length);
+            
+            // Collect column names by level
+            groupColumns.forEach((column, index) => {
+                if (!groupColumnsByLevel[index + 1]) {
+                    groupColumnsByLevel[index + 1] = new Set();
+                }
+                groupColumnsByLevel[index + 1].add(column);
+            });
         });
     }
     
@@ -4022,7 +4036,20 @@ function populateCrossPlotGroupingLevels() {
     for (let i = 1; i <= maxLevels; i++) {
         const option = document.createElement('option');
         option.value = i;
-        option.textContent = `Level ${i}`;
+        
+        // MODIFIED: Show grouping type instead of "Level X"
+        if (groupColumnsByLevel[i] && groupColumnsByLevel[i].size === 1) {
+            // If there's only one unique column name for this level, use it
+            option.textContent = Array.from(groupColumnsByLevel[i])[0];
+        } else if (groupColumnsByLevel[i] && groupColumnsByLevel[i].size > 1) {
+            // If there are multiple column names, show them with a slash
+            const columnNames = Array.from(groupColumnsByLevel[i]).join('/');
+            option.textContent = `${columnNames}`;
+        } else {
+            // Fallback to Level X if no column names found
+            option.textContent = `Level ${i}`;
+        }
+        
         selector.appendChild(option);
     }
     
@@ -4710,6 +4737,33 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     // Create symbol generator for legend items
     const symbolGenerator = d3.symbol().size(80);
     
+    // Get the grouping level and column name for the current level
+    const groupingLevel = parseInt(localStorage.getItem(`crossPlotGroupingLevel_${appState.currentField}`) || '1');
+    let groupColumnName = '';
+    
+    // Determine the current grouping column name
+    if (groups.length > 0) {
+        // Try to get the first item's group column
+        groupColumnName = groups[0].groupColumn || '';
+    }
+    
+    if (!groupColumnName && appState.currentField) {
+        // If we couldn't get it from groups, try looking it up from the field's cases
+        const fieldKey = `volumetricCases_${appState.currentField}`;
+        const cases = JSON.parse(localStorage.getItem(fieldKey) || '{}');
+        
+        // Find the first case with this grouping level
+        for (const caseName in cases) {
+            const volumeGroups = cases[caseName].volumeGroups || {};
+            const groupColumns = volumeGroups.columns || [];
+            
+            if (groupColumns[groupingLevel - 1]) {
+                groupColumnName = groupColumns[groupingLevel - 1];
+                break;
+            }
+        }
+    }
+    
     // GROUP SECTION
     const groupSection = document.createElement('div');
     groupSection.className = 'mb-3';
@@ -4721,7 +4775,14 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     // Left side - just the title now
     const groupTitle = document.createElement('div');
     groupTitle.className = 'text-xs font-light text-gray-500 uppercase tracking-wider legend-title-text';
-    groupTitle.textContent = 'Groups (Colors)';
+    
+    // MODIFIED: Show grouping type in header
+    if (groupColumnName) {
+        groupTitle.textContent = `${groupColumnName} (Colors)`;
+    } else {
+        groupTitle.textContent = 'Groups (Colors)';
+    }
+    
     groupTitleRow.appendChild(groupTitle);
     
     // Right side - contains only the grouping selector now
@@ -4738,25 +4799,31 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     groupingSelector.appendChild(groupingLabel);
     
     // Get the grouping level for the cross plot
-    const groupingLevel = parseInt(localStorage.getItem(`crossPlotGroupingLevel_${appState.currentField}`) || '1');
-    
-    // Create a selector
     const selector = document.createElement('select');
     selector.id = 'cross-plot-grouping';
     selector.className = 'text-xs border border-gray-300 rounded py-0.5 px-2';
     
     // Get maximum grouping levels from current field cases
     let maxLevels = 1;
+    let groupColumnsByLevel = {}; // Store column names by level
     
     if (appState.currentField) {
         const fieldKey = `volumetricCases_${appState.currentField}`;
         const cases = JSON.parse(localStorage.getItem(fieldKey) || '{}');
         
-        // Find max levels across all cases
+        // Find max levels across all cases and collect column names
         Object.values(cases).forEach(caseData => {
             const volumeGroups = caseData.volumeGroups || {};
             const groupColumns = volumeGroups.columns || [];
             maxLevels = Math.max(maxLevels, groupColumns.length);
+            
+            // Collect column names by level
+            groupColumns.forEach((column, index) => {
+                if (!groupColumnsByLevel[index + 1]) {
+                    groupColumnsByLevel[index + 1] = new Set();
+                }
+                groupColumnsByLevel[index + 1].add(column);
+            });
         });
     }
     
@@ -4764,8 +4831,21 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     for (let i = 1; i <= maxLevels; i++) {
         const option = document.createElement('option');
         option.value = i;
-        option.textContent = `Level ${i}`;
         option.selected = (i === groupingLevel);
+        
+        // MODIFIED: Show grouping type instead of "Level X"
+        if (groupColumnsByLevel[i] && groupColumnsByLevel[i].size === 1) {
+            // If there's only one unique column name for this level, use it
+            option.textContent = Array.from(groupColumnsByLevel[i])[0];
+        } else if (groupColumnsByLevel[i] && groupColumnsByLevel[i].size > 1) {
+            // If there are multiple column names, show them with a slash
+            const columnNames = Array.from(groupColumnsByLevel[i]).join('/');
+            option.textContent = `${columnNames}`;
+        } else {
+            // Fallback to Level X if no column names found
+            option.textContent = `Level ${i}`;
+        }
+        
         selector.appendChild(option);
     }
     
