@@ -4714,7 +4714,7 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     const groupSection = document.createElement('div');
     groupSection.className = 'mb-3';
     
-    // Group title with "Show more" toggle and grouping selector on the same row
+    // Group title with grouping selector on the same row
     const groupTitleRow = document.createElement('div');
     groupTitleRow.className = 'flex justify-between items-center mb-1';
     
@@ -4724,11 +4724,11 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     groupTitle.textContent = 'Groups (Colors)';
     groupTitleRow.appendChild(groupTitle);
     
-    // Right side - contains both the grouping selector and the show more button
+    // Right side - contains only the grouping selector now
     const rightSide = document.createElement('div');
     rightSide.className = 'flex items-center gap-3';
     
-    // Create the grouping selector (now on the right)
+    // Create the grouping selector
     const groupingSelector = document.createElement('div');
     groupingSelector.className = 'flex items-center gap-2';
     
@@ -4782,37 +4782,16 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     groupingSelector.appendChild(selector);
     rightSide.appendChild(groupingSelector);
     
-    // Determine if we need collapsible section
-    const maxInitialGroups = 8;
-    const hasExtraGroups = uniqueGroups.length > maxInitialGroups;
-    
-    // Add toggle button to the right side if needed
-    if (hasExtraGroups) {
-        const toggleButton = document.createElement('button');
-        toggleButton.className = 'text-xs text-blue-600 hover:text-blue-800';
-        toggleButton.textContent = 'Show more';
-        toggleButton.onclick = function() {
-            const container = document.getElementById('group-legend-extra');
-            const isHidden = container.classList.contains('hidden');
-            
-            if (isHidden) {
-                container.classList.remove('hidden');
-                this.textContent = 'Show fewer';
-            } else {
-                container.classList.add('hidden');
-                this.textContent = 'Show more';
-            }
-        };
-        
-        rightSide.appendChild(toggleButton);
-    }
-    
     // Add the right side to the title row
     groupTitleRow.appendChild(rightSide);
     
     groupSection.appendChild(groupTitleRow);
     
-    // Rest of the code remains the same...
+    // Determine if we need collapsible section
+    const maxInitialGroups = 8;
+    const hasExtraGroups = uniqueGroups.length > maxInitialGroups;
+    
+    // Create group items container
     const groupItemsContainer = document.createElement('div');
     groupItemsContainer.className = 'flex flex-wrap gap-x-4 gap-y-1';
     
@@ -4845,6 +4824,27 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
         
         groupItemsContainer.appendChild(item);
     });
+    
+    // Add "Show more" button at the end of the items list if needed
+    if (hasExtraGroups) {
+        const toggleButton = document.createElement('div');
+        toggleButton.className = 'text-xs text-blue-600 hover:text-blue-800 cursor-pointer flex items-center px-1';
+        toggleButton.innerHTML = '<i class="fas fa-plus-circle mr-1"></i> Show more';
+        toggleButton.onclick = function() {
+            const container = document.getElementById('group-legend-extra');
+            const isHidden = container.classList.contains('hidden');
+            
+            if (isHidden) {
+                container.classList.remove('hidden');
+                this.innerHTML = '<i class="fas fa-minus-circle mr-1"></i> Show fewer';
+            } else {
+                container.classList.add('hidden');
+                this.innerHTML = '<i class="fas fa-plus-circle mr-1"></i> Show more';
+            }
+        };
+        
+        groupItemsContainer.appendChild(toggleButton);
+    }
     
     groupSection.appendChild(groupItemsContainer);
     
@@ -4904,36 +4904,15 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
     caseTitle.textContent = 'Cases (Shapes)';
     caseTitleRow.appendChild(caseTitle);
     
-    // Determine if we need collapsible section for cases
-    const maxInitialCases = 5;
-    const hasExtraCases = uniqueCases.length > maxInitialCases;
-    
-    // Add toggle button to the case title row if needed
-    if (hasExtraCases) {
-        const toggleButton = document.createElement('button');
-        toggleButton.className = 'text-xs text-blue-600 hover:text-blue-800';
-        toggleButton.textContent = 'Show more';
-        toggleButton.onclick = function() {
-            const container = document.getElementById('case-legend-extra');
-            const isHidden = container.classList.contains('hidden');
-            
-            if (isHidden) {
-                container.classList.remove('hidden');
-                this.textContent = 'Show fewer';
-            } else {
-                container.classList.add('hidden');
-                this.textContent = 'Show more';
-            }
-        };
-        
-        caseTitleRow.appendChild(toggleButton);
-    }
-    
     caseSection.appendChild(caseTitleRow);
     
     // Create case legend items container
     const caseItemsContainer = document.createElement('div');
     caseItemsContainer.className = 'flex flex-wrap gap-x-4 gap-y-1';
+    
+    // Determine if we need collapsible section for cases
+    const maxInitialCases = 5;
+    const hasExtraCases = uniqueCases.length > maxInitialCases;
     
     // Add initial cases
     uniqueCases.slice(0, maxInitialCases).forEach(caseName => {
@@ -4977,6 +4956,27 @@ function createCompactCrossPlotLegend(container, groups, caseToSymbol, updateCal
         
         caseItemsContainer.appendChild(item);
     });
+    
+    // Add "Show more" button at the end of the case items if needed
+    if (hasExtraCases) {
+        const toggleButton = document.createElement('div');
+        toggleButton.className = 'text-xs text-blue-600 hover:text-blue-800 cursor-pointer flex items-center px-1';
+        toggleButton.innerHTML = '<i class="fas fa-plus-circle mr-1"></i> Show more';
+        toggleButton.onclick = function() {
+            const container = document.getElementById('case-legend-extra');
+            const isHidden = container.classList.contains('hidden');
+            
+            if (isHidden) {
+                container.classList.remove('hidden');
+                this.innerHTML = '<i class="fas fa-minus-circle mr-1"></i> Show fewer';
+            } else {
+                container.classList.add('hidden');
+                this.innerHTML = '<i class="fas fa-plus-circle mr-1"></i> Show more';
+            }
+        };
+        
+        caseItemsContainer.appendChild(toggleButton);
+    }
     
     // Append the case items container to the case section
     caseSection.appendChild(caseItemsContainer);
