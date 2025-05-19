@@ -818,22 +818,16 @@
         </div>
 
         <!-- Cross Plot Area with Toggle -->
-        <div class="bg-white rounded-lg shadow-md p-4 mb-6 overflow-x-auto">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold">Cross Plot</h2>
-                <div class="flex items-center">
-                    <button id="toggle-cross-plot" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Cross Plot Container - Hidden by Default -->
-            <div id="cross-plot-container" class="hidden transition-all duration-300">
-                <!-- Removed the original grouping selector -->
-                <div id="cross-plot" class="w-full h-[500px] relative">
-                    <!-- SVG will be inserted here -->
-                </div>
+        <button id="toggle-cross-plot" class="text-xs font-light text-gray-500 hover:text-blue-600 uppercase tracking-wider flex items-center mb-4">
+            <span class="mr-2">Cross Plot</span>
+            <i class="fas fa-chevron-down"></i>
+        </button>
+
+        <!-- White container that will be hidden when collapsed -->
+        <div id="cross-plot-outer-container" class="bg-white rounded-lg shadow-md p-4 mb-6 overflow-x-auto hidden">
+            <!-- Cross Plot Container -->
+            <div id="cross-plot" class="w-full h-[500px] relative">
+                <!-- SVG will be inserted here -->
             </div>
         </div>
     </div>
@@ -1245,6 +1239,20 @@ function initializeApp() {
     // Initialize cross plot state
     appState.crossPlotXMetric = 'bulkVolume';
     appState.crossPlotYMetric = 'stoiip';
+    
+    // Initialize cross plot toggle state - make sure the element exists first
+    const crossPlotToggle = document.getElementById('toggle-cross-plot');
+    const crossPlotOuterContainer = document.getElementById('cross-plot-outer-container');
+    
+    if (crossPlotToggle && crossPlotOuterContainer) {
+        // Start with container hidden and down arrow
+        crossPlotOuterContainer.classList.add('hidden');
+        const icon = crossPlotToggle.querySelector('i');
+        if (icon) {
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        }
+    }
 }
 
 // Initialize Sortable.js for case list
@@ -3949,7 +3957,7 @@ function getVolumeGroupsFromUI(container) {
 function setupCrossPlot() {
     // Toggle cross plot visibility
     document.getElementById('toggle-cross-plot').addEventListener('click', function() {
-        const container = document.getElementById('cross-plot-container');
+        const container = document.getElementById('cross-plot-outer-container');
         const icon = this.querySelector('i');
         
         if (container.classList.contains('hidden')) {
@@ -4099,257 +4107,11 @@ function extractGroupsForCrossPlot() {
 }
 
 function updateCrossPlot() {
+    // Simple check - if any required element is missing, exit early
     const container = document.getElementById('cross-plot');
-    if (!container || container.closest('#cross-plot-container').classList.contains('hidden')) {
-        return; // Don't update if container is hidden
-    }
-    
-    // Store the visible state of groups and cases
-    if (!appState.crossPlotVisibility) {
-        appState.crossPlotVisibility = {
-            groups: {},
-            cases: {}
-        };
-    }
-    
-    // Get the groups data
-    const groups = extractGroupsForCrossPlot();
-    if (groups.length === 0) {
-        container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">No group data available</div>';
+    const outerContainer = document.getElementById('cross-plot-outer-container');
+    if (!container || !outerContainer || outerContainer.classList.contains('hidden')) {
         return;
-    }
-    
-    // Use default metrics if not already set
-    if (!appState.crossPlotXMetric) {
-        appState.crossPlotXMetric = 'bulkVolume';
-    }
-    if (!appState.crossPlotYMetric) {
-        appState.crossPlotYMetric = 'stoiip';
-    }
-    
-    // Clear container
-    container.innerHTML = '';
-    
-    // Add centered title
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'text-center font-semibold text-lg mb-2 text-gray-700';
-    titleDiv.textContent = 'Case Comparison Chart';
-    container.appendChild(titleDiv);
-    
-    // Create the SVG - Increased height to 600px
-    const width = container.clientWidth;
-    const height = 600;
-    const margin = { top: 40, right: 40, bottom: 60, left: 80 };
-    
-    const svg = d3.select('#cross-plot')
-        .append('svg')
-        .attr('width', width)
-        .attr('height', height)
-        .attr('viewBox', [0, 0, width, height]);
-    
-    // Calculate inner dimensions
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
-    
-    // Extract unique cases and create shape mapping
-    const uniqueCases = [...new Set(groups.map(g => g.caseName))];
-    const symbolTypes = [
-        d3.symbolCircle, 
-        d3.symbolSquare, 
-        d3.symbolTriangle, 
-        d3.symbolDiamond, 
-        d3.symbolStar, 
-        d3.symbolWye,
-        d3.symbolCross
-    ];
-    
-    const caseToSymbol = {};
-    uniqueCases.forEach((caseName, i) => {
-        caseToSymbol[caseName] = symbolTypes[i % symbolTypes.length];
-    });
-    
-    // Extract unique groups
-    const uniqueGroups = [...new Set(groups.map(g => g.groupName))].sort();
-    
-    // Initialize visibility states if needed
-    uniqueGroups.forEach(group => {
-        if (appState.crossPlotVisibility.groups[group] === undefined) {
-            appState.crossPlotVisibility.groups[group] = true;
-        }
-    });
-    
-    uniqueCases.forEach(caseName => {
-        if (appState.crossPlotVisibility.cases[caseName] === undefined) {
-            appState.crossPlotVisibility.cases[caseName] = true;
-        }
-    });
-    
-    // Create scales
-    const xValues = groups
-        .filter(g => appState.crossPlotVisibility.groups[g.groupName] && 
-                    appState.crossPlotVisibility.cases[g.caseName])
-        .map(g => g.data[appState.crossPlotXMetric]);
-    
-    const yValues = groups
-        .filter(g => appState.crossPlotVisibility.groups[g.groupName] && 
-                    appState.crossPlotVisibility.cases[g.caseName])
-        .map(g => g.data[appState.crossPlotYMetric]);
-    
-    // Add a small padding to the domain
-    const xExtent = d3.extent(xValues.length ? xValues : [0, 1]);
-    const yExtent = d3.extent(yValues.length ? yValues : [0, 1]);
-    
-    // Add 5% padding to the domains
-    const xPadding = (xExtent[1] - xExtent[0]) * 0.05;
-    const yPadding = (yExtent[1] - yExtent[0]) * 0.05;
-    
-    const xScale = d3.scaleLinear()
-        .domain([Math.max(0, xExtent[0] - xPadding), xExtent[1] + xPadding])
-        .range([0, innerWidth]);
-    
-    const yScale = d3.scaleLinear()
-        .domain([Math.max(0, yExtent[0] - yPadding), yExtent[1] + yPadding])
-        .range([innerHeight, 0]);
-    
-    // Group element for the inner plot area
-    const g = svg.append('g')
-        .attr('transform', `translate(${margin.left},${margin.top})`);
-    
-    // Create axis elements
-    const xAxis = g.append('g')
-        .attr('transform', `translate(0,${innerHeight})`)
-        .call(d3.axisBottom(xScale));
-    
-    const yAxis = g.append('g')
-        .call(d3.axisLeft(yScale));
-    
-    // Add axis titles
-    const xTitle = svg.append('text')
-        .attr('class', 'axis-title x-axis-title')
-        .attr('text-anchor', 'middle')
-        .attr('x', width / 2)
-        .attr('y', height - 10)
-        .style('font-size', '12px')
-        .style('cursor', 'pointer')
-        .text(formatMetricName(appState.crossPlotXMetric));
-    
-    const yTitle = svg.append('text')
-        .attr('class', 'axis-title y-axis-title')
-        .attr('text-anchor', 'middle')
-        .attr('transform', `translate(${margin.left / 3},${height / 2}) rotate(-90)`)
-        .style('font-size', '12px')
-        .style('cursor', 'pointer')
-        .text(formatMetricName(appState.crossPlotYMetric));
-    
-    // Create or use shared tooltip
-    let tooltip;
-    if (window.sharedVisualizationTooltip) {
-        tooltip = window.sharedVisualizationTooltip;
-    } else {
-        // Remove any existing tooltips
-        d3.selectAll('.cross-plot-tooltip').remove();
-        
-        // Create fixed-position tooltip
-        tooltip = d3.select('body')
-            .append('div')
-            .attr('class', 'legend-shared-tooltip cross-plot-tooltip')
-            .style('opacity', 0);
-    }
-    
-    // Create symbol generator
-    const symbolGenerator = d3.symbol().size(160);
-    
-    // Create data points with shapes instead of circles - filter by visibility
-    g.selectAll('.data-point')
-        .data(groups.filter(g => 
-            appState.crossPlotVisibility.groups[g.groupName] && 
-            appState.crossPlotVisibility.cases[g.caseName]))
-        .join('path')
-        .attr('class', d => `cross-plot-point group-${d.groupName.replace(/\s+/g, '-')} case-${d.caseName.replace(/\s+/g, '-')}`)
-        .attr('transform', d => `translate(${xScale(d.data[appState.crossPlotXMetric])},${yScale(d.data[appState.crossPlotYMetric])})`)
-        .attr('d', d => symbolGenerator.type(caseToSymbol[d.caseName])())
-        .attr('fill', d => getColorForGroup(d.groupName, d.groupColumn))
-        .attr('stroke', '#333')
-        .attr('stroke-width', 1)
-        .attr('opacity', 0.85)
-        .on('mouseover', function(event, d) {
-            // Transition the tooltip
-            tooltip.transition()
-                .duration(200)
-                .style('opacity', 0.9);
-                
-            // Format tooltip content
-            const content = `
-                <div class="font-semibold">${d.groupName} (${d.caseName})</div>
-                <div>${formatMetricName(appState.crossPlotXMetric)}: <strong>${formatNumber(d.data[appState.crossPlotXMetric])}</strong></div>
-                <div>${formatMetricName(appState.crossPlotYMetric)}: <strong>${formatNumber(d.data[appState.crossPlotYMetric])}</strong></div>
-                <div class="border-t border-gray-200 mt-2 pt-2">
-                    <div>NTG: <strong>${formatPercent(d.data.ntg)}</strong></div>
-                    <div>Porosity: <strong>${formatPercent(d.data.porosity)}</strong></div>
-                    <div>So: <strong>${formatPercent(d.data.soOil)}</strong></div>
-                    <div>Sg: <strong>${formatPercent(d.data.sgGas)}</strong></div>
-                    <div>1/Bo: <strong>${formatNumber(d.data.boOil)}</strong></div>
-                    <div>1/Bg: <strong>${formatNumber(d.data.bgGas)}</strong></div>
-                </div>
-            `;
-            
-            // Set content without repositioning
-            tooltip.html(content);
-                
-            // Highlight all points with the same group name
-            g.selectAll('.cross-plot-point')
-                .filter(c => c.groupName === d.groupName)
-                .attr('stroke-width', 2)
-                .attr('opacity', 1);
-        })
-        .on('mouseout', function() {
-            tooltip.transition()
-                .duration(500)
-                .style('opacity', 0);
-                
-            // Reset highlight for all points
-            g.selectAll('.cross-plot-point')
-                .attr('stroke-width', 1)
-                .attr('opacity', 0.85);
-        });
-    
-    // Add click event to axis titles to show metric selection dropdown
-    xTitle.on('click', function() {
-        showMetricDropdown('x', this);
-    });
-    
-    yTitle.on('click', function() {
-        showMetricDropdown('y', this);
-    });
-    
-    // Add grid lines
-    g.append('g')
-        .attr('class', 'grid')
-        .attr('opacity', 0.2)
-        .call(d3.axisBottom(xScale)
-            .tickSize(innerHeight)
-            .tickFormat(''))
-        .selectAll('line')
-        .attr('stroke', '#ddd');
-    
-    g.append('g')
-        .attr('class', 'grid')
-        .attr('opacity', 0.2)
-        .call(d3.axisLeft(yScale)
-            .tickSize(-innerWidth)
-            .tickFormat(''))
-        .selectAll('line')
-        .attr('stroke', '#ddd');
-        
-    // Add compact legend below the plot
-    createCompactCrossPlotLegend(container, groups, caseToSymbol);
-}
-
-
-function updateCrossPlot() {
-    const container = document.getElementById('cross-plot');
-    if (!container || container.closest('#cross-plot-container').classList.contains('hidden')) {
-        return; // Don't update if container is hidden
     }
     
     // Get the groups data
