@@ -1015,6 +1015,18 @@
                 </div>
             </div>
             
+            <!-- Value Conversions section (NEW) -->
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="block text-sm font-medium text-gray-700">Value Conversions</label>
+                    <div class="text-xs text-gray-500">Convert discrete column values</div>
+                </div>
+                
+                <div id="edit-value-conversions-container" class="space-y-2">
+                    <!-- Value conversion toggles will be added here dynamically -->
+                </div>
+            </div>
+            
             <!-- Timestamp for editing -->
             <div class="mb-4" id="edit-timestamp-container">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Timestamp</label>
@@ -2058,6 +2070,14 @@ function loadVolumetricData() {
         if (cases && cases[appState.currentCase]) {
             appState.volumetricData = cases[appState.currentCase];
             
+            // Apply value conversions if they exist
+            if (appState.volumetricData.valueConversions) {
+                appState.volumetricData.data = applyValueConversions(
+                    appState.volumetricData.data,
+                    appState.volumetricData.valueConversions
+                );
+            }
+            
             // Set volume groups from case data if available
             if (appState.volumetricData.volumeGroups) {
                 appState.volumeGroups = appState.volumetricData.volumeGroups;
@@ -2081,6 +2101,150 @@ function loadVolumetricData() {
     } else {
         clearData();
     }
+}
+
+// Create value conversion UI for a column
+function createValueConversionUI(container, columnName, data, existingConversion) {
+    const conversionDiv = document.createElement('div');
+    conversionDiv.className = 'mb-4 border border-gray-200 rounded-lg p-3';
+    conversionDiv.dataset.column = columnName;
+    
+    // Header with toggle
+    const header = document.createElement('div');
+    header.className = 'flex items-center justify-between mb-2';
+    
+    const label = document.createElement('label');
+    label.className = 'inline-flex items-center cursor-pointer text-sm text-gray-700';
+    
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.className = 'sr-only peer';
+    toggle.checked = existingConversion?.enabled || false;
+    toggle.id = `conversion-toggle-${columnName}`;
+    
+    const toggleDiv = document.createElement('div');
+    toggleDiv.className = 'relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[""] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500';
+    
+    const labelText = document.createElement('span');
+    labelText.className = 'ml-2';
+    labelText.textContent = `Convert values for "${columnName}"`;
+    
+    label.appendChild(toggle);
+    label.appendChild(toggleDiv);
+    label.appendChild(labelText);
+    header.appendChild(label);
+    
+    conversionDiv.appendChild(header);
+    
+    // Collapsible content
+    const content = document.createElement('div');
+    content.className = 'overflow-hidden transition-all duration-300';
+    content.style.maxHeight = toggle.checked ? '400px' : '0';
+    
+    // Get unique values
+    const uniqueValues = [...new Set(data.map(row => row[columnName]))].sort();
+    
+    // Create table
+    const table = document.createElement('table');
+    table.className = 'w-full text-sm';
+    
+    const thead = document.createElement('thead');
+    thead.innerHTML = `
+        <tr class="border-b">
+            <th class="text-left py-1 px-2">Original Value</th>
+            <th class="text-left py-1 px-2">Converted Value</th>
+        </tr>
+    `;
+    table.appendChild(thead);
+    
+    const tbody = document.createElement('tbody');
+    uniqueValues.forEach(value => {
+        const row = document.createElement('tr');
+        row.className = 'border-b';
+        
+        const origCell = document.createElement('td');
+        origCell.className = 'py-1 px-2';
+        origCell.textContent = value || '(empty)';
+        
+        const convertCell = document.createElement('td');
+        convertCell.className = 'py-1 px-2';
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500';
+        input.placeholder = value || '(empty)';
+        input.value = existingConversion?.mappings?.[value] || '';
+        input.dataset.originalValue = value;
+        
+        convertCell.appendChild(input);
+        row.appendChild(origCell);
+        row.appendChild(convertCell);
+        tbody.appendChild(row);
+    });
+    
+    table.appendChild(tbody);
+    content.appendChild(table);
+    
+    // Toggle event
+    toggle.addEventListener('change', function() {
+        content.style.maxHeight = this.checked ? '400px' : '0';
+    });
+    
+    conversionDiv.appendChild(content);
+    container.appendChild(conversionDiv);
+}
+
+// Get value conversions from UI
+function getValueConversionsFromUI() {
+    const conversions = {};
+    const container = document.getElementById('edit-value-conversions-container');
+    
+    container.querySelectorAll('[data-column]').forEach(div => {
+        const columnName = div.dataset.column;
+        const toggle = div.querySelector('input[type="checkbox"]');
+        const enabled = toggle.checked;
+        
+        if (enabled) {
+            const mappings = {};
+            div.querySelectorAll('input[type="text"]').forEach(input => {
+                if (input.value.trim()) {
+                    const originalValue = input.dataset.originalValue;
+                    mappings[originalValue] = input.value.trim();
+                }
+            });
+            
+            conversions[columnName] = {
+                enabled: true,
+                mappings: mappings
+            };
+        }
+    });
+    
+    return conversions;
+}
+
+// Apply value conversions to data
+function applyValueConversions(data, conversions) {
+    if (!conversions || Object.keys(conversions).length === 0) {
+        return data;
+    }
+    
+    // Create a deep copy of the data to avoid modifying the original
+    const convertedData = JSON.parse(JSON.stringify(data));
+    
+    // Apply conversions for each enabled column
+    Object.entries(conversions).forEach(([columnName, config]) => {
+        if (config.enabled && config.mappings) {
+            convertedData.forEach(row => {
+                const originalValue = row[columnName];
+                if (originalValue in config.mappings) {
+                    row[columnName] = config.mappings[originalValue];
+                }
+            });
+        }
+    });
+    
+    return convertedData;
 }
 
 // Process the volumetric data and update visualizations
@@ -5859,6 +6023,23 @@ function showEditCaseModal(field, caseName) {
             // Clear flag
             setTimeout(() => { window._addingGroupLevel = false; }, 100);
             
+            // Initialize value conversions UI
+            const valueConversionsContainer = document.getElementById('edit-value-conversions-container');
+            valueConversionsContainer.innerHTML = ''; // Clear container
+            
+            // Get existing value conversions if any
+            const existingConversions = caseData.valueConversions || {};
+            
+            // Create UI for each discrete column
+            groupingColumns.forEach(column => {
+                createValueConversionUI(
+                    valueConversionsContainer, 
+                    column, 
+                    caseData.data, 
+                    existingConversions[column]
+                );
+            });
+            
             // Set current timestamp
             if (caseData.timestamp) {
                 const timestamp = new Date(caseData.timestamp);
@@ -6404,6 +6585,9 @@ function updateCaseWithNewDetails(field, oldName, newName, description, author, 
                 return false;
             }
             
+            // Get value conversions from UI
+            const valueConversions = getValueConversionsFromUI();
+            
             // If only updating details for the same name
             if (oldName === newName) {
                 cases[oldName].description = description;
@@ -6412,6 +6596,7 @@ function updateCaseWithNewDetails(field, oldName, newName, description, author, 
                 cases[oldName].volumeGroups = {
                     columns: volumeGroupColumns
                 };
+                cases[oldName].valueConversions = valueConversions;
                 
                 // Save changes
                 localStorage.setItem(fieldKey, JSON.stringify(cases));
@@ -6430,6 +6615,7 @@ function updateCaseWithNewDetails(field, oldName, newName, description, author, 
             cases[newName].volumeGroups = {
                 columns: volumeGroupColumns
             };
+            cases[newName].valueConversions = valueConversions;
             
             // Remove old case
             delete cases[oldName];
