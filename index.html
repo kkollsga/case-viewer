@@ -717,8 +717,13 @@
         <div class="bg-white rounded-lg shadow-md p-4 mb-6 overflow-x-auto">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">Volumetrics</h2>
-                <div class="flex items-center">
-                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                <div class="flex items-center gap-4">
+                    <label class="inline-flex items-center cursor-pointer text-sm text-gray-700">
+                        <input type="checkbox" id="hide-empty-toggle" class="sr-only peer">
+                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                        <span class="ml-2">Hide Empty</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer text-sm text-gray-700">
                         <input type="checkbox" id="show-parameters-toggle" class="sr-only peer">
                         <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
                         <span class="ml-2">Show Parameters</span>
@@ -1080,6 +1085,7 @@ const appState = {
     availableCases: [], // Track all available cases for navigation
     showValues: true, // Default to showing values on circles
     showParameters: false, // Default to showing raw volumetric values
+    hideEmptyRows: true, // Default to hiding rows with 0 Bulk volume
     defaultAuthor: '', // Store default author
     zoomEnabled: false, // Default zoom is disabled
     maxDepth: 5, // Default maximum depth to show
@@ -1197,6 +1203,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize show values toggle
     document.getElementById('show-values-toggle').checked = appState.showValues;
     document.getElementById('show-parameters-toggle').checked = appState.showParameters;
+    document.getElementById('hide-empty-toggle').checked = appState.hideEmptyRows;
     document.getElementById('enable-zoom-toggle').checked = appState.zoomEnabled;
     document.getElementById('max-depth-slider').value = appState.maxDepth;
     document.getElementById('max-depth-value').textContent = appState.maxDepth;
@@ -1320,6 +1327,13 @@ function initializeSortable() {
 
 // Set up all event listeners
 function setupEventListeners() {
+    // Toggle hide empty rows
+    document.getElementById('hide-empty-toggle').addEventListener('change', function(e) {
+        appState.hideEmptyRows = e.target.checked;
+        if (appState.volumetricData) {
+            createPivotTable();
+        }
+    });
     // Field selection change
     document.getElementById('field-selector').addEventListener('change', function(e) {
         appState.currentField = e.target.value;
@@ -2449,12 +2463,32 @@ function calculateParameters(row, units) {
 function createPivotTable() {
     if (!appState.volumetricData || !appState.volumetricData.data) return;
 
-    const data = appState.volumetricData.data;
+    let data = appState.volumetricData.data;
     const headerContainer = document.getElementById('pivot-headers');
     const body = document.getElementById('pivot-body');
 
     headerContainer.innerHTML = '';
     body.innerHTML = '';
+
+    // Filter out empty rows if hideEmptyRows is enabled
+    if (appState.hideEmptyRows) {
+        data = data.filter(row => {
+            const bulkVolume = parseFloat(row['Bulk volume']) || 0;
+            return bulkVolume > 0;
+        });
+        
+        // If all rows are filtered out, show a message
+        if (data.length === 0) {
+            const messageRow = document.createElement('tr');
+            const messageCell = document.createElement('td');
+            messageCell.className = 'text-center text-gray-500 py-4';
+            messageCell.colSpan = 100; // Large colspan to cover all columns
+            messageCell.textContent = 'No data with non-zero bulk volume';
+            messageRow.appendChild(messageCell);
+            body.appendChild(messageRow);
+            return;
+        }
+    }
 
     // Columns already cleaned during parsing
     appState.columns = Object.keys(data[0]);
@@ -2567,6 +2601,10 @@ function createPivotTable() {
     totalLabelCell.colSpan = Math.max(1, groupColumns.length);
     totalRow.appendChild(totalLabelCell);
 
+    // Use original unfiltered data for totals if we want to show totals for all data
+    // Or use filtered data to show totals only for visible rows
+    const dataForTotals = data; // Using filtered data for consistency
+
     if (appState.showParameters) {
         // Calculate parameters for the total
         const totalRawValues = {};
@@ -2579,7 +2617,7 @@ function createPivotTable() {
         });
         
         // Sum all raw values
-        data.forEach(row => {
+        dataForTotals.forEach(row => {
             appState.columns.forEach(col => {
                 if (!groupColumns.includes(col) && !col.startsWith('__')) {
                     totalRawValues[col] += parseFloat(row[col]) || 0;
@@ -2617,7 +2655,7 @@ function createPivotTable() {
         formattedHeaders.forEach(col => {
             const td = document.createElement('td');
             td.className = 'px-2 py-1 text-right';
-            const sum = data.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
+            const sum = dataForTotals.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
             td.textContent = sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             totalRow.appendChild(td);
         });
@@ -2783,6 +2821,17 @@ function renderMultiLevelPivotTable(container, nestedData, level, groupColumns, 
             return;
         }
         
+        // Calculate total bulk volume for this group
+        const groupBulkVolume = groupData.items.reduce((sum, row) => {
+            if (!row) return sum;
+            return sum + (parseFloat(row['Bulk volume']) || 0);
+        }, 0);
+        
+        // Skip this group if hideEmptyRows is enabled and bulk volume is 0
+        if (appState.hideEmptyRows && groupBulkVolume === 0) {
+            return;
+        }
+        
         const groupKey = `level_${level}_${groupValue}`;
         
         // Initialize expanded state if not exists
@@ -2923,8 +2972,18 @@ function renderMultiLevelPivotTable(container, nestedData, level, groupColumns, 
         
         // If expanded and we're at the deepest level, show individual rows
         if (isExpanded && !hasSubgroups) {
+            // Filter detail rows if hideEmptyRows is enabled
+            let detailItems = groupItems;
+            if (appState.hideEmptyRows) {
+                detailItems = groupItems.filter(row => {
+                    if (!row) return false;
+                    const bulkVolume = parseFloat(row['Bulk volume']) || 0;
+                    return bulkVolume > 0;
+                });
+            }
+            
             // Render detail rows for leaf items
-            groupItems.forEach((row, rowIndex) => {
+            detailItems.forEach((row, rowIndex) => {
                 if (!row) return; // Skip if row is undefined
                 
                 const detailRow = document.createElement('tr');
