@@ -648,6 +648,31 @@
         .legend-title-text {
             letter-spacing: 0.05em;
         }
+
+        /* ==================== CONVERSIONS AREA ==================== */
+        /* Value Conversion Scrollbar */
+        .value-conversion-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .value-conversion-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .value-conversion-content::-webkit-scrollbar-thumb {
+            background-color: rgba(156, 163, 175, 0.5);
+            border-radius: 3px;
+        }
+
+        .value-conversion-content::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(156, 163, 175, 0.7);
+        }
+
+        /* Firefox scrollbar */
+        .value-conversion-content {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -2136,10 +2161,14 @@ function createValueConversionUI(container, columnName, data, existingConversion
     
     conversionDiv.appendChild(header);
     
-    // Collapsible content
+    // Collapsible content with scrollbar
     const content = document.createElement('div');
-    content.className = 'overflow-hidden transition-all duration-300';
+    content.className = 'value-conversion-content overflow-hidden transition-all duration-300';
     content.style.maxHeight = toggle.checked ? '400px' : '0';
+    
+    // Inner scrollable container
+    const scrollContainer = document.createElement('div');
+    scrollContainer.className = 'overflow-y-auto max-h-[380px]';
     
     // Get unique values
     const uniqueValues = [...new Set(data.map(row => row[columnName]))].sort();
@@ -2149,10 +2178,11 @@ function createValueConversionUI(container, columnName, data, existingConversion
     table.className = 'w-full text-sm';
     
     const thead = document.createElement('thead');
+    thead.className = 'sticky top-0 bg-white';
     thead.innerHTML = `
         <tr class="border-b">
-            <th class="text-left py-1 px-2">Original Value</th>
-            <th class="text-left py-1 px-2">Converted Value</th>
+            <th class="text-left py-1 px-2 bg-white">Original Value</th>
+            <th class="text-left py-1 px-2 bg-white">Converted Value</th>
         </tr>
     `;
     table.appendChild(thead);
@@ -2173,6 +2203,7 @@ function createValueConversionUI(container, columnName, data, existingConversion
         input.type = 'text';
         input.className = 'w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500';
         input.placeholder = value || '(empty)';
+        // Always load the mapping value if it exists, regardless of enabled state
         input.value = existingConversion?.mappings?.[value] || '';
         input.dataset.originalValue = value;
         
@@ -2183,7 +2214,8 @@ function createValueConversionUI(container, columnName, data, existingConversion
     });
     
     table.appendChild(tbody);
-    content.appendChild(table);
+    scrollContainer.appendChild(table);
+    content.appendChild(scrollContainer);
     
     // Toggle event
     toggle.addEventListener('change', function() {
@@ -2204,17 +2236,19 @@ function getValueConversionsFromUI() {
         const toggle = div.querySelector('input[type="checkbox"]');
         const enabled = toggle.checked;
         
-        if (enabled) {
-            const mappings = {};
-            div.querySelectorAll('input[type="text"]').forEach(input => {
-                if (input.value.trim()) {
-                    const originalValue = input.dataset.originalValue;
-                    mappings[originalValue] = input.value.trim();
-                }
-            });
-            
+        // Always collect mappings if they exist, regardless of enabled state
+        const mappings = {};
+        div.querySelectorAll('input[type="text"]').forEach(input => {
+            if (input.value.trim()) {
+                const originalValue = input.dataset.originalValue;
+                mappings[originalValue] = input.value.trim();
+            }
+        });
+        
+        // Only save if there are mappings or if it was previously enabled
+        if (Object.keys(mappings).length > 0 || enabled) {
             conversions[columnName] = {
-                enabled: true,
+                enabled: enabled,
                 mappings: mappings
             };
         }
@@ -2234,7 +2268,8 @@ function applyValueConversions(data, conversions) {
     
     // Apply conversions for each enabled column
     Object.entries(conversions).forEach(([columnName, config]) => {
-        if (config.enabled && config.mappings) {
+        // Only apply if explicitly enabled AND has mappings
+        if (config.enabled && config.mappings && Object.keys(config.mappings).length > 0) {
             convertedData.forEach(row => {
                 const originalValue = row[columnName];
                 if (originalValue in config.mappings) {
