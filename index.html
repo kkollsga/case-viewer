@@ -173,6 +173,50 @@
             font-weight: 500;
             color: #374151;
         }
+
+        /* ==================== PIVOT TABLE HOVER EFFECTS ==================== */
+        /* Group rows hover effect */
+        .pivot-row-toggle:hover {
+            background-color: #f0f9ff !important; /* Light blue background */
+            transition: background-color 0.15s ease;
+        }
+
+        /* Detail rows hover effect */
+        .pivot-detail-row:hover {
+            background-color: #e0f2fe !important; /* Slightly darker blue for detail rows */
+            transition: background-color 0.15s ease;
+        }
+
+        /* Total row hover effect */
+        .pivot-total-row:hover {
+            background-color: #dbeafe !important; /* Medium blue for total row */
+            transition: background-color 0.15s ease;
+        }
+
+        /* Highlight entire row on hover including all cells */
+        .pivot-row-toggle:hover td,
+        .pivot-detail-row:hover td,
+        .pivot-total-row:hover td {
+            background-color: inherit;
+        }
+
+        /* Add subtle border on hover for better visibility */
+        .pivot-row-toggle:hover,
+        .pivot-detail-row:hover,
+        .pivot-total-row:hover {
+            box-shadow: inset 0 1px 0 0 rgba(59, 130, 246, 0.1), 
+                        inset 0 -1px 0 0 rgba(59, 130, 246, 0.1);
+        }
+
+        /* Ensure cursor pointer for clickable group rows */
+        .pivot-row-toggle {
+            cursor: pointer;
+        }
+
+        /* Add transition to all pivot table rows for smooth effect */
+        #pivot-body tr {
+            transition: all 0.15s ease;
+        }
     
         /* ==================== TABLE STYLES ==================== */
         .table-fixed {
@@ -2987,8 +3031,9 @@ function renderMultiLevelPivotTable(container, nestedData, level, groupColumns, 
                 if (!row) return; // Skip if row is undefined
                 
                 const detailRow = document.createElement('tr');
-                detailRow.className = 'bg-gray-50 text-xs';
+                detailRow.className = 'bg-gray-50 text-xs pivot-detail-row'; // Added pivot-detail-row class
                 
+                // Rest of the detail row creation code remains the same...
                 // Empty toggle cell
                 const spacer = document.createElement('td');
                 spacer.className = 'w-6';
