@@ -3539,9 +3539,9 @@ function getLabelTextColor(d) {
 
 // Function to get text color for values
 function getValueTextColor(d) {
-    // Similar logic to labels
+    // For level 1 with light backgrounds, use darker text for better contrast
     if (d.depth === 0) return themeColors.textDark;
-    if (d.depth === 1) return themeColors.textDark;
+    if (d.depth === 1) return '#374151'; // Gray 700 - darker for better visibility
     if (d.depth === 2) return themeColors.textDark;
     return themeColors.textLight; // White text on vibrant inner circles
 }
@@ -3615,7 +3615,7 @@ function drawCirclePacking() {
             },
             fontSize: {
                 total: 12,
-                level1: 11,
+                level1: 12,  // CHANGED: Increased from 11 to 12 for better visibility
                 level2: 10,
                 level3: 9,
                 level4: 8,
@@ -3819,8 +3819,8 @@ function drawCirclePacking() {
         // Add text labels to circles with truncation
         g.selectAll('text.label')
             .data(validDescendants.filter(d => {
-                // Only show labels for level 1 circles with sufficient size and positive value
-                return (d.depth === 1 && d.r > 25 && d.value > 0);
+                // CHANGED: Only show labels for level 2+ circles
+                return (d.depth >= 2 && d.r > 25 && d.value > 0);
             }))
             .join('text')
             .attr('class', 'label')
@@ -3865,7 +3865,13 @@ function drawCirclePacking() {
                 .join('text')
                 .attr('class', 'value')
                 .attr('x', d => d.x)
-                .attr('y', d => d.y - d.r + 16) // Position at top
+                .attr('y', d => {
+                    // CHANGED: For level 1, position text more centered since it includes title
+                    if (d.depth === 1) {
+                        return d.y - 5; // Slightly above center
+                    }
+                    return d.y - d.r + 16; // Original position at top for other levels
+                })
                 .attr('text-anchor', 'middle')
                 .attr('font-size', d => {
                     // Adjust font size based on depth
@@ -3899,6 +3905,18 @@ function drawCirclePacking() {
                             formatted = (val / 1000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + 'k';
                         } else {
                             formatted = val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                        }
+                        
+                        // CHANGED: For level 1, include the title with the value
+                        if (d.depth === 1 && d.data && d.data.name) {
+                            const title = d.data.name;
+                            // Calculate available width for the combined text
+                            const maxWidth = d.r * 2 * 0.9; // Use 90% of diameter
+                            const fontSize = circleConfig.fontSize.level1;
+                            const combinedText = `${title} - ${formatted}`;
+                            
+                            // Truncate if needed
+                            return truncateTextToFit(combinedText, maxWidth, fontSize);
                         }
                         
                         return formatted;
