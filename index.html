@@ -3539,9 +3539,9 @@ function getLabelTextColor(d) {
 
 // Function to get text color for values
 function getValueTextColor(d) {
-    // For level 1 with light backgrounds, use darker text for better contrast
+    // Similar logic to labels
     if (d.depth === 0) return themeColors.textDark;
-    if (d.depth === 1) return '#374151'; // Gray 700 - darker for better visibility
+    if (d.depth === 1) return themeColors.textDark;
     if (d.depth === 2) return themeColors.textDark;
     return themeColors.textLight; // White text on vibrant inner circles
 }
@@ -3615,7 +3615,7 @@ function drawCirclePacking() {
             },
             fontSize: {
                 total: 12,
-                level1: 12,  // CHANGED: Increased from 11 to 12 for better visibility
+                level1: 11,
                 level2: 10,
                 level3: 9,
                 level4: 8,
@@ -3815,34 +3815,6 @@ function drawCirclePacking() {
             .on('mouseout', function() {
                 sharedTooltip.transition().duration(500).style('opacity', 0);
             });
-
-        // Add text labels to circles with truncation
-        g.selectAll('text.label')
-            .data(validDescendants.filter(d => {
-                // CHANGED: Only show labels for level 2+ circles
-                return (d.depth >= 2 && d.r > 25 && d.value > 0);
-            }))
-            .join('text')
-            .attr('class', 'label')
-            .attr('x', d => d.x)
-            .attr('y', d => d.y)
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'middle')
-            .attr('font-size', d => {
-                // Adjust font size based on depth
-                return circleConfig.fontSize.level1;
-            })
-            .attr('fill', d => getLabelTextColor(d))
-            .attr('pointer-events', 'none')
-            .text(d => {
-                if (!d.data || !d.data.name) return '';
-                
-                // Calculate available width (use 80% of diameter to leave some padding)
-                const maxWidth = d.r * 2 * 0.8;
-                const fontSize = circleConfig.fontSize.level1;
-                
-                return truncateTextToFit(d.data.name, maxWidth, fontSize);
-            });
             
         // Add value labels to circles if showValues is true
         if (appState.showValues) {
@@ -3865,13 +3837,7 @@ function drawCirclePacking() {
                 .join('text')
                 .attr('class', 'value')
                 .attr('x', d => d.x)
-                .attr('y', d => {
-                    // CHANGED: For level 1, position text more centered since it includes title
-                    if (d.depth === 1) {
-                        return d.y - 5; // Slightly above center
-                    }
-                    return d.y - d.r + 16; // Original position at top for other levels
-                })
+                .attr('y', d => d.y - d.r + 16) // Keep position at top for all levels
                 .attr('text-anchor', 'middle')
                 .attr('font-size', d => {
                     // Adjust font size based on depth
@@ -3887,11 +3853,14 @@ function drawCirclePacking() {
                 .attr('fill', d => getValueTextColor(d))
                 .attr('fill-opacity', d => 0.90) // Consistent opacity for text
                 .attr('pointer-events', 'none')
-                .text(d => {
+                .each(function(d) {
+                    const textElement = d3.select(this);
+                    
                     try {
                         // Handle cases where volumetrics might be missing
                         if (!d.data || !d.data.volumetrics || !(appState.currentMetric in d.data.volumetrics)) {
-                            return '0.00';
+                            textElement.text('0.00');
+                            return;
                         }
                         
                         // Format value nicely with the appropriate unit
@@ -3907,22 +3876,38 @@ function drawCirclePacking() {
                             formatted = val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
                         }
                         
-                        // CHANGED: For level 1, include the title with the value
+                        // For level 1, create two lines: value on top, title below
                         if (d.depth === 1 && d.data && d.data.name) {
-                            const title = d.data.name;
-                            // Calculate available width for the combined text
-                            const maxWidth = d.r * 2 * 0.9; // Use 90% of diameter
-                            const fontSize = circleConfig.fontSize.level1;
-                            const combinedText = `${title} - ${formatted}`;
+                            // Clear any existing content
+                            textElement.text('');
                             
-                            // Truncate if needed
-                            return truncateTextToFit(combinedText, maxWidth, fontSize);
+                            // Add value as first tspan
+                            textElement.append('tspan')
+                                .attr('x', d.x)
+                                .attr('dy', '0')
+                                .attr('font-weight', 'bold') // Make value bold for emphasis
+                                .text(formatted);
+                            
+                            // Add title as second tspan below
+                            const title = d.data.name;
+                            const maxWidth = d.r * 2 * 0.85; // Use 85% of diameter
+                            const fontSize = circleConfig.fontSize.level1;
+                            const truncatedTitle = truncateTextToFit(title, maxWidth, fontSize * 0.9); // Slightly smaller for title
+                            
+                            textElement.append('tspan')
+                                .attr('x', d.x)
+                                .attr('dy', '1.2em') // Tight spacing - 1.2em below the value
+                                .attr('font-size', fontSize * 0.9) // Slightly smaller font for title
+                                .attr('font-weight', 'normal')
+                                .attr('opacity', 0.85) // Slightly dimmer for hierarchy
+                                .text(truncatedTitle);
+                        } else {
+                            // For all other levels, just show the formatted value
+                            textElement.text(formatted);
                         }
-                        
-                        return formatted;
                     } catch (error) {
                         console.error("Error formatting value label:", error);
-                        return '0.00';
+                        textElement.text('0.00');
                     }
                 });
         }
