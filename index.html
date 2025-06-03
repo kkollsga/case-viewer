@@ -2138,6 +2138,9 @@ function createValueConversionUI(container, columnName, data, existingConversion
     const header = document.createElement('div');
     header.className = 'flex items-center justify-between mb-2';
     
+    const leftSection = document.createElement('div');
+    leftSection.className = 'flex items-center gap-2';
+    
     const label = document.createElement('label');
     label.className = 'inline-flex items-center cursor-pointer text-sm text-gray-700';
     
@@ -2157,14 +2160,31 @@ function createValueConversionUI(container, columnName, data, existingConversion
     label.appendChild(toggle);
     label.appendChild(toggleDiv);
     label.appendChild(labelText);
-    header.appendChild(label);
+    leftSection.appendChild(label);
+    
+    // Collapse/expand button (only shown when enabled)
+    const collapseButton = document.createElement('button');
+    collapseButton.type = 'button';
+    collapseButton.className = 'p-1 hover:bg-gray-100 rounded transition-all duration-200';
+    collapseButton.style.display = toggle.checked ? 'block' : 'none';
+    collapseButton.innerHTML = '<i class="fas fa-chevron-down text-gray-500 text-xs transition-transform duration-200"></i>';
+    
+    leftSection.appendChild(collapseButton);
+    header.appendChild(leftSection);
     
     conversionDiv.appendChild(header);
     
     // Collapsible content with scrollbar
     const content = document.createElement('div');
     content.className = 'value-conversion-content overflow-hidden transition-all duration-300';
-    content.style.maxHeight = toggle.checked ? '400px' : '0';
+    // Set initial state based on both enabled and collapsed state
+    const isCollapsed = existingConversion?.collapsed || false;
+    content.style.maxHeight = toggle.checked && !isCollapsed ? '400px' : '0';
+    
+    // Update chevron rotation based on collapsed state
+    if (toggle.checked && isCollapsed) {
+        collapseButton.querySelector('i').classList.add('-rotate-90');
+    }
     
     // Inner scrollable container
     const scrollContainer = document.createElement('div');
@@ -2217,9 +2237,39 @@ function createValueConversionUI(container, columnName, data, existingConversion
     scrollContainer.appendChild(table);
     content.appendChild(scrollContainer);
     
-    // Toggle event
+    // Toggle event for enable/disable
     toggle.addEventListener('change', function() {
-        content.style.maxHeight = this.checked ? '400px' : '0';
+        const isChecked = this.checked;
+        if (isChecked) {
+            // Show collapse button and expand content
+            collapseButton.style.display = 'block';
+            content.style.maxHeight = '400px';
+            // Reset chevron to down position
+            collapseButton.querySelector('i').classList.remove('-rotate-90');
+        } else {
+            // Hide collapse button and collapse content
+            collapseButton.style.display = 'none';
+            content.style.maxHeight = '0';
+        }
+    });
+    
+    // Collapse button event
+    collapseButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const chevron = this.querySelector('i');
+        const isCurrentlyCollapsed = content.style.maxHeight === '0px';
+        
+        if (isCurrentlyCollapsed) {
+            // Expand
+            content.style.maxHeight = '400px';
+            chevron.classList.remove('-rotate-90');
+        } else {
+            // Collapse
+            content.style.maxHeight = '0';
+            chevron.classList.add('-rotate-90');
+        }
     });
     
     conversionDiv.appendChild(content);
@@ -2236,6 +2286,10 @@ function getValueConversionsFromUI() {
         const toggle = div.querySelector('input[type="checkbox"]');
         const enabled = toggle.checked;
         
+        // Check if content is collapsed
+        const content = div.querySelector('.value-conversion-content');
+        const isCollapsed = content.style.maxHeight === '0px' && enabled;
+        
         // Always collect mappings if they exist, regardless of enabled state
         const mappings = {};
         div.querySelectorAll('input[type="text"]').forEach(input => {
@@ -2249,6 +2303,7 @@ function getValueConversionsFromUI() {
         if (Object.keys(mappings).length > 0 || enabled) {
             conversions[columnName] = {
                 enabled: enabled,
+                collapsed: isCollapsed,
                 mappings: mappings
             };
         }
