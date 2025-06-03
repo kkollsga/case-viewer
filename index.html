@@ -1149,63 +1149,64 @@ const appState = {
 // CONSTANTS
 // =================================================================
 // Theme colors for visualizations
+Looking at your stacked bubble chart color theme, I can see the issue. The current color palettes lack visual harmony and don't create a cohesive hierarchy. Here are the key functions we need to update to improve the color theme:
+1. First, let's update the themeColors constant:
+javascript// CONSTANTS
+// Theme colors for visualizations
 const themeColors = {
-    // First color palette - Cool colors (Blues, Greens, Cyans)
+    // First color palette - Primary vibrant colors for level 1
     palette1: [
-        '#78BE20', // Green (bright, position 7)
-        '#685BC7', // Violet (bright, position 7)
-        '#E40046', // Rose (bright, position 7)
-        '#0072CE', // Blue (bright, position 7)
-        '#C724B1', // Fuchsia (bright, position 7)
-        '#26D07C', // Emerald (bright, position 7)
-        
-        '#009CDE', // Sky (bright, position 7)
-        
-        '#00C1D5', // Cyan (bright, position 7)
-        '#9063CD', // Purple (bright, position 7)
-        '#C4D600'  // Lime (bright, position 7)
+        '#2563EB', // Blue 600
+        '#DC2626', // Red 600
+        '#059669', // Emerald 600
+        '#D97706', // Amber 600
+        '#7C3AED', // Violet 600
+        '#0891B2', // Cyan 600
+        '#E11D48', // Rose 600
+        '#65A30D', // Lime 600
+        '#0D9488', // Teal 600
+        '#EA580C', // Orange 600
+        '#8B5CF6', // Purple 600
+        '#0E7490', // Cyan 700
     ],
-    // Second color palette - Medium-light colors (position 4)
+    // Second color palette - Medium colors for level 2
     palette2: [
-        '#FEF199', // Yellow (position 4)
-        '#99C6EB', // Blue (position 4)
-        '#FCAFA6', // Red (position 4)
-        '#FFC3A0', // Orange (position 4)
-        '#E7EE99', // Lime (position 4)
-        '#E8A7DF', // Fuchsia (position 4)
-        '#F9DC99', // Amber (position 4)
-        '#C9E5A5', // Green (position 4)
-        '#A8ECCA', // Emerald (position 4)
-        '#99E6EE', // Cyan (position 4)
-        '#99D7F1', // Sky (position 4)
-        '#C2BDE8', // Violet (position 4)
-        '#D2C0EB', // Purple (position 4)
-        '#F499B5'  // Rose (position 4)
+        '#60A5FA', // Blue 400
+        '#F87171', // Red 400
+        '#34D399', // Emerald 400
+        '#FCD34D', // Amber 400
+        '#A78BFA', // Violet 400
+        '#67E8F9', // Cyan 400
+        '#FB7185', // Rose 400
+        '#BEF264', // Lime 400
+        '#5EEAD4', // Teal 400
+        '#FDBA74', // Orange 400
+        '#C084FC', // Purple 400
+        '#06B6D4', // Cyan 500
     ],
-    // Third color palette - Medium-bright colors from reds to light greens (position 6)
+    // Third color palette - Light colors for level 3+
     palette3: [
-        '#FEE330', // Yellow (position 6)
-        '#FF863F', // Orange (position 6)
-        '#847AD1', // Violet (position 6)
-        '#FA5D4B', // Red (position 6)
-        '#30AEE4',  // Sky (position 6)
-        '#4FD894', // Emerald (position 6)
-        '#91CA4A', // Green (position 6)
-        '#DD7BD0', // Fuchsia (position 6)
-        '#CFDD30', // Lime (position 6)
-        '#F4B930', // Amber (position 6)
-        '#E93069', // Rose (position 6)
-        '#A580D6' // Purple (position 6)
+        '#BFDBFE', // Blue 200
+        '#FCA5A5', // Red 300
+        '#86EFAC', // Emerald 300
+        '#FDE68A', // Amber 200
+        '#DDD6FE', // Violet 200
+        '#A5F3FC', // Cyan 200
+        '#FECACA', // Rose 200
+        '#D9F99D', // Lime 200
+        '#99F6E4', // Teal 200
+        '#FED7AA', // Orange 200
+        '#E9D5FF', // Purple 200
+        '#67E8F9', // Cyan 300
     ],
-    // Bas
     // Base colors
     white: '#FFFFFF',
-    totalCircle: '#FFFFFF',
-    totalBorder: '#001C33', // Dark blue from your palette
-    defaultStroke: '#5B001C', // Dark rose from your palette
-    fallback: '#B7D7F1', // Light blue from your palette
+    totalCircle: '#F3F4F6', // Gray 100 for total
+    totalBorder: '#1F2937', // Gray 800 for total border
+    defaultStroke: '#9CA3AF', // Gray 400 for subtle borders
+    fallback: '#E5E7EB', // Gray 200 fallback
     // Text colors
-    textDark: '#001C33', // Dark blue from your palette
+    textDark: '#111827', // Gray 900
     textLight: '#FFFFFF',
     // Color interpolators for tooltips and other uses
     interpolators: [
@@ -3424,8 +3425,15 @@ function getNodeColor(d) {
         // Get the depth (1-based) 
         const depth = d.depth;
         
-        // Determine which palette to use based on rotating pattern
-        const paletteNumber = ((depth - 1) % 3) + 1;
+        // Select palette based on depth for better visual hierarchy
+        let palette;
+        if (depth === 1) {
+            palette = themeColors.palette1; // Vibrant colors for top level
+        } else if (depth === 2) {
+            palette = themeColors.palette2; // Medium saturation for second level
+        } else {
+            palette = themeColors.palette3; // Light colors for deeper levels
+        }
         
         // Get the node name
         const nodeName = d.data ? d.data.name : 'Unnamed';
@@ -3436,22 +3444,6 @@ function getNodeColor(d) {
         // Check if we already have a color for this combination
         if (appState.colorMap.has(colorKey)) {
             return appState.colorMap.get(colorKey);
-        }
-        
-        // Select the appropriate palette
-        let palette;
-        switch (paletteNumber) {
-            case 1:
-                palette = themeColors.palette1;
-                break;
-            case 2:
-                palette = themeColors.palette2;
-                break;
-            case 3:
-                palette = themeColors.palette3;
-                break;
-            default:
-                palette = themeColors.palette1;
         }
         
         // Get or initialize usage tracking for this layer
@@ -3465,9 +3457,8 @@ function getNodeColor(d) {
         let colorIndex = appState.colorIndexByLayer.get(layerKey);
         let color;
         
-        // If all colors have been used, start reusing
+        // If all colors have been used, start reusing with hash-based selection
         if (usedColors.size >= palette.length) {
-            // Use a hash to get a consistent index when reusing colors
             const nameHash = getStringHash(nodeName);
             colorIndex = Math.abs(nameHash) % palette.length;
             color = palette[colorIndex];
@@ -3514,16 +3505,27 @@ function resetColorAssignments() {
 function getNodeOpacity(d) {
     if (d.depth === 0) return 1.0; // Total circle is fully opaque
     
-    // All other levels have a consistent, high opacity
-    return 1;
+    // Slightly reduce opacity for deeper levels to create depth
+    switch (d.depth) {
+        case 1: return 1.0;
+        case 2: return 0.95;
+        case 3: return 0.9;
+        default: return 0.85;
+    }
 }
 
 // Function to get stroke color for a node
 function getNodeStroke(d) {
     if (d.depth === 0) return themeColors.totalBorder; // Dark outline for total
     
-    // All other nodes have no stroke (regardless of whether they're leaf nodes or not)
-    return 'none';
+    // Use subtle gray strokes for all other levels to help define boundaries
+    if (d.depth === 1) {
+        return '#E5E7EB'; // Gray 200 - very subtle for top level
+    } else if (d.depth === 2) {
+        return '#D1D5DB'; // Gray 300 - slightly more visible
+    } else {
+        return 'none'; // No stroke for deeper levels to reduce clutter
+    }
 }
 
 // Function to get text color for labels
@@ -3748,7 +3750,10 @@ function drawCirclePacking() {
             .attr('fill-opacity', d => getNodeOpacity(d))
             .attr('stroke', d => getNodeStroke(d))
             .attr('stroke-width', d => {
-                return d.depth === 0 ? 2 : 1.5;
+                if (d.depth === 0) return 2;
+                if (d.depth === 1) return 1;
+                if (d.depth === 2) return 0.5;
+                return 0;
             })
             .style('cursor', 'pointer');
             
@@ -5599,6 +5604,7 @@ function getColorForGroup(groupName, groupColumn) {
     let colorIndex = appState.colorIndexByLayer.get(layerKey);
     let color;
     
+    // Use palette1 (vibrant colors) for cross plot groups
     const palette = themeColors.palette1;
     
     // If all colors have been used, start reusing
