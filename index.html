@@ -1148,10 +1148,41 @@ const appState = {
 // =================================================================
 // CONSTANTS
 // =================================================================
+// CONSTANTS
 // Theme colors for visualizations
 const themeColors = {
-    // First color palette - Primary vibrant colors for level 1
+    // First color palette - Light/subtle colors for level 1 (outermost)
     palette1: [
+        '#DBEAFE', // Blue 100
+        '#FEE2E2', // Red 100
+        '#D1FAE5', // Emerald 100
+        '#FEF3C7', // Amber 100
+        '#EDE9FE', // Violet 100
+        '#CFFAFE', // Cyan 100
+        '#FFE4E6', // Rose 100
+        '#ECFCCB', // Lime 100
+        '#CCFBF1', // Teal 100
+        '#FED7AA', // Orange 200
+        '#F3E8FF', // Purple 100
+        '#E0F2FE', // Sky 100
+    ],
+    // Second color palette - Medium colors for level 2
+    palette2: [
+        '#93C5FD', // Blue 300
+        '#FCA5A5', // Red 300
+        '#86EFAC', // Emerald 300
+        '#FCD34D', // Amber 300
+        '#C4B5FD', // Violet 300
+        '#67E8F9', // Cyan 300
+        '#FDA4AF', // Rose 300
+        '#BEF264', // Lime 300
+        '#5EEAD4', // Teal 300
+        '#FDBA74', // Orange 300
+        '#D8B4FE', // Purple 300
+        '#7DD3FC', // Sky 300
+    ],
+    // Third color palette - Vibrant colors for level 3+ (innermost/deepest)
+    palette3: [
         '#2563EB', // Blue 600
         '#DC2626', // Red 600
         '#059669', // Emerald 600
@@ -1163,44 +1194,14 @@ const themeColors = {
         '#0D9488', // Teal 600
         '#EA580C', // Orange 600
         '#8B5CF6', // Purple 600
-        '#0E7490', // Cyan 700
-    ],
-    // Second color palette - Medium colors for level 2
-    palette2: [
-        '#60A5FA', // Blue 400
-        '#F87171', // Red 400
-        '#34D399', // Emerald 400
-        '#FCD34D', // Amber 400
-        '#A78BFA', // Violet 400
-        '#67E8F9', // Cyan 400
-        '#FB7185', // Rose 400
-        '#BEF264', // Lime 400
-        '#5EEAD4', // Teal 400
-        '#FDBA74', // Orange 400
-        '#C084FC', // Purple 400
-        '#06B6D4', // Cyan 500
-    ],
-    // Third color palette - Light colors for level 3+
-    palette3: [
-        '#BFDBFE', // Blue 200
-        '#FCA5A5', // Red 300
-        '#86EFAC', // Emerald 300
-        '#FDE68A', // Amber 200
-        '#DDD6FE', // Violet 200
-        '#A5F3FC', // Cyan 200
-        '#FECACA', // Rose 200
-        '#D9F99D', // Lime 200
-        '#99F6E4', // Teal 200
-        '#FED7AA', // Orange 200
-        '#E9D5FF', // Purple 200
-        '#67E8F9', // Cyan 300
+        '#0284C7', // Sky 600
     ],
     // Base colors
     white: '#FFFFFF',
-    totalCircle: '#F3F4F6', // Gray 100 for total
-    totalBorder: '#1F2937', // Gray 800 for total border
-    defaultStroke: '#9CA3AF', // Gray 400 for subtle borders
-    fallback: '#E5E7EB', // Gray 200 fallback
+    totalCircle: '#F9FAFB', // Gray 50 for total - very light
+    totalBorder: '#374151', // Gray 700 for total border
+    defaultStroke: '#E5E7EB', // Gray 200 for subtle borders
+    fallback: '#F3F4F6', // Gray 100 fallback
     // Text colors
     textDark: '#111827', // Gray 900
     textLight: '#FFFFFF',
@@ -3421,14 +3422,14 @@ function getNodeColor(d) {
         // Get the depth (1-based) 
         const depth = d.depth;
         
-        // Select palette based on depth for better visual hierarchy
+        // Select palette based on depth - subtle outside, vibrant inside
         let palette;
         if (depth === 1) {
-            palette = themeColors.palette1; // Vibrant colors for top level
+            palette = themeColors.palette1; // Light colors for outer level
         } else if (depth === 2) {
-            palette = themeColors.palette2; // Medium saturation for second level
+            palette = themeColors.palette2; // Medium saturation for middle level
         } else {
-            palette = themeColors.palette3; // Light colors for deeper levels
+            palette = themeColors.palette3; // Vibrant colors for inner levels
         }
         
         // Get the node name
@@ -3501,12 +3502,12 @@ function resetColorAssignments() {
 function getNodeOpacity(d) {
     if (d.depth === 0) return 1.0; // Total circle is fully opaque
     
-    // Slightly reduce opacity for deeper levels to create depth
+    // Increase opacity for deeper levels to enhance vibrancy
     switch (d.depth) {
-        case 1: return 1.0;
-        case 2: return 0.95;
-        case 3: return 0.9;
-        default: return 0.85;
+        case 1: return 0.85;  // Slightly transparent for outer level
+        case 2: return 0.9;   // More opaque for middle
+        case 3: return 0.95;  // Nearly opaque for inner
+        default: return 1.0;  // Fully opaque for deepest levels
     }
 }
 
@@ -3514,29 +3515,35 @@ function getNodeOpacity(d) {
 function getNodeStroke(d) {
     if (d.depth === 0) return themeColors.totalBorder; // Dark outline for total
     
-    // Use subtle gray strokes for all other levels to help define boundaries
+    // Adjust stroke strategy for new color scheme
     if (d.depth === 1) {
-        return '#E5E7EB'; // Gray 200 - very subtle for top level
+        return '#D1D5DB'; // Gray 300 - more visible for light colors
     } else if (d.depth === 2) {
-        return '#D1D5DB'; // Gray 300 - slightly more visible
+        return '#E5E7EB'; // Gray 200 - subtle for medium colors
+    } else if (d.depth === 3) {
+        return 'rgba(0, 0, 0, 0.1)'; // Very subtle dark stroke for vibrant colors
     } else {
-        return 'none'; // No stroke for deeper levels to reduce clutter
+        return 'none'; // No stroke for deepest levels
     }
 }
 
 // Function to get text color for labels
 function getLabelTextColor(d) {
-    // All labels should be black
-    return themeColors.textDark;
+    // For light outer circles, use dark text
+    // For vibrant inner circles, use white text
+    if (d.depth === 0) return themeColors.textDark;
+    if (d.depth === 1) return themeColors.textDark; // Dark text on light backgrounds
+    if (d.depth === 2) return themeColors.textDark; // Dark text on medium backgrounds
+    return themeColors.textLight; // White text on vibrant backgrounds
 }
+
 // Function to get text color for values
 function getValueTextColor(d) {
-    // Only layer 1 values should be white, all others black
-    if (d.depth === 1) {
-        return themeColors.textLight;
-    }
-    
-    return themeColors.textDark;
+    // Similar logic to labels
+    if (d.depth === 0) return themeColors.textDark;
+    if (d.depth === 1) return themeColors.textDark;
+    if (d.depth === 2) return themeColors.textDark;
+    return themeColors.textLight; // White text on vibrant inner circles
 }
 
 // Helper function to truncate text to fit within a given width
@@ -3747,8 +3754,9 @@ function drawCirclePacking() {
             .attr('stroke', d => getNodeStroke(d))
             .attr('stroke-width', d => {
                 if (d.depth === 0) return 2;
-                if (d.depth === 1) return 1;
-                if (d.depth === 2) return 0.5;
+                if (d.depth === 1) return 1;    // Visible stroke for light colors
+                if (d.depth === 2) return 0.75; // Thinner stroke for medium colors
+                if (d.depth === 3) return 0.5;  // Very thin stroke for vibrant colors
                 return 0;
             })
             .style('cursor', 'pointer');
@@ -5600,8 +5608,8 @@ function getColorForGroup(groupName, groupColumn) {
     let colorIndex = appState.colorIndexByLayer.get(layerKey);
     let color;
     
-    // Use palette1 (vibrant colors) for cross plot groups
-    const palette = themeColors.palette1;
+    // Use palette3 (vibrant colors) for cross plot groups
+    const palette = themeColors.palette3;
     
     // If all colors have been used, start reusing
     if (usedColors.size >= palette.length) {
