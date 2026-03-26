@@ -87,6 +87,18 @@ export function render() {
     }));
 
     // Delete button
+    // Duplicate button
+    actions.appendChild(el('button', {
+      class: 'text-gray-500 hover:text-gray-700 p-1',
+      title: 'Duplicate Case',
+      innerHTML: '<i class="fas fa-copy"></i>',
+      onClick: async (e) => {
+        e.stopPropagation();
+        const { duplicateCase } = await import('../app.js');
+        duplicateCase(field, caseName);
+      },
+    }));
+
     actions.appendChild(el('button', {
       class: 'text-red-600 hover:text-red-800 p-1',
       title: 'Delete Case',

@@ -3,12 +3,12 @@
 // volumetric data, with metric selection, depth control, legend, and
 // per-case persisted settings.
 
-import { getRuntime, getUI, getActiveField, getActiveCase } from '../core/state.js';
+import { getRuntime, getUI, getActiveField, getActiveCase, getBaseCase } from '../core/state.js';
 import {
   saveCircleSettings, loadCircleSettings,
   saveFieldCircleSettings, loadFieldCircleSettings,
   saveLegendLayer, loadLegendLayer,
-  saveFieldSettings,
+  saveFieldSettings, getCaseData,
 } from '../core/storage.js';
 import { on, emit, EVENTS } from '../core/events.js';
 import { formatNumber, formatCompact } from '../utils/format.js';
@@ -629,6 +629,9 @@ function drawCirclePacking() {
       sharedTooltip.transition().duration(500).style('opacity', 0);
     });
 
+  // ── Delta overlay (Phase 3) ──
+  applyDeltaOverlay(g, validDescendants, metric);
+
   // ── Value labels ──
   if (settings.showValues) {
     drawValueLabels(g, validDescendants, root, metric);
@@ -636,6 +639,82 @@ function drawCirclePacking() {
 
   // ── Legend ──
   updateLegendPanel(hierarchyData, validDescendants, dataMaxDepth, units, metric);
+}
+
+// ====================================================================
+// DELTA OVERLAY — when a compare case is active, show border colours
+// ====================================================================
+
+function applyDeltaOverlay(g, descendants, metric) {
+  const ui = getUI();
+  const compareCaseName = ui.compareCase;
+  if (!compareCaseName) return;
+
+  const field = getActiveField();
+  const compareData = getCaseData(field, compareCaseName);
+  if (!compareData || !compareData.data) return;
+
+  const runtime = getRuntime();
+  const activeData = runtime.volumetricData;
+  if (!activeData) return;
+
+  const groupColumns = activeData.volumeGroups?.columns || [];
+
+  // Build compare value map: groupKey → sum of metric
+  const compareMap = new Map();
+  for (const row of compareData.data) {
+    const key = groupColumns.map(c => row[c] || '').join('/');
+    compareMap.set(key, (compareMap.get(key) || 0) + (parseFloat(row[metric]) || 0));
+  }
+
+  // Build active value map
+  const activeMap = new Map();
+  for (const row of activeData.data) {
+    const key = groupColumns.map(c => row[c] || '').join('/');
+    activeMap.set(key, (activeMap.get(key) || 0) + (parseFloat(row[metric]) || 0));
+  }
+
+  // Apply border overlays to circles
+  g.selectAll('circle').each(function (d) {
+    if (d.depth === 0) return; // Skip root
+
+    // Build the group key for this node by walking up the hierarchy
+    // excluding the root "Total" node
+    const path = [];
+    let node = d;
+    while (node.depth > 0) {
+      path.unshift(node.data.name || '');
+      node = node.parent;
+    }
+    const key = path.join('/');
+
+    // Try exact match first, then just the leaf name for single-level grouping
+    let activeVal = activeMap.get(key);
+    let compareVal = compareMap.get(key);
+
+    // Fallback: if no match and this is a leaf, try just the node name
+    if (activeVal === undefined && compareVal === undefined && d.data.name) {
+      activeVal = activeMap.get(d.data.name);
+      compareVal = compareMap.get(d.data.name);
+    }
+
+    if (activeVal === undefined && compareVal === undefined) return;
+
+    const delta = (activeVal || 0) - (compareVal || 0);
+    const absDeltaPct = compareVal ? Math.abs(delta / compareVal) : 0;
+
+    if (Math.abs(delta) < 0.0001) return;
+
+    // Green border = grew, red = shrank
+    const color = delta > 0 ? '#10b981' : '#ef4444';
+    // Border width proportional to |Δ%|, clamped 2–6px
+    const strokeWidth = Math.max(2, Math.min(6, absDeltaPct * 20));
+
+    d3.select(this)
+      .attr('stroke', color)
+      .attr('stroke-width', strokeWidth)
+      .attr('stroke-opacity', 0.8);
+  });
 }
 
 // ====================================================================

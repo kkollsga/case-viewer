@@ -3,9 +3,11 @@
 
 import { getState, getActiveField, getActiveCase, setActiveField, setActiveCase,
          setShowParameters, setHideEmpty, setMetric, setVolumetricData, clearVolumetricData,
-         getRuntime, getUI, setAvailableCases, setCompareCase, setBaseCase, getBaseCase } from './core/state.js';
-import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames,
-         loadFieldSettings, saveFieldSettings, loadCrossPlotSettings } from './core/storage.js';
+         getRuntime, getUI, setAvailableCases, setCompareCase, setBaseCase, getBaseCase,
+         addField } from './core/state.js';
+import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames, getCasesForField,
+         loadFieldSettings, saveFieldSettings, loadCrossPlotSettings,
+         saveCase, addCaseToOrder, saveCaseOrder, saveFields } from './core/storage.js';
 import { on, emit, EVENTS } from './core/events.js';
 import { formatDateTime, formatCompact } from './utils/format.js';
 import { $ } from './utils/dom.js';
@@ -52,6 +54,14 @@ export async function init() {
     console.warn('CrossPlot not loaded:', e.message);
   }
 
+  let RevisionTimeline;
+  try {
+    RevisionTimeline = await import('./components/RevisionTimeline.js');
+    RevisionTimeline.init();
+  } catch (e) {
+    console.warn('RevisionTimeline not loaded:', e.message);
+  }
+
   // Wire up events
   setupGlobalEvents();
   CaseList.setupEvents();
@@ -63,12 +73,15 @@ export async function init() {
   DriverChart.setupEvents();
   if (BallChart?.setupEvents) BallChart.setupEvents();
   if (CrossPlot?.setupEvents) CrossPlot.setupEvents();
+  if (RevisionTimeline?.setupEvents) RevisionTimeline.setupEvents();
 
   // Setup UI controls
   setupToggles();
   setupCompareSelector();
   setupFieldSelector();
   setupSettingsPanel();
+  setupKeyboardShortcuts();
+  setupExportImport();
 
   // Initial load
   const state = getState();
@@ -503,4 +516,159 @@ function setupSettingsPanel() {
       contextMenu.style.display = 'none';
     }
   });
+}
+
+// ─── Keyboard shortcuts (Phase 4) ──────────────────────────
+
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    // Don't trigger in input fields
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
+    switch (e.key) {
+      case 'd':
+      case 'D':
+        // Toggle delta mode — if compare is set, clear it; otherwise no-op
+        if (getUI().compareCase) {
+          setCompareCase(null);
+          const selector = $('#compare-case-selector');
+          if (selector) selector.value = '';
+        }
+        break;
+
+      case 'Escape':
+        // Close any open modal
+        const overlay = $('#modal-overlay');
+        if (overlay && !overlay.classList.contains('hidden')) {
+          overlay.classList.add('hidden');
+          overlay.querySelectorAll(':scope > div').forEach(d => d.classList.add('hidden'));
+        }
+        break;
+
+      case 'i':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          CaseImport.show();
+        }
+        break;
+    }
+  });
+}
+
+// ─── JSON Export / Import (Phase 4) ─────────────────────────
+
+function setupExportImport() {
+  const exportBtn = $('#export-json-btn');
+  const importBtn = $('#import-json-btn');
+  const importInput = $('#import-json-input');
+
+  if (exportBtn) {
+    exportBtn.addEventListener('click', exportFieldJSON);
+  }
+
+  if (importBtn && importInput) {
+    importBtn.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', importFieldJSON);
+  }
+}
+
+function exportFieldJSON() {
+  const field = getActiveField();
+  if (!field) {
+    alert('No field selected to export.');
+    return;
+  }
+
+  const cases = getCasesForField(field);
+  const caseOrder = getOrderedCaseNames(field);
+
+  const exportData = {
+    version: 2,
+    exportDate: new Date().toISOString(),
+    field: field,
+    caseOrder: caseOrder,
+    cases: cases,
+  };
+
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${field.replace(/\s+/g, '_')}_cases.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importFieldJSON(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const data = JSON.parse(evt.target.result);
+      if (!data.field || !data.cases) {
+        alert('Invalid export file: missing field or cases.');
+        return;
+      }
+
+      const targetField = data.field;
+
+      // Ensure field exists
+      const state = getState();
+      if (!state.fields.includes(targetField)) {
+        addField(targetField);
+        saveFields(state.fields);
+      }
+
+      // Merge cases (import adds/overwrites, doesn't delete existing)
+      const existingCases = getCasesForField(targetField);
+      const merged = { ...existingCases, ...data.cases };
+
+      // Save merged cases
+      localStorage.setItem(`volumetricCases_${targetField}`, JSON.stringify(merged));
+
+      // Update case order if provided
+      if (data.caseOrder) {
+        saveCaseOrder(targetField, data.caseOrder);
+      }
+
+      // Reload
+      setActiveField(targetField);
+      loadFieldData(targetField);
+      saveAppState();
+
+      alert(`Imported ${Object.keys(data.cases).length} cases into "${targetField}".`);
+    } catch (err) {
+      alert('Failed to parse import file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = ''; // Reset file input
+}
+
+// ─── Case duplication (Phase 4) ─────────────────────────────
+
+export function duplicateCase(field, caseName) {
+  const caseData = getCaseData(field, caseName);
+  if (!caseData) return;
+
+  let newName = caseName + ' (copy)';
+  let counter = 1;
+  const existing = getCasesForField(field);
+  while (existing[newName]) {
+    counter++;
+    newName = `${caseName} (copy ${counter})`;
+  }
+
+  const duplicated = JSON.parse(JSON.stringify(caseData));
+  duplicated.title = newName;
+  duplicated.timestamp = new Date().toISOString();
+
+  saveCase(field, newName, duplicated);
+  addCaseToOrder(field, newName);
+  setActiveCase(newName);
+  saveAppState();
+
+  emit(EVENTS.CASE_CREATED, { field, caseName: newName, caseData: duplicated });
 }

@@ -200,6 +200,27 @@
             </div>
             <div id="cross-plot" class="w-full h-[500px] relative"></div>
         </div>
+
+        <!-- ==================== REVISION TIMELINE ==================== -->
+        <button id="toggle-timeline" class="text-xs font-light text-gray-500 hover:text-blue-600 uppercase tracking-wider flex items-center mb-4">
+            <span class="mr-2">Revision Timeline</span>
+            <i class="fas fa-chevron-down"></i>
+        </button>
+
+        <div id="timeline-outer-container" class="bg-white rounded-lg shadow-md p-4 mb-6 hidden">
+            <div id="timeline-container"></div>
+        </div>
+
+        <!-- ==================== EXPORT / IMPORT ==================== -->
+        <div class="flex items-center gap-3 mb-6">
+            <button id="export-json-btn" class="text-xs text-gray-500 hover:text-blue-600 uppercase tracking-wider flex items-center gap-1">
+                <i class="fas fa-download"></i> Export Field
+            </button>
+            <button id="import-json-btn" class="text-xs text-gray-500 hover:text-blue-600 uppercase tracking-wider flex items-center gap-1">
+                <i class="fas fa-upload"></i> Import Field
+            </button>
+            <input id="import-json-input" type="file" accept=".json" class="hidden">
+        </div>
     </div>
 
     <!-- ==================== SETTINGS BUTTON (floating) ==================== -->

@@ -731,8 +731,67 @@ export function render() {
         .attr('opacity', 0.85);
     });
 
+  // ── Regression line ──
+  drawRegressionLine(g, groups, xMetric, yMetric, xScale, yScale, innerWidth, innerHeight);
+
   // Legend
   buildLegend(container, groups, caseToSymbol);
+}
+
+// ─── Regression line (simple linear, purely visual) ─────────
+
+function drawRegressionLine(g, groups, xMetric, yMetric, xScale, yScale, width, height) {
+  // Collect all visible data points
+  const points = groups
+    .filter(d => isPointVisible(d))
+    .map(d => [d.data[xMetric], d.data[yMetric]])
+    .filter(([x, y]) => isFinite(x) && isFinite(y) && x !== 0 && y !== 0);
+
+  if (points.length < 2) return;
+
+  const n = points.length;
+  const sumX = points.reduce((s, p) => s + p[0], 0);
+  const sumY = points.reduce((s, p) => s + p[1], 0);
+  const sumXY = points.reduce((s, p) => s + p[0] * p[1], 0);
+  const sumX2 = points.reduce((s, p) => s + p[0] * p[0], 0);
+
+  const denom = n * sumX2 - sumX * sumX;
+  if (Math.abs(denom) < 1e-10) return;
+
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+
+  // Calculate R²
+  const meanY = sumY / n;
+  const ssRes = points.reduce((s, p) => s + Math.pow(p[1] - (slope * p[0] + intercept), 2), 0);
+  const ssTot = points.reduce((s, p) => s + Math.pow(p[1] - meanY, 2), 0);
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+
+  // Line endpoints (clamp to scale domain)
+  const [xMin, xMax] = xScale.domain();
+  const y1 = slope * xMin + intercept;
+  const y2 = slope * xMax + intercept;
+
+  g.append('line')
+    .attr('class', 'regression-line')
+    .attr('x1', xScale(xMin))
+    .attr('y1', yScale(y1))
+    .attr('x2', xScale(xMax))
+    .attr('y2', yScale(y2))
+    .attr('stroke', '#6366f1')
+    .attr('stroke-width', 1.5)
+    .attr('stroke-dasharray', '6,4')
+    .attr('opacity', 0.6);
+
+  // R² label
+  g.append('text')
+    .attr('x', xScale(xMax) - 5)
+    .attr('y', yScale(y2) - 8)
+    .attr('text-anchor', 'end')
+    .attr('font-size', '10px')
+    .attr('fill', '#6366f1')
+    .attr('opacity', 0.8)
+    .text(`R² = ${r2.toFixed(3)}`);
 }
 
 // ─── Collapse / expand toggle ───────────────────────────────
