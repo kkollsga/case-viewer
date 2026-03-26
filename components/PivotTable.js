@@ -300,11 +300,24 @@ function renderTotalRow(body, data, groupColumns, formattedHeaders, units) {
 // ─── Event subscriptions ────────────────────────────────────
 
 export function setupEvents() {
-  on(EVENTS.DATA_LOADED, () => render());
+  on(EVENTS.DATA_LOADED, () => {
+    // If a compare case is active, don't render — DeltaTable will handle it
+    const ui = getUI();
+    if (ui.compareCase) return;
+    render();
+  });
   on(EVENTS.DATA_CLEARED, () => {
     clear(document.getElementById('pivot-headers'));
     clear(document.getElementById('pivot-body'));
   });
-  on(EVENTS.TOGGLE_PARAMETERS, () => render());
-  on(EVENTS.TOGGLE_HIDE_EMPTY, () => render());
+  on(EVENTS.TOGGLE_PARAMETERS, () => {
+    const ui = getUI();
+    if (ui.compareCase) return; // Delta table handles its own rendering
+    render();
+  });
+  on(EVENTS.TOGGLE_HIDE_EMPTY, () => {
+    const ui = getUI();
+    if (ui.compareCase) return;
+    render();
+  });
 }

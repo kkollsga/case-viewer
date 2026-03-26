@@ -16,12 +16,16 @@ function createDefaultState() {
     activeCase: null,
     defaultAuthor: '',
 
+    // Per-field base cases: { fieldName: caseName }
+    baseCases: {},
+
     ui: {
       metric: 'STOIIP',
       showParameters: false,
       hideEmpty: true,
       view: 'pivot',
       compareCase: null,
+      deltaMode: false,
       crossPlotX: 'bulkVolume',
       crossPlotY: 'stoiip',
       crossPlotGroupLevel: 1,
@@ -99,7 +103,21 @@ export function setView(view) {
 
 export function setCompareCase(caseName) {
   state.ui.compareCase = caseName;
+  state.ui.deltaMode = !!caseName;
   emit(EVENTS.COMPARE_CHANGED, { caseName });
+}
+
+export function setBaseCase(fieldName, caseName) {
+  state.baseCases[fieldName] = caseName;
+}
+
+export function getBaseCase(fieldName) {
+  return state.baseCases[fieldName || state.activeField] || null;
+}
+
+export function toggleDeltaMode() {
+  state.ui.deltaMode = !state.ui.deltaMode;
+  emit(EVENTS.TOGGLE_DELTA, { deltaMode: state.ui.deltaMode });
 }
 
 export function setShowParameters(val) {
@@ -202,6 +220,7 @@ export function hydrateState(saved) {
   if (saved.activeField) state.activeField = saved.activeField;
   if (saved.activeCase) state.activeCase = saved.activeCase;
   if (saved.defaultAuthor) state.defaultAuthor = saved.defaultAuthor;
+  if (saved.baseCases) state.baseCases = saved.baseCases;
   if (saved.ui) Object.assign(state.ui, saved.ui);
   emit(EVENTS.STATE_LOADED, state);
 }
@@ -216,6 +235,7 @@ export function serializeState() {
     activeField: state.activeField,
     activeCase: state.activeCase,
     defaultAuthor: state.defaultAuthor,
+    baseCases: { ...state.baseCases },
     ui: { ...state.ui },
   };
 }

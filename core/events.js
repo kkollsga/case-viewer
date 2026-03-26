@@ -54,6 +54,7 @@ export const EVENTS = {
   TOGGLE_PARAMETERS: 'toggle:parameters',
   TOGGLE_HIDE_EMPTY: 'toggle:hideEmpty',
   TOGGLE_DELTA: 'toggle:delta',
+  BASE_CASE_CHANGED: 'base:changed',
 
   // Data events
   DATA_LOADED: 'data:loaded',

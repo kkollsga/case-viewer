@@ -3,7 +3,7 @@
 
 import { getState, getActiveField, getActiveCase, setActiveField, setActiveCase,
          setShowParameters, setHideEmpty, setMetric, setVolumetricData, clearVolumetricData,
-         getRuntime, getUI, setAvailableCases } from './core/state.js';
+         getRuntime, getUI, setAvailableCases, setCompareCase, setBaseCase, getBaseCase } from './core/state.js';
 import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames,
          loadFieldSettings, saveFieldSettings, loadCrossPlotSettings } from './core/storage.js';
 import { on, emit, EVENTS } from './core/events.js';
@@ -15,6 +15,9 @@ import * as CaseImport from './components/CaseImport.js';
 import * as CaseEditor from './components/CaseEditor.js';
 import * as FieldManager from './components/FieldManager.js';
 import * as PivotTable from './components/PivotTable.js';
+
+import * as DeltaTable from './components/DeltaTable.js';
+import * as DriverChart from './components/DriverChart.js';
 
 // These may load asynchronously
 let BallChart, CrossPlot;
@@ -31,6 +34,8 @@ export async function init() {
   CaseEditor.init();
   FieldManager.init();
   PivotTable.init();
+  DeltaTable.init();
+  DriverChart.init();
 
   // Dynamically import chart components
   try {
@@ -54,11 +59,14 @@ export async function init() {
   CaseEditor.setupEvents();
   FieldManager.setupEvents();
   PivotTable.setupEvents();
+  DeltaTable.setupEvents();
+  DriverChart.setupEvents();
   if (BallChart?.setupEvents) BallChart.setupEvents();
   if (CrossPlot?.setupEvents) CrossPlot.setupEvents();
 
   // Setup UI controls
   setupToggles();
+  setupCompareSelector();
   setupFieldSelector();
   setupSettingsPanel();
 
@@ -252,13 +260,16 @@ function updateCurrentUnit() {
 function setupGlobalEvents() {
   // When field changes, reload everything
   on(EVENTS.FIELD_CHANGED, ({ field }) => {
+    setCompareCase(null); // Clear compare when switching fields
     loadFieldData(field);
+    updateCompareSelector();
     saveAppState();
   });
 
-  // When case is selected, load its data
+  // When case is selected, load its data and update compare selector
   on(EVENTS.CASE_SELECTED, () => {
     loadCaseData();
+    updateCompareSelector();
   });
 
   // When case is created or updated, reload
@@ -286,6 +297,24 @@ function setupGlobalEvents() {
   window.addEventListener('resize', () => {
     if (BallChart?.render && getRuntime().volumetricData) BallChart.render();
     if (CrossPlot?.render) CrossPlot.render();
+  });
+
+  // Compare case changes — render delta table or fall back to normal pivot
+  on(EVENTS.COMPARE_CHANGED, () => {
+    const ui = getUI();
+    const driverSection = $('#driver-chart-section');
+    if (ui.compareCase) {
+      // Try rendering delta table; if it succeeds, it replaces the pivot
+      const rendered = DeltaTable.render();
+      if (!rendered) PivotTable.render();
+      // Show driver chart section
+      if (driverSection) driverSection.classList.remove('hidden');
+    } else {
+      // No compare — show normal pivot, hide driver section
+      PivotTable.render();
+      if (driverSection) driverSection.classList.add('hidden');
+    }
+    saveAppState();
   });
 
   // Field rename/delete cascades
@@ -320,6 +349,45 @@ function setupToggles() {
       setMetric(e.target.value);
       if (BallChart?.render) BallChart.render();
     });
+  }
+}
+
+function setupCompareSelector() {
+  const selector = $('#compare-case-selector');
+  if (!selector) return;
+
+  selector.addEventListener('change', (e) => {
+    setCompareCase(e.target.value || null);
+  });
+}
+
+function updateCompareSelector() {
+  const selector = $('#compare-case-selector');
+  if (!selector) return;
+
+  const field = getActiveField();
+  const activeCase = getActiveCase();
+  const ui = getUI();
+
+  selector.innerHTML = '<option value="">None</option>';
+
+  if (!field) return;
+
+  const caseNames = getOrderedCaseNames(field);
+  for (const name of caseNames) {
+    if (name === activeCase) continue; // Don't compare to self
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    selector.appendChild(opt);
+  }
+
+  // Restore selection if still valid
+  if (ui.compareCase && caseNames.includes(ui.compareCase)) {
+    selector.value = ui.compareCase;
+  } else {
+    selector.value = '';
+    if (ui.compareCase) setCompareCase(null);
   }
 }
 
