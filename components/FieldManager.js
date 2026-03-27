@@ -2,7 +2,7 @@
 
 import { getState, addField, renameField, deleteField, getFields } from '../core/state.js';
 import { saveFields, deleteFieldData, renameFieldData } from '../core/storage.js';
-import { emit, EVENTS } from '../core/events.js';
+// events.js removed
 import { el, clear } from '../utils/dom.js';
 
 let modalEl = null;

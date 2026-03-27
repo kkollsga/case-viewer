@@ -194,6 +194,25 @@ export const reducers = {
     return { ...state, data: { ...state.data, expandedZones: ez } };
   },
 
+  // ─── Signals (trigger side effects via subscriptions) ──────
+  // These don't change state shape but bump a counter so subscribers detect the change.
+
+  CASE_CREATED: (state, payload) => ({
+    ...state, _sig: { ...state._sig, caseCreated: (state._sig?.caseCreated || 0) + 1, lastPayload: payload },
+  }),
+
+  CASE_UPDATED: (state, payload) => ({
+    ...state, _sig: { ...state._sig, caseUpdated: (state._sig?.caseUpdated || 0) + 1, lastPayload: payload },
+  }),
+
+  CASE_DELETED: (state, payload) => ({
+    ...state, _sig: { ...state._sig, caseDeleted: (state._sig?.caseDeleted || 0) + 1, lastPayload: payload },
+  }),
+
+  MAPPINGS_CHANGED: (state, payload) => ({
+    ...state, _sig: { ...state._sig, mappingsChanged: (state._sig?.mappingsChanged || 0) + 1, lastPayload: payload },
+  }),
+
   // ─── Misc ─────────────────────────────────────────────────
 
   SET_DEFAULT_AUTHOR: (state, { author }) => ({

@@ -1,10 +1,7 @@
 // core/state.js — Central application state.
 // Delegates to core/store.js internally. Keeps the old API for backward compatibility.
-// Bridge: subscribes to store slices and emits old events during migration.
-
 import { createStore } from './store.js';
 import { reducers } from './reducers.js';
-import { emit, EVENTS } from './events.js';
 
 // ─── Store setup ────────────────────────────────────────────
 
@@ -58,30 +55,7 @@ export const store = createStore(initialState, reducers, {
   }),
 });
 
-// ─── Bridge: emit old events when store changes ─────────────
-// Components still using on(EVENTS.*) will continue to work.
-
-let bridgeActive = true;
-
-store.subscribe('activeField', (val) => { if (bridgeActive) emit(EVENTS.FIELD_CHANGED, { field: val }); });
-store.subscribe('activeScenario', (val) => { if (bridgeActive) emit(EVENTS.SCENARIO_CHANGED, { scenario: val }); });
-store.subscribe('activeCase', (val) => {
-  if (!bridgeActive) return;
-  if (val) emit(EVENTS.CASE_SELECTED, { caseName: val });
-  else emit(EVENTS.BROWSER_OPENED);
-});
-store.subscribe('selectedCases', () => { if (bridgeActive) emit(EVENTS.SELECTION_CHANGED, { selectedCases: store.getState().selectedCases }); });
-store.subscribe(s => s.data.volumetricData, (val) => {
-  if (!bridgeActive) return;
-  if (val) emit(EVENTS.DATA_LOADED, { data: val });
-  else emit(EVENTS.DATA_CLEARED);
-});
-store.subscribe('ui.metric', () => { if (bridgeActive) emit(EVENTS.METRIC_CHANGED, { metric: store.select('ui.metric') }); });
-store.subscribe('ui.view', () => { if (bridgeActive) emit(EVENTS.VIEW_CHANGED, { view: store.select('ui.view') }); });
-store.subscribe('ui.compareCase', () => { if (bridgeActive) emit(EVENTS.COMPARE_CHANGED, { caseName: store.select('ui.compareCase') }); });
-store.subscribe('ui.showParameters', () => { if (bridgeActive) emit(EVENTS.TOGGLE_PARAMETERS, { showParameters: store.select('ui.showParameters') }); });
-store.subscribe('ui.hideEmpty', () => { if (bridgeActive) emit(EVENTS.TOGGLE_HIDE_EMPTY, { hideEmpty: store.select('ui.hideEmpty') }); });
-store.subscribe('ui.deltaMode', () => { if (bridgeActive) emit(EVENTS.TOGGLE_DELTA, { deltaMode: store.select('ui.deltaMode') }); });
+// Bridge removed — all components use store.subscribe() directly.
 
 // ─── Accessors (read from store) ────────────────────────────
 
@@ -171,7 +145,6 @@ export function toggleDeltaMode() {
 export function addField(name) {
   if (store.getState().fields.includes(name)) return false;
   store.dispatch('ADD_FIELD', { name });
-  emit(EVENTS.FIELD_CREATED, { field: name });
   return true;
 }
 
@@ -179,14 +152,12 @@ export function renameField(oldName, newName) {
   if (oldName === newName || store.getState().fields.includes(newName)) return false;
   if (!store.getState().fields.includes(oldName)) return false;
   store.dispatch('RENAME_FIELD', { oldName, newName });
-  emit(EVENTS.FIELD_RENAMED, { oldName, newName });
   return true;
 }
 
 export function deleteField(name) {
   if (!store.getState().fields.includes(name)) return false;
   store.dispatch('DELETE_FIELD', { name });
-  emit(EVENTS.FIELD_DELETED, { field: name });
   return true;
 }
 
@@ -196,19 +167,16 @@ export function addScenario(fieldName, scenarioName) {
   const existing = store.getState().scenarios[fieldName] || [];
   if (existing.includes(scenarioName)) return false;
   store.dispatch('ADD_SCENARIO', { field: fieldName, scenario: scenarioName });
-  emit(EVENTS.SCENARIO_CREATED, { field: fieldName, scenario: scenarioName });
   return true;
 }
 
 export function renameScenario(fieldName, oldName, newName) {
   store.dispatch('RENAME_SCENARIO', { field: fieldName, oldName, newName });
-  emit(EVENTS.SCENARIO_RENAMED, { field: fieldName, oldName, newName });
   return true;
 }
 
 export function deleteScenario(fieldName, scenarioName) {
   store.dispatch('DELETE_SCENARIO', { field: fieldName, scenario: scenarioName });
-  emit(EVENTS.SCENARIO_DELETED, { field: fieldName, scenario: scenarioName });
   return true;
 }
 
@@ -239,10 +207,7 @@ export function toggleZoneExpanded(caseKey, groupKey) {
 
 export function hydrateState(saved) {
   if (!saved) return;
-  bridgeActive = false; // Don't emit old events during hydration
   store.dispatch('HYDRATE_STATE', saved);
-  bridgeActive = true;
-  emit(EVENTS.STATE_LOADED, store.getState());
 }
 
 export function serializeState() {

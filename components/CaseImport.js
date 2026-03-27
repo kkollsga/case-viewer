@@ -5,7 +5,8 @@ import { getState, getFields, getActiveField, getActiveScenario, getScenariosFor
          setActiveField, setActiveScenario, setActiveCase, addScenario } from '../core/state.js';
 import { parseOutputSheet, detectGroupColumns, FORMAT } from '../core/parser.js';
 import { saveCase, addCaseToOrder, saveAppState, loadDefaultAuthor, saveDefaultAuthor } from '../core/storage.js';
-import { emit, EVENTS } from '../core/events.js';
+// events.js removed — using store.dispatch for signals
+import { store } from '../core/state.js';
 import { formatDateTimeForInput, formatDateTime } from '../utils/format.js';
 import { el, clear, $, $$ } from '../utils/dom.js';
 
@@ -243,7 +244,7 @@ function submit() {
   saveAppState();
 
   hide();
-  emit(EVENTS.CASE_CREATED, { field, scenario, caseName: title, caseData });
+  store.dispatch('CASE_CREATED', { field, scenario, caseName: title });
 }
 
 // ─── Event wiring ───────────────────────────────────────────

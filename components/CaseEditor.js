@@ -3,7 +3,8 @@
 
 import { getActiveField, getActiveCase, getActiveScenario } from '../core/state.js';
 import { getCaseData, saveCase, renameCase as storageRenameCase, saveAppState } from '../core/storage.js';
-import { emit, EVENTS } from '../core/events.js';
+// events.js removed — using store.dispatch for signals
+import { store } from '../core/state.js';
 import { formatDateTime } from '../utils/format.js';
 import { el, clear, $ } from '../utils/dom.js';
 
@@ -85,7 +86,7 @@ function submit() {
   saveAppState();
   hide();
 
-  emit(EVENTS.CASE_UPDATED, { field: editingField, scenario: editingScenario, caseName: editingCase });
+  store.dispatch('CASE_UPDATED', { field: editingField, scenario: editingScenario, caseName: editingCase });
 }
 
 export function setupEvents() {

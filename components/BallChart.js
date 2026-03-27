@@ -10,7 +10,7 @@ import {
   saveLegendLayer, loadLegendLayer,
   saveFieldSettings, getCaseData,
 } from '../core/storage.js';
-import { on, emit, EVENTS } from '../core/events.js';
+// events.js removed
 import { formatNumber, formatCompact } from '../utils/format.js';
 import {
   getNodeColor, getPalette, THEME,

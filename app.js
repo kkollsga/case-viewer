@@ -10,7 +10,7 @@ import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames, getCasesF
          loadFieldSettings, saveFieldSettings, loadCrossPlotSettings,
          saveCase, addCaseToOrder, saveCaseOrder, saveFields,
          hasLegacyData, clearLegacyData, applyGroupMappings } from './core/storage.js';
-import { on, emit, EVENTS } from './core/events.js';
+// events.js kept for bridge in state.js (will be removed in final cleanup)
 import { formatDateTime, formatCompact } from './utils/format.js';
 import { $ } from './utils/dom.js';
 
@@ -298,12 +298,9 @@ function navigateCase(dir) {
 function setupGlobalEvents() {
   // ── Store subscriptions (replaces 11 on(EVENTS.*) handlers) ──
 
-  // Case selection → show data view (both store sub and old event for reliability)
+  // Case selection → show data view
   store.subscribe('activeCase', (caseName) => {
     if (caseName) showDataView();
-  });
-  on(EVENTS.CASE_SELECTED, () => {
-    showDataView();
   });
 
   // Browser opened (activeCase cleared)
@@ -318,8 +315,9 @@ function setupGlobalEvents() {
       DeltaTable.render() || PivotTable.render();
       if (driverSection) driverSection.classList.remove('hidden');
     } else {
-      PivotTable.render();
       if (driverSection) driverSection.classList.add('hidden');
+      // Delay to ensure DeltaTable's subscription has cleared its content first
+      setTimeout(() => PivotTable.render(), 0);
     }
   });
 
@@ -330,28 +328,24 @@ function setupGlobalEvents() {
     if (field) saveFieldSettings(field, { currentMetric: getUI().metric });
   });
 
-  // ── Old event handlers (for events emitted by components not yet migrated) ──
+  // ── Signal subscriptions (replace old event handlers) ──
 
-  on(EVENTS.CASE_CREATED, () => {
+  store.subscribe(s => s._sig?.caseCreated, () => {
     if (CaseBrowser?.render) CaseBrowser.render();
   });
 
-  on(EVENTS.CASE_UPDATED, () => {
+  store.subscribe(s => s._sig?.caseUpdated, () => {
     if (getActiveCase()) loadCaseData();
     if (CaseBrowser?.render) CaseBrowser.render();
   });
 
-  on(EVENTS.CASE_DELETED, () => {
+  store.subscribe(s => s._sig?.caseDeleted, () => {
     if (CaseBrowser?.render) CaseBrowser.render();
   });
 
-  on(EVENTS.MAPPINGS_CHANGED, () => {
+  store.subscribe(s => s._sig?.mappingsChanged, () => {
     if (getActiveCase()) loadCaseData();
     if (CaseBrowser?.renderCaseCardsOnly) CaseBrowser.renderCaseCardsOnly();
-  });
-
-  on(EVENTS.BROWSER_OPENED, (data) => {
-    if (data?.action === 'import') CaseImport.show();
   });
 
   // Responsive resize
@@ -567,7 +561,7 @@ export function duplicateCase(field, scenario, caseName) {
   saveCase(field, scenario, newName, dup);
   addCaseToOrder(field, scenario, newName);
   saveAppState();
-  emit(EVENTS.CASE_CREATED, { field, scenario, caseName: newName });
+  store.dispatch('CASE_CREATED', { field, scenario, caseName: newName });
 }
 
 // ─── Demo data seeding ──────────────────────────────────────

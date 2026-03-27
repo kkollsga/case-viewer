@@ -1,9 +1,9 @@
 // components/FieldSettings.js — Field-level group name standardization
 // Uses custom pointer-based drag from utils/draggable.js
 
-import { getActiveField } from '../core/state.js';
+import { getActiveField, store } from '../core/state.js';
 import { loadGroupMappings, saveGroupMappings, collectUniqueGroupValues } from '../core/storage.js';
-import { emit, EVENTS } from '../core/events.js';
+// events.js removed — using store.dispatch for signals
 import { el, clear } from '../utils/dom.js';
 import { PALETTES } from '../utils/color.js';
 import { makeDraggable } from '../utils/draggable.js';
@@ -22,12 +22,12 @@ export function setupEvents() {}
 
 function persist(f) {
   saveGroupMappings(f, currentMappings);
-  emit(EVENTS.MAPPINGS_CHANGED, { field: f });
+  store.dispatch('MAPPINGS_CHANGED', { field: f });
 }
 
 // Full propagation when settings panel closes
 function propagateChanges() {
-  emit(EVENTS.CASE_UPDATED, { field: getActiveField() });
+  store.dispatch('CASE_UPDATED', { field: getActiveField() });
 }
 function cc(h) { if(!h||h.length<7)return'#374151'; const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16); return(0.299*r+0.587*g+0.114*b)/255>0.55?'#374151':'#fff'; }
 function dc(i) { return PALETTES.vibrant[i % PALETTES.vibrant.length]; }

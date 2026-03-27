@@ -17,7 +17,7 @@ import {
 } from '../core/storage.js';
 import { parseOutputSheet, FORMAT } from '../core/parser.js';
 import * as FieldSettings from './FieldSettings.js';
-import { on, emit, EVENTS } from '../core/events.js';
+// events.js removed — using store.dispatch for signals
 import { formatNumber, formatDateShort, formatDateTime } from '../utils/format.js';
 import { PALETTES } from '../utils/color.js';
 import { el, clear, createToggle, $ } from '../utils/dom.js';
@@ -1271,7 +1271,7 @@ function handleSave(field, scenario) {
 
   // Reset import state and re-render
   resetImportState();
-  emit(EVENTS.CASE_CREATED);
+  store.dispatch('CASE_CREATED', { field, scenario });
 }
 
 function getActiveGroupColumns() {
