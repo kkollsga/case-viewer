@@ -65,8 +65,31 @@ function renderSection(field, column) {
   const items = el('div',{class:'flex flex-wrap gap-2 items-start mt-1',dataset:{column}});
   const stacks = currentMappings[column]||[];
   const asgn = new Set(); for(const s of stacks) for(const v of s.values) asgn.add(v);
-  for(let i=0;i<stacks.length;i++) items.appendChild(renderStack(field,column,stacks[i],i));
-  for(const v of vals.filter(v=>!asgn.has(v))) items.appendChild(renderPill(field, column, v));
+  const unassigned = vals.filter(v => !asgn.has(v));
+
+  // Use persisted order if available
+  const savedOrder = currentMappings[`__order_${column}`];
+  if (savedOrder && savedOrder.length > 0) {
+    const stackMap = {}; stacks.forEach((s,i) => stackMap[s.name] = i);
+    const usedStacks = new Set();
+    const usedPills = new Set();
+
+    for (const entry of savedOrder) {
+      if (entry.type === 'stack' && stackMap[entry.name] !== undefined && !usedStacks.has(entry.name)) {
+        items.appendChild(renderStack(field, column, stacks[stackMap[entry.name]], stackMap[entry.name]));
+        usedStacks.add(entry.name);
+      } else if (entry.type === 'pill' && unassigned.includes(entry.value) && !usedPills.has(entry.value)) {
+        items.appendChild(renderPill(field, column, entry.value));
+        usedPills.add(entry.value);
+      }
+    }
+    // Append any new items not in saved order
+    stacks.forEach((s,i) => { if (!usedStacks.has(s.name)) items.appendChild(renderStack(field, column, s, i)); });
+    unassigned.forEach(v => { if (!usedPills.has(v)) items.appendChild(renderPill(field, column, v)); });
+  } else {
+    for(let i=0;i<stacks.length;i++) items.appendChild(renderStack(field,column,stacks[i],i));
+    for(const v of unassigned) items.appendChild(renderPill(field, column, v));
+  }
   sec.appendChild(items);
 
   // Wire up draggable
@@ -89,6 +112,8 @@ function renderSection(field, column) {
           const st = (currentMappings[column]||[]).find(s => s.name === target.dataset.stackName);
           if (st && !st.values.includes(dragVal)) st.values.push(dragVal);
         }
+        // Clear saved order (will be rebuilt from stacks + remaining pills)
+        delete currentMappings[`__order_${column}`];
         persist(field); render();
       },
       onInnerDragOut: (value, fromStackName, drop) => {
@@ -109,6 +134,15 @@ function renderSection(field, column) {
         persist(field); render();
       },
       onReorder: (drag, target, position) => {
+        // Capture the new visual order from the DOM
+        const order = [];
+        for (const child of items.children) {
+          if (child.dataset.gs === 'stack') order.push({ type: 'stack', name: child.dataset.stackName });
+          else if (child.dataset.gs === 'pill') order.push({ type: 'pill', value: child.dataset.value });
+        }
+        // Persist the order
+        if (!currentMappings[`__order_${column}`]) currentMappings[`__order_${column}`] = [];
+        currentMappings[`__order_${column}`] = order;
         persist(field); render();
       },
     });
