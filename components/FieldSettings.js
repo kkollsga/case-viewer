@@ -113,9 +113,9 @@ function renderGroupSection(field, column, uniqueValues) {
   header.appendChild(countBadge);
   section.appendChild(header);
 
-  // Items container (stacks + bare pills, all sortable)
+  // Items container (stacks + bare pills, all sortable, float left / wrap)
   const itemsContainer = el('div', {
-    class: 'space-y-1',
+    class: 'flex flex-wrap gap-1.5 items-start',
     id: `group-items-${column}`,
   });
 
@@ -271,12 +271,10 @@ function renderStackRow(field, column, stack, index) {
 // ─── Bare pill (unstacked, appears as a single item in the list) ──
 
 function renderBarePill(field, column, value) {
-  const wrapper = el('div', {
-    class: 'stack-pills flex items-center',
-    dataset: { type: 'bare', column },
-  });
-  wrapper.appendChild(makePill(value));
-  return wrapper;
+  const pill = makePill(value);
+  pill.dataset.type = 'bare';
+  pill.dataset.column = column;
+  return pill;
 }
 
 // ─── Pill element ────────────────────────────────────────────
@@ -295,11 +293,10 @@ function rebuildMappingsFromDOM(field, column, container) {
   const stacks = [];
 
   for (const child of container.children) {
-    const pills = Array.from(child.querySelectorAll('[data-value]')).map(p => p.dataset.value);
-    if (pills.length === 0) continue;
-
     if (child.dataset.type === 'stack') {
-      // Existing stack — keep name and color
+      // Stack container — collect pills inside
+      const pills = Array.from(child.querySelectorAll('[data-value]')).map(p => p.dataset.value);
+      if (pills.length === 0) continue;
       const existingName = child.dataset.stackName;
       const existing = (currentMappings[column] || []).find(s => s.name === existingName);
       stacks.push({
@@ -307,21 +304,12 @@ function rebuildMappingsFromDOM(field, column, container) {
         color: existing?.color || undefined,
         values: pills,
       });
-    } else if (pills.length > 1) {
-      // Bare pill zone that now has multiple pills — auto-create a stack
-      stacks.push({
-        name: pills[0],
-        values: pills,
-      });
     }
-    // If bare with 1 pill, it stays unassigned (no stack needed)
+    // Bare pills (data-type='bare') stay unassigned — no stack needed
   }
 
   currentMappings[column] = stacks;
   saveGroupMappings(field, currentMappings);
-
-  // Re-render to clean up DOM state
-  render();
 }
 
 export function setupEvents() {}
