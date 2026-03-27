@@ -121,12 +121,17 @@ export function render() {
 
     if (caseNames.length === 0 && !importVisible) {
       // No cases — show a welcoming empty state with import button
-      inner.appendChild(renderEmptyStateWithButton(
-        'No cases yet',
-        'Import volumetric data from Petrel to create your first case.',
-        'Import Case',
-        () => { importVisible = true; render(); },
-      ));
+      const emptyDiv = el('div', { class: 'flex flex-col items-center justify-center py-20 text-center' });
+      emptyDiv.appendChild(el('div', { class: 'text-lg font-medium text-gray-400 mb-2', textContent: 'No cases yet' }));
+      emptyDiv.appendChild(el('div', { class: 'text-sm text-gray-400 mb-6', textContent: 'Import volumetric data from Petrel to create your first case.' }));
+      emptyDiv.appendChild(el('button', {
+        class: 'inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-colors shadow-sm',
+        onClick: () => { importVisible = true; render(); },
+      }, [
+        el('i', { class: 'fas fa-plus text-xs' }),
+        el('span', { textContent: 'Import Case' }),
+      ]));
+      inner.appendChild(emptyDiv);
     } else if (importVisible) {
       // Import mode — show paste area and QC
       if (caseNames.length > 0) {
