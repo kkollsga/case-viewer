@@ -7,6 +7,15 @@ import { standardizeUnit, getScaledUnit } from '../utils/units.js';
 const STANDARD_NUMERIC_COLUMNS = [
   'Bulk volume', 'Net volume', 'Pore volume',
   'HCPV oil', 'HCPV gas', 'STOIIP', 'GIIP',
+  'STOIIP (in oil)', 'STOIIP (in gas)', 'GIIP (in gas)', 'GIIP (in oil)',
+];
+
+// Columns to exclude from volume group detection
+const EXCLUDED_GROUP_COLUMNS = ['Case', 'Folder'];
+
+// Known volume column patterns (for header line detection)
+const VOLUME_HEADER_PATTERNS = [
+  'Bulk volume', 'Net volume', 'Pore volume', 'HCPV', 'STOIIP', 'GIIP',
 ];
 
 export const FORMAT = {
@@ -59,19 +68,21 @@ export function parseHeaders(headerLine) {
 function extractMetadata(allLines) {
   const meta = {};
   const metaPatterns = [
-    { key: 'project', pattern: /^(?:project|project name)\s*[:=]\s*(.+)/i },
-    { key: 'grid', pattern: /^(?:grid|grid name|model)\s*[:=]\s*(.+)/i },
-    { key: 'exportDate', pattern: /^(?:export date|date|exported)\s*[:=]\s*(.+)/i },
-    { key: 'case', pattern: /^(?:case|case name|realization)\s*[:=]\s*(.+)/i },
+    { key: 'project', pattern: /^(?:project|project name)\s*[:=\t]\s*(.+)/i },
+    { key: 'grid', pattern: /^(?:grid|grid name)\s*[:=\t]\s*(.+)/i },
+    { key: 'model', pattern: /^(?:model|model name)\s*[:=\t]\s*(.+)/i },
+    { key: 'exportDate', pattern: /^(?:export date|date|exported)\s*[:=\t]\s*(.+)/i },
+    { key: 'case', pattern: /^(?:case|case name|realization)\s*[:=\t]\s*(.+)/i },
+    { key: 'user', pattern: /^(?:user name|user)\s*[:=\t]\s*(.+)/i },
   ];
 
-  // Only check first 10 lines (metadata is always at the top)
-  const limit = Math.min(allLines.length, 10);
+  // Scan metadata lines before the data table (can be 30+ lines in Petrel)
+  const limit = Math.min(allLines.length, 50);
   for (let i = 0; i < limit; i++) {
     const line = allLines[i].trim();
     if (!line) continue;
-    // Skip if it looks like a data line (has many tabs)
-    if (line.split('\t').length > 3) break;
+    // Stop if this looks like a volume data header (contains known volume column names)
+    if (VOLUME_HEADER_PATTERNS.some(p => line.includes(p))) break;
 
     for (const { key, pattern } of metaPatterns) {
       const m = line.match(pattern);
@@ -83,14 +94,37 @@ function extractMetadata(allLines) {
 }
 
 /**
- * Find the header line index — the first line with multiple tab-separated fields.
+ * Find the best header line index.
+ * Petrel output sheets can have multiple sections (Totals, Zones, Facies, Detailed results).
+ * We prefer the LAST header line that contains known volume column names — this is
+ * typically the "Detailed results" section with proper Zone/Facies/Region grouping.
+ * Falls back to the first multi-column line if no volume headers are found.
  */
 function findHeaderLineIndex(lines) {
+  let lastVolumeHeader = -1;
+  let firstMultiCol = -1;
+
   for (let i = 0; i < lines.length; i++) {
-    const cols = lines[i].split('\t');
-    if (cols.length >= 3) return i;
+    const line = lines[i];
+    const cols = line.split('\t');
+    if (cols.length < 3) continue;
+
+    if (firstMultiCol === -1) firstMultiCol = i;
+
+    // Check if this line contains known volume column names
+    const hasVolumeHeaders = VOLUME_HEADER_PATTERNS.some(pattern =>
+      cols.some(col => col.includes(pattern))
+    );
+
+    if (hasVolumeHeaders) {
+      lastVolumeHeader = i;
+    }
   }
-  return 0;
+
+  // Prefer the last header with volume columns (Detailed results section)
+  if (lastVolumeHeader !== -1) return lastVolumeHeader;
+  // Fall back to first multi-column line
+  return firstMultiCol !== -1 ? firstMultiCol : 0;
 }
 
 // ─── Format detection ───────────────────────────────────────
@@ -135,6 +169,8 @@ export function detectGroupColumns(headers, units) {
     if (STANDARD_NUMERIC_COLUMNS.includes(h)) return false;
     if (units[h] && units[h] !== '') return false;
     if (h.startsWith('__')) return false;
+    if (h.startsWith('$')) return false;               // Petrel parameter columns
+    if (EXCLUDED_GROUP_COLUMNS.includes(h)) return false; // Case, Folder, etc.
     return true;
   });
 }
@@ -147,7 +183,7 @@ function classifyColumns(headers, units) {
     if (!h || h.trim() === '') continue;
     if (STANDARD_NUMERIC_COLUMNS.includes(h) || (units[h] && units[h] !== '')) {
       volumes.push({ name: h, unit: units[h] || '' });
-    } else if (!h.startsWith('__')) {
+    } else if (!h.startsWith('__') && !h.startsWith('$') && !EXCLUDED_GROUP_COLUMNS.includes(h)) {
       groups.push(h);
     }
   }
