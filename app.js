@@ -306,9 +306,16 @@ function setupGlobalEvents() {
   });
 
   on(EVENTS.CASE_UPDATED, () => {
-    // Group mappings or case metadata changed — reload active case data
     if (getActiveCase()) loadCaseData();
     if (CaseBrowser?.render) CaseBrowser.render();
+  });
+
+  on(EVENTS.MAPPINGS_CHANGED, () => {
+    // Group mappings changed — reload active case data (re-applies mappings)
+    // and refresh case cards. Don't re-render the full CaseBrowser to avoid
+    // resetting the settings panel.
+    if (getActiveCase()) loadCaseData();
+    if (CaseBrowser?.renderCaseCardsOnly) CaseBrowser.renderCaseCardsOnly();
   });
 
   on(EVENTS.CASE_CREATED, () => {

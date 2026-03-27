@@ -64,6 +64,9 @@ export const EVENTS = {
   DATA_LOADED: 'data:loaded',
   DATA_CLEARED: 'data:cleared',
 
+  // Mappings
+  MAPPINGS_CHANGED: 'mappings:changed',
+
   // State
   STATE_LOADED: 'state:loaded',
 };
