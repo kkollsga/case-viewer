@@ -200,42 +200,36 @@ function renderStackRow(field, column, stack, index) {
   const color = stack.color || defaultColor(index);
   const textColor = contrastColor(color);
 
+  // Wrapper: bg color on the full pill, text inherits
   const row = el('div', {
     class: 'inline-flex items-center gap-1.5 rounded-full pl-3 pr-1.5 py-0.5 group transition-colors',
     dataset: { type: 'stack', stackName: stack.name },
-    style: { backgroundColor: color, color: textColor },
+    style: { backgroundColor: color },
   });
 
-  // Title label (inherits color from wrapper)
-  const titlePill = el('span', {
-    class: 'text-xs font-semibold cursor-default whitespace-nowrap',
-    textContent: stack.name,
-  });
-
-  // Hidden color picker (click title to open)
-  const colorInput = el('input', {
-    type: 'color',
-    class: 'absolute w-0 h-0 opacity-0',
-    value: color,
-  });
+  // Hidden color picker (double-click wrapper to open)
+  const colorInput = el('input', { type: 'color', class: 'absolute w-0 h-0 opacity-0', value: color });
   colorInput.addEventListener('input', (e) => {
     stack.color = e.target.value;
     row.style.backgroundColor = e.target.value;
-    const tc = contrastColor(e.target.value);
-    row.style.color = tc;
-    editInput.style.backgroundColor = e.target.value;
-    editInput.style.color = tc;
     persistMappings(field);
   });
-  titlePill.addEventListener('dblclick', (e) => { e.stopPropagation(); colorInput.click(); });
-  row.append(colorInput);
+  row.addEventListener('dblclick', (e) => { if (e.target === row) colorInput.click(); });
+  row.appendChild(colorInput);
 
-  // Edit input (hidden, replaces title pill in-place)
+  // ── Normal mode: title text ──
+  const titleLabel = el('span', {
+    class: 'text-xs font-semibold whitespace-nowrap cursor-default',
+    textContent: stack.name,
+    style: { color: textColor },
+  });
+
+  // ── Edit mode: input + ok + cancel (all before pills) ──
   const editInput = el('input', {
     type: 'text',
-    class: 'text-xs font-semibold bg-transparent focus:outline-none hidden',
+    class: 'text-xs font-semibold bg-transparent focus:outline-none border-b hidden',
     value: stack.name,
-    style: { color: textColor, width: '6rem' },
+    style: { color: textColor, borderColor: textColor + '66', width: '5rem' },
   });
 
   const okBtn = el('button', {
@@ -243,49 +237,49 @@ function renderStackRow(field, column, stack, index) {
     innerHTML: '<i class="fas fa-check"></i>',
   });
 
-  const cancelBtn = el('button', {
+  const cancelEditBtn = el('button', {
     class: 'w-5 h-5 flex items-center justify-center rounded-full text-red-400 hover:text-red-600 text-[9px] transition-colors hidden flex-shrink-0',
     innerHTML: '<i class="fas fa-times"></i>',
   });
 
-  const showEdit = () => {
-    titlePill.classList.add('hidden');
+  function showEdit() {
+    titleLabel.classList.add('hidden');
     editInput.classList.remove('hidden');
     okBtn.classList.remove('hidden');
-    cancelBtn.classList.remove('hidden');
+    cancelEditBtn.classList.remove('hidden');
     editInput.value = stack.name;
-    editInput.focus();
-    editInput.select();
-  };
+    requestAnimationFrame(() => { editInput.focus(); editInput.select(); });
+  }
 
-  const hideEdit = () => {
+  function hideEdit() {
     editInput.classList.add('hidden');
     okBtn.classList.add('hidden');
-    cancelBtn.classList.add('hidden');
-    titlePill.classList.remove('hidden');
-  };
+    cancelEditBtn.classList.add('hidden');
+    titleLabel.classList.remove('hidden');
+  }
 
-  const commitEdit = () => {
+  function commitEdit() {
     const name = editInput.value.trim();
     if (name) {
       stack.name = name;
-      titlePill.textContent = name;
+      titleLabel.textContent = name;
       row.dataset.stackName = name;
       persistMappings(field);
     }
     hideEdit();
-  };
+  }
 
-  okBtn.addEventListener('click', (e) => { e.stopPropagation(); commitEdit(); });
-  cancelBtn.addEventListener('click', (e) => { e.stopPropagation(); hideEdit(); });
+  okBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); commitEdit(); });
+  cancelEditBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); hideEdit(); });
   editInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') commitEdit();
+    if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
     if (e.key === 'Escape') hideEdit();
   });
 
-  row.append(titlePill, editInput, okBtn, cancelBtn);
+  // Append: title OR (edit + ok + cancel), then pills, then actions
+  row.append(titleLabel, editInput, okBtn, cancelEditBtn);
 
-  // Child pills
+  // Child pills zone
   const pillZone = el('div', {
     class: 'stack-pills flex flex-wrap gap-1 min-h-[24px]',
     dataset: { column, stackName: stack.name },
@@ -299,16 +293,18 @@ function renderStackRow(field, column, stack, index) {
   });
 
   actions.appendChild(el('button', {
-    class: 'w-4 h-4 flex items-center justify-center text-gray-300 hover:text-indigo-500 transition-all',
+    class: 'w-4 h-4 flex items-center justify-center hover:text-indigo-500 transition-all',
     innerHTML: '<i class="fas fa-pen text-[7px]"></i>',
     title: 'Rename',
+    style: { color: textColor + '88' },
     onClick: (e) => { e.stopPropagation(); showEdit(); },
   }));
 
   actions.appendChild(el('button', {
-    class: 'w-4 h-4 flex items-center justify-center text-gray-300 hover:text-red-400 transition-all',
+    class: 'w-4 h-4 flex items-center justify-center hover:text-red-400 transition-all',
     innerHTML: '<i class="fas fa-times text-[8px]"></i>',
     title: 'Dissolve',
+    style: { color: textColor + '88' },
     onClick: () => {
       const s = currentMappings[column] || [];
       const idx = s.indexOf(stack);
