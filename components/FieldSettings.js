@@ -22,9 +22,18 @@ export function setupEvents() {}
 
 function persist(f) {
   saveGroupMappings(f, currentMappings);
+  // Refresh case cards without full re-render (avoids resetting settings panel)
+  refreshCaseCards();
 }
 
-// Call this when settings panel closes to propagate changes
+async function refreshCaseCards() {
+  try {
+    const mod = await import('./CaseBrowser.js');
+    if (mod.renderCaseCardsOnly) mod.renderCaseCardsOnly();
+  } catch {}
+}
+
+// Full propagation when settings panel closes
 function propagateChanges() {
   emit(EVENTS.CASE_UPDATED, { field: getActiveField() });
 }

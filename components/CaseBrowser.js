@@ -12,6 +12,7 @@ import {
   getCasesForScenario, getOrderedCaseNames, saveAppState,
   hasLegacyData, clearLegacyData,
   saveCase, addCaseToOrder, loadDefaultAuthor, saveDefaultAuthor,
+  applyGroupMappings,
   deleteFieldData, renameFieldData, deleteScenarioData, renameScenarioData,
 } from '../core/storage.js';
 import { parseOutputSheet, FORMAT } from '../core/parser.js';
@@ -190,6 +191,26 @@ export function render() {
   }
 
   containerEl.appendChild(root);
+}
+
+/**
+ * Refresh just the case card grid (called by FieldSettings after mapping changes).
+ * Avoids full re-render which would reset the settings panel.
+ */
+export function renderCaseCardsOnly() {
+  const grid = containerEl?.querySelector('.gs-case-grid');
+  if (!grid) return;
+
+  const field = getActiveField();
+  const scenario = getActiveScenario();
+  if (!field || !scenario) return;
+
+  const caseNames = getOrderedCaseNames(field, scenario);
+  const casesData = getCasesForScenario(field, scenario);
+  const selected = getSelectedCases();
+
+  const newGrid = renderCaseGrid(caseNames, casesData, selected);
+  grid.replaceWith(newGrid);
 }
 
 export function setupEvents() {
@@ -1273,7 +1294,7 @@ function getActiveGroupColumns() {
 
 function renderCaseGrid(caseNames, casesData, selected) {
   const grid = el('div', {
-    class: 'grid gap-5',
+    class: 'gs-case-grid grid gap-5',
     style: { gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' },
   });
 
@@ -1425,14 +1446,17 @@ function renderStatRow(label, value, unit) {
 function computeZoneOEBreakdown(caseData) {
   if (!caseData.data || caseData.data.length === 0) return null;
 
-  // Use the first grouping column
   const groupCols = caseData.volumeGroups?.columns || [];
   if (groupCols.length === 0) return null;
 
   const groupCol = groupCols[0];
+  const field = getActiveField();
+
+  // Apply group mappings so merged zones are grouped correctly
+  const data = field ? applyGroupMappings(caseData.data, field) : caseData.data;
   const zoneMap = {};
 
-  for (const row of caseData.data) {
+  for (const row of data) {
     const zone = row[groupCol];
     if (!zone) continue;
     if (!zoneMap[zone]) zoneMap[zone] = 0;
