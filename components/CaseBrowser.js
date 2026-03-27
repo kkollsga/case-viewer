@@ -72,13 +72,11 @@ export function render() {
     textContent: 'Case Viewer',
   }));
 
-  // Spacer
-  inner.appendChild(el('div', { class: 'mt-8' }));
+  // Field + Scenario selectors (single row)
+  inner.appendChild(el('div', { class: 'mt-6' }));
+  inner.appendChild(renderSelectors(field, scenario));
 
-  // Field tabs
-  inner.appendChild(renderFieldTabs(field));
-
-  // Field settings panel (group standardization — toggled by clicking active field)
+  // Field settings panel
   if (field) {
     const settingsPanel = el('div', { class: 'mt-3', id: 'field-settings-panel' });
     inner.appendChild(settingsPanel);
@@ -87,14 +85,8 @@ export function render() {
     }
   }
 
-  // Scenario pills (only if field is selected)
-  if (field) {
-    inner.appendChild(el('div', { class: 'mt-4' }));
-    inner.appendChild(renderScenarioPills(field, scenario));
-  }
-
   // Main content area
-  if (!field) {
+  if (!field && getFields().length === 0) {
     inner.appendChild(renderEmptyStateWithInput(
       'Create your first field',
       'A field represents a geographical area or project (e.g. a licence or prospect).',
@@ -298,6 +290,135 @@ function renderLegacyBanner() {
 
 // ─── Field Tabs ──────────────────────────────────────────────
 
+// ─── Field + Scenario Dropdowns (single row) ────────────────
+
+function renderSelectors(activeField, activeScenario) {
+  const row = el('div', { class: 'flex items-center gap-2 text-sm' });
+
+  // Field dropdown
+  row.appendChild(renderDropdown({
+    value: activeField,
+    items: getFields(),
+    placeholder: 'Select field',
+    onSelect: (name) => { FieldSettings.hide(); setActiveField(name); saveAppState(); },
+    onAdd: (name) => { addField(name); saveAppState(); render(); },
+    addLabel: '+ New field',
+    onSettings: activeField ? () => {
+      const panel = document.getElementById('field-settings-panel');
+      if (panel) FieldSettings.toggle(panel);
+    } : null,
+  }));
+
+  row.appendChild(el('span', { class: 'text-gray-300 text-xs', textContent: '›' }));
+
+  // Scenario dropdown
+  if (activeField) {
+    row.appendChild(renderDropdown({
+      value: activeScenario,
+      items: getScenariosForField(activeField),
+      placeholder: 'Select scenario',
+      onSelect: (name) => { setActiveScenario(name); saveAppState(); },
+      onAdd: (name) => { addScenario(activeField, name); setActiveScenario(name); saveAppState(); render(); },
+      addLabel: '+ New scenario',
+    }));
+  }
+
+  return row;
+}
+
+function renderDropdown({ value, items, placeholder, onSelect, onAdd, addLabel, onSettings }) {
+  const wrapper = el('div', { class: 'relative' });
+
+  const trigger = el('button', {
+    class: 'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors ' +
+           (value ? 'text-gray-800' : 'text-gray-400'),
+    textContent: value || placeholder,
+  });
+
+  if (value) {
+    trigger.appendChild(el('i', { class: 'fas fa-chevron-down text-[8px] text-gray-400 ml-1' }));
+  }
+
+  const menu = el('div', {
+    class: 'absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 min-w-[180px] py-1 hidden',
+  });
+
+  // Items
+  for (const item of items) {
+    const isActive = item === value;
+    menu.appendChild(el('button', {
+      class: `w-full text-left px-3 py-1.5 text-sm transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`,
+      textContent: item,
+      onClick: () => { menu.classList.add('hidden'); onSelect(item); },
+    }));
+  }
+
+  // Settings button (for field)
+  if (onSettings) {
+    menu.appendChild(el('div', { class: 'border-t border-gray-100 my-1' }));
+    menu.appendChild(el('button', {
+      class: 'w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:text-indigo-600 hover:bg-gray-50 transition-colors flex items-center gap-1.5',
+      innerHTML: '<i class="fas fa-cog text-[10px]"></i> Group settings',
+      onClick: () => { menu.classList.add('hidden'); onSettings(); },
+    }));
+  }
+
+  // Add new
+  if (onAdd) {
+    menu.appendChild(el('div', { class: 'border-t border-gray-100 my-1' }));
+
+    const addRow = el('div', { class: 'px-2 py-1' });
+    const addBtn = el('button', {
+      class: 'w-full text-left px-2 py-1 text-xs text-indigo-500 hover:text-indigo-700 transition-colors',
+      textContent: addLabel,
+    });
+
+    const addInput = el('input', {
+      type: 'text',
+      class: 'w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-indigo-400 focus:outline-none hidden',
+      placeholder: 'Name...',
+    });
+
+    addBtn.addEventListener('click', () => {
+      addBtn.classList.add('hidden');
+      addInput.classList.remove('hidden');
+      addInput.focus();
+    });
+
+    const submitAdd = () => {
+      const name = addInput.value.trim();
+      if (name) { menu.classList.add('hidden'); onAdd(name); }
+      addInput.classList.add('hidden');
+      addBtn.classList.remove('hidden');
+      addInput.value = '';
+    };
+
+    addInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitAdd();
+      if (e.key === 'Escape') { addInput.classList.add('hidden'); addBtn.classList.remove('hidden'); addInput.value = ''; }
+    });
+    addInput.addEventListener('blur', () => {
+      setTimeout(() => { addInput.classList.add('hidden'); addBtn.classList.remove('hidden'); addInput.value = ''; }, 150);
+    });
+
+    addRow.append(addBtn, addInput);
+    menu.appendChild(addRow);
+  }
+
+  // Toggle menu
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.classList.toggle('hidden');
+  });
+
+  // Close on outside click
+  document.addEventListener('click', () => menu.classList.add('hidden'));
+
+  wrapper.append(trigger, menu);
+  return wrapper;
+}
+
+// ─── Old functions kept for compatibility ────────────────────
 function renderFieldTabs(activeField) {
   const row = el('div', { class: 'flex items-center gap-2 flex-wrap' });
 

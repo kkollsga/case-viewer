@@ -26,7 +26,6 @@ export const reducers = {
   SET_ACTIVE_CASE: (state, { caseName }) => ({
     ...state,
     activeCase: caseName,
-    ui: { ...state.ui, showBrowser: false },
   }),
 
   SET_SELECTED_CASES: (state, { caseNames }) => ({

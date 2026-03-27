@@ -85,10 +85,7 @@ function showBrowser() {
     if (dv) dv.classList.add('hidden');
   }
 
-  // Hide case summary
-  const summary = $('#case-section-summary');
-  if (summary) summary.classList.add('hidden');
-
+  updateCaseSectionSummary();
   if (CaseBrowser?.render) CaseBrowser.render();
   document.title = 'Case Viewer';
 }
@@ -97,16 +94,31 @@ function updateCaseSectionSummary() {
   const summary = $('#case-section-summary');
   const label = $('#case-section-label');
   const context = $('#case-section-context');
+  const prevBtn = $('#prev-case-btn');
+  const nextBtn = $('#next-case-btn');
   if (!summary) return;
+
   const field = getActiveField();
   const scenario = getActiveScenario();
   const caseName = getActiveCase();
-  if (field && scenario && caseName) {
+
+  // Always show field → scenario
+  if (context) context.textContent = [field, scenario].filter(Boolean).join(' › ') || '';
+
+  // Show case name + nav only when a case is active
+  if (caseName) {
     if (label) label.textContent = caseName;
-    if (context) context.textContent = `${field} › ${scenario}`;
-    summary.classList.remove('hidden');
+    if (prevBtn) prevBtn.style.display = '';
+    if (nextBtn) nextBtn.style.display = '';
+    // Show the separator
+    const sep = summary.querySelector('.text-gray-300');
+    if (sep) sep.style.display = '';
   } else {
-    summary.classList.add('hidden');
+    if (label) label.textContent = '';
+    if (prevBtn) prevBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = 'none';
+    const sep = summary.querySelector('.text-gray-300');
+    if (sep) sep.style.display = 'none';
   }
 }
 
@@ -114,10 +126,7 @@ function showDataView() {
   const dataViewEl = $('#data-view');
   if (dataViewEl) dataViewEl.classList.remove('hidden');
 
-  // Collapse the case selector (but don't hide it)
-  collapseSection('case-section-header', 'case-browser');
-
-  // Show case summary in the collapsed header
+  // Update collapsed header summary (visible when user manually collapses)
   updateCaseSectionSummary();
 
   // Auto-expand volumetrics
@@ -301,7 +310,11 @@ function setupGlobalEvents() {
   // Case selection → show data view
   store.subscribe('activeCase', (caseName) => {
     if (caseName) showDataView();
+    updateCaseSectionSummary();
   });
+
+  // Field/scenario changes → update summary
+  store.subscribe(s => [s.activeField, s.activeScenario], () => updateCaseSectionSummary());
 
   // Browser opened (activeCase cleared)
   store.subscribe(s => s.ui.showBrowser, (showBrowser) => {
