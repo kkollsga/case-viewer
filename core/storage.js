@@ -1,7 +1,7 @@
 // core/storage.js — localStorage read/write with versioned schema
 // ONE localStorage key per field. Structure:
-// cv3_field_{name} = { scenarios: { name: { cases: {}, caseOrder: [] } }, settings: {}, groupMappings: {} }
-// cv3_app = { schema, activeField, activeScenario, defaultAuthor, fields: [names], scenarios: {field:[names]} }
+// caseviewer_field_{name} = { scenarios: { name: { cases: {}, caseOrder: [] } }, settings: {}, groupMappings: {} }
+// caseviewer_app = { schema, activeField, activeScenario, defaultAuthor, fields: [names], scenarios: {field:[names]} }
 
 import {
   getState, getActiveField, getActiveCase, getActiveScenario,
@@ -22,15 +22,21 @@ function writeJSON(key, value) {
 
 // ─── Field data access (single key per field) ───────────────
 
-const FIELD_KEY = (field) => `cv3_field_${field}`;
-const APP_KEY = 'cv3_app';
+const STORAGE_VERSION = 1;
+const FIELD_KEY = (field) => `caseviewer_field_${field}`;
+const APP_KEY = 'caseviewer_app';
 
 function getFieldStore(field) {
   return readJSON(FIELD_KEY(field), {
+    _v: STORAGE_VERSION,
     scenarios: {},
     settings: {},
     groupMappings: {},
   });
+}
+
+function createFieldStore() {
+  return { _v: STORAGE_VERSION, scenarios: {}, settings: {}, groupMappings: {} };
 }
 
 function saveFieldStore(field, store) {
@@ -46,7 +52,9 @@ function getScenarioStore(field, scenario) {
 // ─── App state persistence ──────────────────────────────────
 
 export function saveAppState() {
-  writeJSON(APP_KEY, serializeState());
+  const state = serializeState();
+  state._v = STORAGE_VERSION;
+  writeJSON(APP_KEY, state);
 }
 
 export function loadAppState() {
@@ -55,7 +63,7 @@ export function loadAppState() {
     if (saved.schema && saved.schema < SCHEMA_VERSION) migrateAppState(saved);
     hydrateState(saved);
   }
-  const author = readJSON('cv3_defaultAuthor', null);
+  const author = readJSON('caseviewer_defaultAuthor', null);
   if (author) setDefaultAuthor(author);
 
 }
@@ -70,14 +78,17 @@ function migrateAppState(saved) {
 export function hasLegacyData() {
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    // v2 keys
-    if (key.startsWith('volumetricCases_') || key === 'caseviewer_v2_state') return true;
-    // v3 multi-key format (migrated automatically, but leftovers may exist)
-    if (key.startsWith('cv3_cases_') || key.startsWith('cv3_order_') ||
-        key.startsWith('cv3_fieldSettings_') || key.startsWith('cv3_crossPlot_') ||
-        key.startsWith('cv3_circle_') || key.startsWith('cv3_fieldCircle_') ||
-        key.startsWith('cv3_legend_') || key.startsWith('cv3_groupMappings_') ||
-        key === 'caseviewer_v3_state') return true;
+    // Any key from older versions
+    if (key.startsWith('volumetric') || key.startsWith('cv3_') ||
+        key === 'caseviewer_v2_state' || key === 'caseviewer_v3_state' ||
+        key === 'defaultAuthor') return true;
+    // Current-format keys with old _v
+    if (key.startsWith('caseviewer_')) {
+      try {
+        const obj = JSON.parse(localStorage.getItem(key));
+        if (obj && typeof obj === 'object' && obj._v !== STORAGE_VERSION) return true;
+      } catch {}
+    }
   }
   return false;
 }
@@ -86,20 +97,21 @@ export function clearLegacyData() {
   const toRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    // v2
-    if (key.startsWith('volumetricCases') || key.startsWith('volumetricFields') ||
-        key.startsWith('volumetricSession') || key.startsWith('fieldSettings_') ||
+    if (key === APP_KEY) continue; // Keep current app state
+    if (key.startsWith('caseviewer_field_')) {
+      // Check version
+      try {
+        const obj = JSON.parse(localStorage.getItem(key));
+        if (!obj || obj._v !== STORAGE_VERSION) toRemove.push(key);
+      } catch { toRemove.push(key); }
+      continue;
+    }
+    // Everything else that's not ours: old prefixes
+    if (key.startsWith('volumetric') || key.startsWith('cv3_') || key.startsWith('fieldSettings_') ||
         key.startsWith('crossPlotSettings_') || key.startsWith('circleSettings_') ||
         key.startsWith('fieldCircleSettings_') || key.startsWith('legendLayer_') ||
-        key === 'caseviewer_v2_state' || key === 'defaultAuthor' || key === 'caseviewer_v2_settings') {
-      toRemove.push(key);
-    }
-    // v3 multi-key
-    if (key.startsWith('cv3_cases_') || key.startsWith('cv3_order_') ||
-        key.startsWith('cv3_fieldSettings_') || key.startsWith('cv3_crossPlot_') ||
-        key.startsWith('cv3_circle_') || key.startsWith('cv3_fieldCircle_') ||
-        key.startsWith('cv3_legend_') || key.startsWith('cv3_groupMappings_') ||
-        key === 'caseviewer_v3_state') {
+        key === 'caseviewer_v2_state' || key === 'caseviewer_v3_state' ||
+        key === 'defaultAuthor' || key === 'caseviewer_v2_settings') {
       toRemove.push(key);
     }
   }
@@ -326,11 +338,11 @@ export function collectUniqueGroupValues(field) {
 // ─── Default author ─────────────────────────────────────────
 
 export function saveDefaultAuthor(author) {
-  localStorage.setItem('cv3_defaultAuthor', author);
+  localStorage.setItem('caseviewer_defaultAuthor', author);
 }
 
 export function loadDefaultAuthor() {
-  return localStorage.getItem('cv3_defaultAuthor') || '';
+  return localStorage.getItem('caseviewer_defaultAuthor') || '';
 }
 
 // ─── Field data lifecycle ───────────────────────────────────
