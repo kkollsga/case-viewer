@@ -698,16 +698,29 @@ function renderImportSection(field, scenario) {
 
   section.appendChild(textarea);
 
-  // ── 2. Parse error ──
-  if (parseResult && parseResult.error && !parseResult.qc) {
+  // ── 2. Validation ──
+  const validation = validateParseResult();
+
+  if (validation.error) {
+    // Hard error — can't proceed
     section.appendChild(el('div', {
-      class: 'px-4 py-3 bg-red-50 text-red-700 text-sm rounded-lg',
-      textContent: parseResult.error,
-    }));
+      class: 'flex items-center gap-2 px-4 py-3 bg-red-50 text-red-600 text-sm rounded-lg',
+    }, [
+      el('i', { class: 'fas fa-exclamation-circle flex-shrink-0' }),
+      el('span', { textContent: validation.error }),
+    ]));
+  } else if (validation.warning) {
+    // Warning — can still proceed
+    section.appendChild(el('div', {
+      class: 'flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 text-xs rounded-lg',
+    }, [
+      el('i', { class: 'fas fa-exclamation-triangle flex-shrink-0' }),
+      el('span', { textContent: validation.warning }),
+    ]));
   }
 
-  // ── 3. QC Checks (after successful parse) ──
-  if (parseResult && parseResult.qc) {
+  // ── 3. QC Checks (only if parse produced usable data) ──
+  if (parseResult && parseResult.qc && validation.ok) {
     const qc = parseResult.qc;
 
     section.appendChild(renderQCChecks(qc));
@@ -758,6 +771,50 @@ function renderImportSection(field, scenario) {
 }
 
 // ─── QC Checks Grid ──────────────────────────────────────────
+
+// ─── Validation ─────────────────────────────────────────────
+
+function validateParseResult() {
+  // Nothing pasted yet
+  if (!importRawText || !importRawText.trim()) {
+    return { ok: false, error: null, warning: null };
+  }
+
+  // Parser returned an error
+  if (parseResult && parseResult.error && !parseResult.qc) {
+    return { ok: false, error: parseResult.error };
+  }
+
+  // No parse result at all (shouldn't happen but guard)
+  if (!parseResult) {
+    return { ok: false, error: 'Unable to parse the pasted data.' };
+  }
+
+  // Parse produced QC but no data rows
+  if (!parseResult.data || parseResult.data.length === 0) {
+    return { ok: false, error: 'No data rows found. Check that you pasted the full table including headers.' };
+  }
+
+  // No volume columns detected
+  const qc = parseResult.qc;
+  if (!qc || !qc.volumeColumns || qc.volumeColumns.length === 0) {
+    return { ok: false, error: 'No volume columns detected (expected Bulk volume, STOIIP, GIIP, etc.). This doesn\u2019t look like a Petrel Output Sheet.' };
+  }
+
+  // Has data but no key volumes (STOIIP/GIIP/Bulk volume) — probably wrong data
+  const keyVols = ['STOIIP', 'GIIP', 'Bulk volume', 'STOIIP (in oil)', 'GIIP (in gas)'];
+  const hasKeyVol = qc.volumeColumns.some(v => keyVols.includes(v.name));
+  if (!hasKeyVol) {
+    return { ok: true, warning: 'No standard volume columns found (STOIIP, GIIP, Bulk volume). The data may not be a volumetric export.' };
+  }
+
+  // Parse warnings/errors from individual rows
+  if (parseResult.errors && parseResult.errors.length > 0) {
+    return { ok: true, warning: `${parseResult.errors.length} row(s) skipped due to column count mismatch.` };
+  }
+
+  return { ok: true, error: null, warning: null };
+}
 
 function renderQCChecks(qc) {
   const wrapper = el('div', { class: 'space-y-4' });
@@ -1136,8 +1193,9 @@ function renderImportActions(field, scenario) {
     ? `Save ${checkedCount} case${checkedCount !== 1 ? 's' : ''} to ${scenario}`
     : `Save to ${scenario}`;
 
-  const canSave = parseResult && parseResult.data && parseResult.data.length > 0 &&
-    (isMulti ? checkedCount > 0 : importCaseName.trim() !== '');
+  const v = validateParseResult();
+  const canSave = v.ok && parseResult && parseResult.data && parseResult.data.length > 0 &&
+    (isMulti ? checkedCount > 0 : true);
 
   const saveBtn = el('button', {
     class: canSave
