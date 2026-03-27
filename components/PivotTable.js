@@ -1,6 +1,7 @@
 // components/PivotTable.js — Zone/segment hierarchy table (core view)
 
-import { getState, getRuntime, getActiveCase, getUI, getExpandedZones, toggleZoneExpanded, store } from '../core/state.js';
+import { getState, getRuntime, getActiveField, getActiveCase, getUI, getExpandedZones, toggleZoneExpanded, store } from '../core/state.js';
+import { getGroupValueOrder, getGroupTypeOrder } from '../core/storage.js';
 import { formatNumber } from '../utils/format.js';
 import { calculateParameters, PARAMETER_COLUMNS, getParameterUnits, formatParameterValue, calculateGroupParameters } from '../utils/parameters.js';
 import { el, clear } from '../utils/dom.js';
@@ -27,7 +28,16 @@ export function render() {
 
   let data = [...vData.data];
   const units = vData.units || {};
-  const groupColumns = vData.volumeGroups?.columns || [];
+  const field = getActiveField();
+
+  // Apply group type order from field settings
+  let groupColumns = vData.volumeGroups?.columns || [];
+  const typeOrder = getGroupTypeOrder(field);
+  if (typeOrder) {
+    const ordered = typeOrder.filter(c => groupColumns.includes(c));
+    const extras = groupColumns.filter(c => !ordered.includes(c));
+    groupColumns = [...ordered, ...extras];
+  }
 
   // Filter empty rows
   if (ui.hideEmpty) {
@@ -136,11 +146,24 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
 
   const ui = getUI();
   const caseKey = getActiveCase();
+  const field = getActiveField();
 
-  // Sort groups by Bulk volume descending
+  // Sort groups: user-defined order first, then by Bulk volume
+  const currentCol = groupColumns[level];
+  const valueOrder = currentCol ? getGroupValueOrder(field, currentCol) : null;
+
   const entries = Object.entries(nestedData)
     .filter(([, v]) => v && v.items)
     .sort((a, b) => {
+      if (valueOrder) {
+        const ai = valueOrder.indexOf(a[0]);
+        const bi = valueOrder.indexOf(b[0]);
+        // Items in the order list come first, in order. Unlisted items go to end by volume.
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
+      }
+      // Fallback: sort by Bulk volume descending
       const aVol = a[1].items.reduce((s, r) => s + (parseFloat(r['Bulk volume']) || 0), 0);
       const bVol = b[1].items.reduce((s, r) => s + (parseFloat(r['Bulk volume']) || 0), 0);
       return bVol - aVol;

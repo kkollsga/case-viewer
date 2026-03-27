@@ -313,6 +313,55 @@ export function applyGroupMappings(data, field) {
   });
 }
 
+/**
+ * Get the display order for group values in a column.
+ * Returns an array of display names in the user-defined order.
+ * Stack names come first, then bare values.
+ * If no order is defined, returns null (use default sort).
+ */
+export function getGroupValueOrder(field, column) {
+  const mappings = loadGroupMappings(field);
+  if (!mappings) return null;
+
+  const order = mappings[`__order_${column}`];
+  const stacks = mappings[column];
+
+  if (!order && !stacks) return null;
+
+  // Build ordered list of display names
+  const result = [];
+  const seen = new Set();
+
+  if (order) {
+    for (const entry of order) {
+      if (entry.type === 'stack' && entry.name && !seen.has(entry.name)) {
+        result.push(entry.name);
+        seen.add(entry.name);
+      } else if (entry.type === 'pill' && entry.value && !seen.has(entry.value)) {
+        result.push(entry.value);
+        seen.add(entry.value);
+      }
+    }
+  } else if (stacks && Array.isArray(stacks)) {
+    // No explicit order — stacks first, then remaining values are unsorted
+    for (const s of stacks) {
+      if (s.name && !seen.has(s.name)) { result.push(s.name); seen.add(s.name); }
+    }
+  }
+
+  return result.length > 0 ? result : null;
+}
+
+/**
+ * Get the group type hierarchy order (which column is parent).
+ * Returns an ordered array of column names, or null for default.
+ */
+export function getGroupTypeOrder(field) {
+  const mappings = loadGroupMappings(field);
+  if (!mappings || !mappings.__groupOrder) return null;
+  return mappings.__groupOrder;
+}
+
 export function collectUniqueGroupValues(field) {
   const state = getState();
   const scenarios = state.scenarios[field] || [];
