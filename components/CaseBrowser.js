@@ -120,31 +120,25 @@ export function render() {
     const casesData = getCasesForScenario(field, scenario);
 
     if (caseNames.length === 0 && !importVisible) {
-      // No cases yet — show the paste area as the main content
-      importVisible = true;
-    }
-
-    if (caseNames.length === 0 && importVisible) {
-      // Empty state label + inline import section
-      inner.appendChild(el('div', { class: 'mt-12' }));
-      inner.appendChild(el('div', {
-        class: 'text-lg font-medium text-gray-500 mb-2',
-        textContent: 'Import your first case',
-      }));
-      inner.appendChild(el('div', {
-        class: 'text-sm text-gray-400 mb-6',
-        textContent: 'Paste volumetric data from Petrel to get started.',
-      }));
+      // No cases — show a welcoming empty state with import button
+      inner.appendChild(renderEmptyStateWithButton(
+        'No cases yet',
+        'Import volumetric data from Petrel to create your first case.',
+        'Import Case',
+        () => { importVisible = true; render(); },
+      ));
+    } else if (importVisible) {
+      // Import mode — show paste area and QC
+      if (caseNames.length > 0) {
+        inner.appendChild(el('div', { class: 'mt-8' }));
+        inner.appendChild(renderCaseGrid(caseNames, casesData, selected));
+      }
+      inner.appendChild(el('div', { class: 'mt-8' }));
       inner.appendChild(renderImportSection(field, scenario));
-    } else if (caseNames.length > 0) {
+    } else {
+      // Normal mode — case cards + import button at bottom
       inner.appendChild(el('div', { class: 'mt-8' }));
       inner.appendChild(renderCaseGrid(caseNames, casesData, selected));
-
-      // Import section below case cards (expanded or collapsed)
-      if (importVisible) {
-        inner.appendChild(el('div', { class: 'mt-8' }));
-        inner.appendChild(renderImportSection(field, scenario));
-      }
     }
   }
 
