@@ -123,9 +123,10 @@ function renderGroupSection(field, column) {
     if (typeof Sortable === 'undefined') return;
     Sortable.create(items, {
       animation: 0,
-      group: { name: `col-${column}`, pull: false, put: false },
+      group: { name: `col-${column}`, pull: false, put: [`inner-${column}`] },
       ghostClass: 'fs-ghost',
       dragClass: 'fs-drag',
+      onAdd: () => rebuildAllFromDOM(field, column, items),
       onEnd: (evt) => {
         const dragEl = evt.item;
         const related = evt.items; // not used in single mode
@@ -169,6 +170,35 @@ function renderGroupSection(field, column) {
         }
       },
     });
+
+    // Inner pill zones: pills can be dragged between stacks and out
+    for (const pz of items.querySelectorAll('.stack-pills')) {
+      Sortable.create(pz, {
+        animation: 0,
+        group: { name: `inner-${column}`, pull: true, put: true },
+        ghostClass: 'fs-ghost',
+        dragClass: 'fs-drag',
+        sort: true,
+        onEnd: (evt) => {
+          // If pill was dragged out of this stack to another stack-pills zone
+          // or out of the stack entirely, rebuild mappings
+          rebuildAllFromDOM(field, column, items);
+        },
+        onAdd: () => rebuildAllFromDOM(field, column, items),
+        onRemove: (evt) => {
+          // If the stack is now empty after removing a pill, dissolve it
+          const stackEl = evt.from.closest('[data-fs-type=stack]');
+          if (stackEl && evt.from.children.length === 0) {
+            const name = stackEl.dataset.stackName;
+            const s = currentMappings[column] || [];
+            const idx = s.findIndex(st => st.name === name);
+            if (idx !== -1) s.splice(idx, 1);
+            stackEl.remove();
+          }
+          rebuildAllFromDOM(field, column, items);
+        },
+      });
+    }
   }, 50);
 
   return section;
@@ -292,14 +322,19 @@ function renderStack(field, column, stack, index) {
 
   row.append(titleLabel, editInput, okBtn, cancelBtn);
 
-  // Child pills (inside the colored wrapper)
+  // Child pills in a sortable zone (can be dragged out)
+  const pillZone = el('div', {
+    class: 'stack-pills inline-flex flex-wrap gap-1 items-center min-w-[24px]',
+    dataset: { stackName: stack.name, column },
+  });
   for (const val of stack.values) {
-    row.appendChild(el('span', {
-      class: 'inline-flex items-center px-2 py-0.5 text-[11px] rounded-full bg-white/90 text-gray-600 whitespace-nowrap',
+    pillZone.appendChild(el('span', {
+      class: 'inline-flex items-center px-2 py-0.5 text-[11px] rounded-full bg-white/90 text-gray-600 whitespace-nowrap cursor-grab select-none',
       textContent: val,
-      dataset: { value: val },
+      dataset: { value: val, fsType: 'inner-pill' },
     }));
   }
+  row.appendChild(pillZone);
 
   outer.appendChild(row);
   return outer;
@@ -313,6 +348,25 @@ function removeFromStacks(column, value) {
     const idx = stacks[i].values.indexOf(value);
     if (idx !== -1) { stacks[i].values.splice(idx, 1); if (stacks[i].values.length === 0) stacks.splice(i, 1); }
   }
+}
+
+function rebuildAllFromDOM(field, column, container) {
+  const newStacks = [];
+  for (const child of container.children) {
+    if (child.dataset.fsType === 'stack') {
+      const pz = child.querySelector('.stack-pills');
+      const pills = pz ? Array.from(pz.children).map(p => p.dataset.value).filter(Boolean) : [];
+      if (pills.length === 0) continue;
+      const name = child.dataset.stackName;
+      const existing = (currentMappings[column] || []).find(s => s.name === name);
+      newStacks.push({ name: existing?.name || pills[0], color: existing?.color, values: pills });
+    }
+    // Inner pills that got dragged to top level become bare (not in any stack) — handled automatically
+  }
+  currentMappings[column] = newStacks;
+  persistMappings(field);
+  // Re-render to clean up DOM
+  render();
 }
 
 function rebuildFromDOM(field, column, container) {
