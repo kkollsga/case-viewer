@@ -111,7 +111,6 @@ function updateCaseSectionSummary() {
 }
 
 function showDataView() {
-  console.log('[showDataView] called, activeCase=', getActiveCase());
   const dataViewEl = $('#data-view');
   if (dataViewEl) dataViewEl.classList.remove('hidden');
 
@@ -153,10 +152,8 @@ function loadCaseData() {
   setVolumetricData({ ...caseData, data });
 
   // Explicitly render data views
-  console.log('[loadCaseData] data set, vd=', !!store.select('data.volumetricData'), 'compare=', getUI().compareCase);
   const ui = getUI();
   if (!ui.compareCase) {
-    console.log('[loadCaseData] calling PivotTable.render()');
     PivotTable.render();
   } else {
     DeltaTable.render();

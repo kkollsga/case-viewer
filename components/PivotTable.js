@@ -23,7 +23,6 @@ export function render() {
   clear(body);
   if (legendContainer) clear(legendContainer);
 
-  console.log('[PivotTable.render] vData:', !!vData, 'rows:', vData?.data?.length, 'body:', !!body);
   if (!vData || !vData.data || vData.data.length === 0) return;
 
   let data = [...vData.data];
