@@ -8,7 +8,7 @@ const SCHEMA_VERSION = 3;
 function createDefaultState() {
   return {
     schema: SCHEMA_VERSION,
-    fields: ['Cerisa', 'Gjøa Nord'],
+    fields: [],
     activeField: null,
     activeScenario: null,
     activeCase: null,        // primary case for viewing
