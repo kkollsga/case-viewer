@@ -283,6 +283,12 @@ function setupGlobalEvents() {
     }
   });
 
+  on(EVENTS.CASE_UPDATED, () => {
+    // Group mappings or case metadata changed — reload active case data
+    if (getActiveCase()) loadCaseData();
+    if (CaseBrowser?.render) CaseBrowser.render();
+  });
+
   on(EVENTS.CASE_CREATED, () => {
     saveAppState();
     if (CaseBrowser?.render) CaseBrowser.render();

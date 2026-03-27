@@ -16,7 +16,11 @@ export function isVisible() { return visible; }
 export function hide() { visible = false; if (containerEl) clear(containerEl); }
 export function setupEvents() {}
 
-function persist(f) { saveGroupMappings(f, currentMappings); }
+function persist(f) {
+  saveGroupMappings(f, currentMappings);
+  // Propagate changes throughout the app (case cards, pivot, charts)
+  emit(EVENTS.CASE_UPDATED, { field: f });
+}
 function cc(h) { if(!h||h.length<7)return'#374151'; const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16); return(0.299*r+0.587*g+0.114*b)/255>0.55?'#374151':'#fff'; }
 function dc(i) { return PALETTES.vibrant[i % PALETTES.vibrant.length]; }
 
@@ -54,16 +58,15 @@ function renderSection(field, column) {
   const stacks = currentMappings[column]||[];
   const asgn = new Set(); for(const s of stacks) for(const v of s.values) asgn.add(v);
   for(let i=0;i<stacks.length;i++) items.appendChild(renderStack(field,column,stacks[i],i));
-  for(const v of vals.filter(v=>!asgn.has(v))) items.appendChild(renderPill(v));
+  for(const v of vals.filter(v=>!asgn.has(v))) items.appendChild(renderPill(field, column, v));
   sec.appendChild(items);
 
   // Wire up draggable
   setTimeout(() => {
     makeDraggable(items, {
       itemSelector: '[data-gs]',
-      column,
+      innerSelector: '.gs-inner [data-value]',
       canStack: (drag, target) => {
-        // Can stack pill onto pill, or pill onto stack
         return drag.dataset.gs === 'pill' && (target.dataset.gs === 'pill' || target.dataset.gs === 'stack');
       },
       onStack: (drag, target) => {
@@ -80,8 +83,12 @@ function renderSection(field, column) {
         }
         persist(field); render();
       },
+      onInnerDragOut: (value, fromStackName) => {
+        // Remove the pill from its stack
+        removeVal(column, value);
+        persist(field); render();
+      },
       onReorder: (drag, target, position) => {
-        // Just rebuild order from DOM after the re-render
         persist(field); render();
       },
     });
@@ -91,18 +98,17 @@ function renderSection(field, column) {
 }
 
 // ─── Bare pill ──────────────────────────────────────────────
-function renderPill(value) {
+function renderPill(field, column, value) {
   const w = el('div',{class:'relative inline-block',dataset:{gs:'pill',value}});
   w.appendChild(el('span',{
     class:'inline-flex items-center px-3 py-1.5 text-xs rounded-full bg-white border border-gray-200 text-gray-600 cursor-grab hover:border-indigo-300 hover:text-indigo-600 transition-colors select-none whitespace-nowrap',
     textContent:value,
   }));
-  // Toolbar: below, right-aligned
   const tb = el('div',{
-    class:'fs-tb absolute top-full right-0 mt-0.5 flex items-center bg-white border border-gray-200 rounded shadow-sm opacity-0 hover:opacity-100 transition-opacity z-10 overflow-hidden',
+    class:'fs-tb absolute top-full right-0 mt-0.5 flex items-center bg-white border border-gray-200 rounded shadow-sm opacity-0 transition-opacity z-10 overflow-hidden',
   });
   tb.appendChild(el('button',{class:'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 text-[7px]',innerHTML:'<i class="fas fa-pen"></i>',
-    onClick:(e)=>{e.stopPropagation();const f=getActiveField(),c=value;const col=w.closest('[data-column]')?.dataset.column;if(!f||!col)return;if(!currentMappings[col])currentMappings[col]=[];currentMappings[col].push({name:value,color:dc(currentMappings[col].length),values:[value]});persist(f);render();}}));
+    onClick:(e)=>{e.stopPropagation();if(!currentMappings[column])currentMappings[column]=[];currentMappings[column].push({name:value,color:dc(currentMappings[column].length),values:[value]});persist(field);render();}}));
   w.appendChild(tb);
   // Show toolbar on hover
   w.addEventListener('mouseenter',()=>{tb.style.opacity='1';});
@@ -129,7 +135,7 @@ function renderStack(field, column, stack, index) {
   const inp=el('input',{type:'text',class:'text-xs font-semibold border-0 focus:outline-none hidden whitespace-nowrap',value:stack.name,
     style:{color:tc,backgroundColor:'rgba(255,255,255,0.25)',borderRadius:'4px',padding:'0 4px',width:Math.max(3,stack.name.length*0.6)+'rem',caretColor:tc}});
   const ok=el('button',{class:'w-4 h-4 flex items-center justify-center rounded-full bg-green-500 text-white text-[7px] hover:bg-green-600 hidden flex-shrink-0',innerHTML:'<i class="fas fa-check"></i>'});
-  const cx=el('button',{class:'w-4 h-4 flex items-center justify-center rounded-full bg-white/50 text-red-400 hover:text-red-600 text-[7px] hidden flex-shrink-0',innerHTML:'<i class="fas fa-times"></i>'});
+  const cx=el('button',{class:'w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[7px] hover:bg-red-600 hidden flex-shrink-0',innerHTML:'<i class="fas fa-times"></i>'});
   let tb;
 
   function showEdit(){lbl.classList.add('hidden');if(tb)tb.style.opacity='0';inp.classList.remove('hidden');ok.classList.remove('hidden');cx.classList.remove('hidden');inp.value=stack.name;inp.style.width=Math.max(3,stack.name.length*0.6)+'rem';requestAnimationFrame(()=>{inp.focus();inp.select();});}
@@ -142,13 +148,15 @@ function renderStack(field, column, stack, index) {
 
   row.append(lbl,inp,ok,cx);
 
-  // Inner pills
+  // Inner pills (wrapped for drag detection)
+  const pz = el('div',{class:'gs-inner inline-flex flex-wrap gap-1 items-center'});
   for(const v of stack.values){
-    row.appendChild(el('span',{
-      class:'inline-flex items-center px-2.5 py-0.5 text-xs rounded-full bg-white/80 text-gray-700 whitespace-nowrap border border-white/40',
+    pz.appendChild(el('span',{
+      class:'inline-flex items-center px-2.5 py-0.5 text-xs rounded-full bg-white/80 text-gray-700 whitespace-nowrap border border-white/40 cursor-grab select-none',
       textContent:v, dataset:{value:v},
     }));
   }
+  row.appendChild(pz);
 
   outer.appendChild(row);
 
