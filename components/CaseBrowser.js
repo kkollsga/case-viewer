@@ -66,14 +66,7 @@ export function render() {
     inner.appendChild(renderLegacyBanner());
   }
 
-  // Title
-  inner.appendChild(el('h1', {
-    class: 'text-3xl font-semibold text-gray-900 tracking-tight',
-    textContent: 'Case Viewer',
-  }));
-
-  // Field + Scenario selectors (single row)
-  inner.appendChild(el('div', { class: 'mt-6' }));
+  // Field + Scenario selectors (replaces H1 title)
   inner.appendChild(renderSelectors(field, scenario));
 
   // Field settings panel

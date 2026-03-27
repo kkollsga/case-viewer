@@ -91,34 +91,28 @@ function showBrowser() {
 }
 
 function updateCaseSectionSummary() {
-  const summary = $('#case-section-summary');
   const label = $('#case-section-label');
   const context = $('#case-section-context');
   const prevBtn = $('#prev-case-btn');
   const nextBtn = $('#next-case-btn');
-  if (!summary) return;
 
   const field = getActiveField();
   const scenario = getActiveScenario();
   const caseName = getActiveCase();
 
-  // Always show field → scenario
-  if (context) context.textContent = [field, scenario].filter(Boolean).join(' › ') || '';
+  // Context: field → scenario |
+  const parts = [field, scenario].filter(Boolean);
+  if (context) context.textContent = parts.length ? parts.join(' → ') + (caseName ? ' |' : '') : '';
 
-  // Show case name + nav only when a case is active
+  // Case nav
   if (caseName) {
     if (label) label.textContent = caseName;
     if (prevBtn) prevBtn.style.display = '';
     if (nextBtn) nextBtn.style.display = '';
-    // Show the separator
-    const sep = summary.querySelector('.text-gray-300');
-    if (sep) sep.style.display = '';
   } else {
     if (label) label.textContent = '';
     if (prevBtn) prevBtn.style.display = 'none';
     if (nextBtn) nextBtn.style.display = 'none';
-    const sep = summary.querySelector('.text-gray-300');
-    if (sep) sep.style.display = 'none';
   }
 }
 
@@ -160,13 +154,8 @@ function loadCaseData() {
 
   setVolumetricData({ ...caseData, data });
 
-  // Explicitly render data views
-  const ui = getUI();
-  if (!ui.compareCase) {
-    PivotTable.render();
-  } else {
-    DeltaTable.render();
-  }
+  // Render pivot table
+  PivotTable.render();
 
   // Load field settings
   const fieldSettings = loadFieldSettings(field);
@@ -227,17 +216,20 @@ function updateMetadata() {
   const authorEl = document.querySelector('.author-name');
   const timestampEl = document.querySelector('.timestamp-value');
   const descEl = $('#case-description');
+  const nameEl = $('#vol-case-name');
 
   if (!field || !caseName || !scenario) {
     if (authorEl) authorEl.textContent = '—';
     if (timestampEl) timestampEl.textContent = '—';
     if (descEl) descEl.textContent = '';
+    if (nameEl) nameEl.textContent = '';
     return;
   }
 
   const caseData = getCaseData(field, caseName, scenario);
   if (!caseData) return;
 
+  if (nameEl) nameEl.textContent = caseName;
   if (authorEl) authorEl.textContent = caseData.author || '—';
   if (timestampEl) timestampEl.textContent = caseData.timestamp ? formatDateTime(caseData.timestamp) : '—';
   if (descEl) descEl.textContent = caseData.description || '';

@@ -19,23 +19,24 @@
 
     <div class="container mx-auto px-6 max-w-6xl py-6 space-y-2">
 
-    <!-- ===== CASE SELECTOR (always visible, collapsible) ===== -->
+    <!-- ===== HEADER: Field → Scenario | < Case > ===== -->
+    <div id="case-section-summary" class="flex items-center gap-2 py-3">
+        <span id="case-section-context" class="text-sm text-gray-400"></span>
+        <button id="prev-case-btn" class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors" style="display:none">
+            <i class="fas fa-chevron-left text-[9px]"></i>
+        </button>
+        <span id="case-section-label" class="text-sm font-semibold text-gray-800"></span>
+        <button id="next-case-btn" class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors" style="display:none">
+            <i class="fas fa-chevron-right text-[9px]"></i>
+        </button>
+    </div>
+
+    <!-- ===== CASES (collapsible) ===== -->
     <section class="cv-section" data-section="cases">
         <div id="case-section-header" class="cv-section-header" data-expanded="true">
             <div class="flex items-center gap-2">
                 <i class="fas fa-chevron-down text-[10px] text-gray-400 transition-transform duration-200 cv-chevron"></i>
                 <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Cases</span>
-            </div>
-            <div id="case-section-summary" class="flex items-center gap-2 text-xs text-gray-500">
-                <button id="prev-case-btn" class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors" onclick="event.stopPropagation()">
-                    <i class="fas fa-chevron-left text-[9px]"></i>
-                </button>
-                <span id="case-section-label" class="font-medium text-gray-700"></span>
-                <button id="next-case-btn" class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors" onclick="event.stopPropagation()">
-                    <i class="fas fa-chevron-right text-[9px]"></i>
-                </button>
-                <span class="text-gray-300 mx-1">|</span>
-                <span id="case-section-context" class="text-gray-400"></span>
             </div>
         </div>
         <div class="cv-section-body" id="case-browser">
@@ -54,6 +55,9 @@
         <span id="prev-case-btn" class="hidden"></span>
         <span id="next-case-btn" class="hidden"></span>
 
+        <!-- Hidden compat -->
+        <select id="compare-case-selector" class="hidden"><option value="">—</option></select>
+
         <!-- ── VOLUMETRICS ── -->
         <section class="cv-section" data-section="volumetrics">
             <div id="toggle-volumetrics" class="cv-section-header" data-expanded="true">
@@ -63,13 +67,33 @@
                 </div>
             </div>
             <div class="cv-section-body" id="volumetrics-container">
-            <!-- Controls bar: toggles + compare -->
-            <div class="flex items-center justify-between mb-3">
-                <div id="compare-selector-container" class="flex items-center gap-2">
-                    <label class="text-xs text-gray-400">Compare to</label>
-                    <select id="compare-case-selector" class="text-xs border-0 bg-gray-100 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500">
-                        <option value="">—</option>
-                    </select>
+
+            <!-- Case name + description above table -->
+            <div class="mb-3">
+                <div id="vol-case-name" class="text-sm font-semibold text-gray-800"></div>
+                <div id="case-description" class="text-xs text-gray-400 italic mt-0.5"></div>
+            </div>
+
+            <!-- Table -->
+            <div class="overflow-x-auto">
+                <div class="pivot-table-container">
+                    <table id="pivot-table" class="min-w-full divide-y divide-gray-200 table-auto">
+                        <thead class="bg-gray-50/50" id="pivot-headers"></thead>
+                        <tbody class="divide-y divide-gray-100" id="pivot-body"></tbody>
+                    </table>
+                </div>
+                <div style="display:flex;justify-content:flex-end">
+                    <div id="pivot-legend" class="pivot-legend"></div>
+                </div>
+            </div>
+
+            <!-- Below table: author/timestamp (left) + toggles (right) -->
+            <div class="flex items-center justify-between mt-3">
+                <div id="case-metadata-container" class="flex items-center gap-3 text-xs text-gray-400">
+                    <div id="case-author-timestamp" class="flex items-center gap-3 cursor-pointer hover:text-gray-600 transition-colors">
+                        <span class="flex items-center gap-1"><i class="fas fa-user text-[10px]"></i><span class="author-name">—</span></span>
+                        <span class="flex items-center gap-1"><i class="fas fa-calendar-alt text-[10px]"></i><span class="timestamp-value">—</span></span>
+                    </div>
                 </div>
                 <div class="flex items-center gap-3">
                     <label class="inline-flex items-center cursor-pointer text-xs text-gray-500 hover:text-gray-700">
@@ -82,26 +106,6 @@
                         <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
                         <span class="ml-1.5">Parameters</span>
                     </label>
-                </div>
-            </div>
-
-            <!-- Metadata (subtle, below controls) -->
-            <div id="case-metadata-container" class="flex items-center gap-4 text-xs text-gray-400 mb-3">
-                <div id="case-author-timestamp" class="flex items-center gap-3 cursor-pointer hover:text-gray-600 transition-colors">
-                    <span class="flex items-center gap-1"><i class="fas fa-user text-[10px]"></i><span class="author-name">—</span></span>
-                    <span class="flex items-center gap-1"><i class="fas fa-calendar-alt text-[10px]"></i><span class="timestamp-value">—</span></span>
-                </div>
-                <div id="case-description" class="text-gray-400 italic truncate max-w-xs"></div>
-            </div>
-            <div class="overflow-x-auto">
-                <div class="pivot-table-container">
-                    <table id="pivot-table" class="min-w-full divide-y divide-gray-200 table-auto">
-                        <thead class="bg-gray-50/50" id="pivot-headers"></thead>
-                        <tbody class="divide-y divide-gray-100" id="pivot-body"></tbody>
-                    </table>
-                </div>
-                <div style="display:flex;justify-content:flex-end">
-                    <div id="pivot-legend" class="pivot-legend"></div>
                 </div>
             </div>
         </div>
