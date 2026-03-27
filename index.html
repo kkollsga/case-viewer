@@ -20,15 +20,19 @@
     <div class="container mx-auto px-6 max-w-6xl py-6 space-y-2">
 
     <!-- ===== HEADER: Field → Scenario | < Case > ===== -->
-    <div id="case-section-summary" class="flex items-center gap-2 py-3">
-        <span id="case-section-context" class="text-sm text-gray-400"></span>
-        <button id="prev-case-btn" class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors" style="display:none">
-            <i class="fas fa-chevron-left text-[9px]"></i>
-        </button>
-        <span id="case-section-label" class="text-sm font-semibold text-gray-800"></span>
-        <button id="next-case-btn" class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors" style="display:none">
-            <i class="fas fa-chevron-right text-[9px]"></i>
-        </button>
+    <div id="app-header" class="flex items-center gap-1 py-4">
+        <!-- Field/Scenario dropdowns rendered by JS -->
+        <span id="case-section-context"></span>
+        <span id="header-case-nav" class="flex items-center gap-1" style="display:none">
+            <span class="text-gray-300 text-lg mx-1">|</span>
+            <button id="prev-case-btn" class="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors">
+                <i class="fas fa-chevron-left text-xs"></i>
+            </button>
+            <span id="case-section-label" class="text-lg font-semibold text-gray-800"></span>
+            <button id="next-case-btn" class="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors">
+                <i class="fas fa-chevron-right text-xs"></i>
+            </button>
+        </span>
     </div>
 
     <!-- ===== CASES (collapsible) ===== -->

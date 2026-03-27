@@ -91,28 +91,29 @@ function showBrowser() {
 }
 
 function updateCaseSectionSummary() {
-  const label = $('#case-section-label');
   const context = $('#case-section-context');
-  const prevBtn = $('#prev-case-btn');
-  const nextBtn = $('#next-case-btn');
+  const label = $('#case-section-label');
+  const nav = $('#header-case-nav');
 
   const field = getActiveField();
   const scenario = getActiveScenario();
   const caseName = getActiveCase();
 
-  // Context: field → scenario |
-  const parts = [field, scenario].filter(Boolean);
-  if (context) context.textContent = parts.length ? parts.join(' → ') + (caseName ? ' |' : '') : '';
+  // Render field → scenario as H1-style dropdowns
+  if (context) {
+    context.innerHTML = '';
+    if (CaseBrowser?.renderHeaderSelectors) {
+      context.appendChild(CaseBrowser.renderHeaderSelectors(field, scenario));
+    }
+  }
 
   // Case nav
   if (caseName) {
     if (label) label.textContent = caseName;
-    if (prevBtn) prevBtn.style.display = '';
-    if (nextBtn) nextBtn.style.display = '';
+    if (nav) nav.style.display = '';
   } else {
     if (label) label.textContent = '';
-    if (prevBtn) prevBtn.style.display = 'none';
-    if (nextBtn) nextBtn.style.display = 'none';
+    if (nav) nav.style.display = 'none';
   }
 }
 

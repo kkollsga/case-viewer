@@ -66,12 +66,9 @@ export function render() {
     inner.appendChild(renderLegacyBanner());
   }
 
-  // Field + Scenario selectors (replaces H1 title)
-  inner.appendChild(renderSelectors(field, scenario));
-
-  // Field settings panel
+  // Field settings panel (toggled from header dropdown)
   if (field) {
-    const settingsPanel = el('div', { class: 'mt-3', id: 'field-settings-panel' });
+    const settingsPanel = el('div', { id: 'field-settings-panel' });
     inner.appendChild(settingsPanel);
     if (FieldSettings.isVisible()) {
       FieldSettings.toggle(settingsPanel);
@@ -283,7 +280,101 @@ function renderLegacyBanner() {
 
 // ─── Field Tabs ──────────────────────────────────────────────
 
-// ─── Field + Scenario Dropdowns (single row) ────────────────
+// ─── Header selectors (H1-styled, called from app.js) ───────
+
+export function renderHeaderSelectors(activeField, activeScenario) {
+  const row = el('div', { class: 'flex items-center gap-1' });
+
+  // Field
+  row.appendChild(renderHeaderDropdown({
+    value: activeField,
+    items: getFields(),
+    placeholder: 'Select field',
+    onSelect: (name) => { FieldSettings.hide(); setActiveField(name); saveAppState(); },
+    onAdd: (name) => { addField(name); saveAppState(); render(); },
+    addLabel: '+ New field',
+    onSettings: activeField ? () => {
+      const panel = document.getElementById('field-settings-panel');
+      if (panel) FieldSettings.toggle(panel);
+    } : null,
+  }));
+
+  if (activeField) {
+    row.appendChild(el('span', { class: 'text-lg text-gray-300 mx-0.5', textContent: '→' }));
+
+    // Scenario
+    row.appendChild(renderHeaderDropdown({
+      value: activeScenario,
+      items: getScenariosForField(activeField),
+      placeholder: 'Select scenario',
+      onSelect: (name) => { setActiveScenario(name); saveAppState(); },
+      onAdd: (name) => { addScenario(activeField, name); setActiveScenario(name); saveAppState(); render(); },
+      addLabel: '+ New scenario',
+    }));
+  }
+
+  return row;
+}
+
+function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addLabel, onSettings }) {
+  const wrapper = el('div', { class: 'relative inline-block' });
+
+  const trigger = el('span', {
+    class: 'text-xl font-semibold cursor-pointer transition-colors ' +
+           (value ? 'text-gray-800 hover:text-indigo-600' : 'text-gray-400 hover:text-indigo-400'),
+    textContent: value || placeholder,
+  });
+
+  const menu = el('div', {
+    class: 'absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 min-w-[200px] py-1 hidden',
+  });
+
+  for (const item of items) {
+    const isActive = item === value;
+    menu.appendChild(el('button', {
+      class: `w-full text-left px-3 py-2 text-sm transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`,
+      textContent: item,
+      onClick: () => { menu.classList.add('hidden'); onSelect(item); },
+    }));
+  }
+
+  if (onSettings) {
+    menu.appendChild(el('div', { class: 'border-t border-gray-100 my-1' }));
+    menu.appendChild(el('button', {
+      class: 'w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:text-indigo-600 hover:bg-gray-50 transition-colors flex items-center gap-1.5',
+      innerHTML: '<i class="fas fa-cog text-[10px]"></i> Group settings',
+      onClick: () => { menu.classList.add('hidden'); onSettings(); },
+    }));
+  }
+
+  if (onAdd) {
+    menu.appendChild(el('div', { class: 'border-t border-gray-100 my-1' }));
+    const addRow = el('div', { class: 'px-2 py-1' });
+    const addBtn = el('button', {
+      class: 'w-full text-left px-2 py-1 text-xs text-indigo-500 hover:text-indigo-700',
+      textContent: addLabel,
+    });
+    const addInput = el('input', {
+      type: 'text',
+      class: 'w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-indigo-400 focus:outline-none hidden',
+      placeholder: 'Name...',
+    });
+    addBtn.addEventListener('click', () => { addBtn.classList.add('hidden'); addInput.classList.remove('hidden'); addInput.focus(); });
+    const submit = () => { const n = addInput.value.trim(); if (n) { menu.classList.add('hidden'); onAdd(n); } addInput.classList.add('hidden'); addBtn.classList.remove('hidden'); addInput.value = ''; };
+    addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { addInput.classList.add('hidden'); addBtn.classList.remove('hidden'); } });
+    addInput.addEventListener('blur', () => setTimeout(() => { addInput.classList.add('hidden'); addBtn.classList.remove('hidden'); addInput.value = ''; }, 150));
+    addRow.append(addBtn, addInput);
+    menu.appendChild(addRow);
+  }
+
+  trigger.addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); });
+  document.addEventListener('click', () => menu.classList.add('hidden'));
+
+  wrapper.append(trigger, menu);
+  return wrapper;
+}
+
+// ─── Old selectors (kept but unused) ────────────────────────
 
 function renderSelectors(activeField, activeScenario) {
   const row = el('div', { class: 'flex items-center gap-2 text-sm' });
