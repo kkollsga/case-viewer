@@ -5,7 +5,7 @@ import { getState, getActiveField, getActiveCase, getActiveScenario,
          setActiveField, setActiveScenario, setActiveCase, setSelectedCases,
          setShowParameters, setHideEmpty, setMetric, setVolumetricData, clearVolumetricData,
          getRuntime, getUI, setAvailableCases, setCompareCase,
-         addField, openBrowser, getSelectedCases, getScenariosForField } from './core/state.js';
+         addField, addScenario, openBrowser, getSelectedCases, getScenariosForField } from './core/state.js';
 import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames, getCasesForField,
          loadFieldSettings, saveFieldSettings, loadCrossPlotSettings,
          saveCase, addCaseToOrder, saveCaseOrder, saveFields,
@@ -58,6 +58,9 @@ export async function init() {
   setupDataViewControls();
   setupKeyboardShortcuts();
   setupExportImport();
+
+  // Seed demo data if nothing exists
+  seedDemoData();
 
   // Start in browser mode
   showBrowser();
@@ -502,4 +505,89 @@ export function duplicateCase(field, scenario, caseName) {
   addCaseToOrder(field, scenario, newName);
   saveAppState();
   emit(EVENTS.CASE_CREATED, { field, scenario, caseName: newName });
+}
+
+// ─── Demo data seeding ──────────────────────────────────────
+
+function seedDemoData() {
+  const state = getState();
+  // Only seed if completely empty (no fields)
+  if (state.fields.length > 0) return;
+
+  const field = 'Demo Field';
+  const scenario = 'Base Case';
+
+  // Create field + scenario
+  addField(field);
+  addScenario(field, scenario);
+  setActiveField(field);
+  setActiveScenario(scenario);
+
+  // Case 1: Rev1
+  const case1 = {
+    title: 'Rev1 - Initial', description: 'Initial volumetric estimate', author: 'Demo',
+    timestamp: '2026-01-15T10:00:00Z',
+    data: [
+      { Zones:'Sand 5', Facies:'Channel Sand', Region:'R1', 'Bulk volume':12500, 'Net volume':8750, 'Pore volume':2100, 'HCPV oil':1680, 'STOIIP':11720, 'GIIP':890 },
+      { Zones:'Sand 5', Facies:'Channel Sand', Region:'R2', 'Bulk volume':8200, 'Net volume':4920, 'Pore volume':1180, 'HCPV oil':944, 'STOIIP':6600, 'GIIP':510 },
+      { Zones:'Sand 5', Facies:'LowQ Sand', Region:'R1', 'Bulk volume':2853, 'Net volume':1560, 'Pore volume':208, 'HCPV oil':91, 'STOIIP':70, 'GIIP':9 },
+      { Zones:'Sand 3', Facies:'Channel Sand', Region:'R1', 'Bulk volume':12395, 'Net volume':12102, 'Pore volume':2497, 'HCPV oil':1008, 'STOIIP':774, 'GIIP':56 },
+      { Zones:'Sand 3', Facies:'Channel Sand', Region:'R2', 'Bulk volume':9247, 'Net volume':8989, 'Pore volume':1864, 'HCPV oil':542, 'STOIIP':421, 'GIIP':107 },
+      { Zones:'Sand 2', Facies:'Channel Sand', Region:'R3', 'Bulk volume':11947, 'Net volume':11719, 'Pore volume':2509, 'HCPV oil':1075, 'STOIIP':824, 'GIIP':41 },
+      { Zones:'Sand 2', Facies:'Channel Sand', Region:'R4', 'Bulk volume':40982, 'Net volume':40274, 'Pore volume':8690, 'HCPV oil':3762, 'STOIIP':2886, 'GIIP':171 },
+      { Zones:'Sand 2', Facies:'LowQ Sand', Region:'R3', 'Bulk volume':1662, 'Net volume':1346, 'Pore volume':177, 'HCPV oil':41, 'STOIIP':31, 'GIIP':3 },
+    ],
+    units: { 'Bulk volume':'MCM','Net volume':'MCM','Pore volume':'MCM','HCPV oil':'MCM','STOIIP':'MCM','GIIP':'BCM' },
+    format: 'standard_table',
+    volumeGroups: { columns: ['Zones','Facies','Region'] },
+    valueConversions: {},
+  };
+
+  // Case 2: Rev2
+  const case2 = {
+    title: 'Rev2 - Updated OWC', description: 'OWC shifted -5m', author: 'Demo',
+    timestamp: '2026-02-20T14:30:00Z',
+    data: [
+      { Zones:'Sand 5', Facies:'Channel Sand', Region:'R1', 'Bulk volume':12500, 'Net volume':9100, 'Pore volume':2280, 'HCPV oil':1824, 'STOIIP':12500, 'GIIP':920 },
+      { Zones:'Sand 5', Facies:'Channel Sand', Region:'R2', 'Bulk volume':8200, 'Net volume':5100, 'Pore volume':1250, 'HCPV oil':1000, 'STOIIP':7000, 'GIIP':540 },
+      { Zones:'Sand 5', Facies:'LowQ Sand', Region:'R1', 'Bulk volume':2853, 'Net volume':1600, 'Pore volume':220, 'HCPV oil':100, 'STOIIP':80, 'GIIP':10 },
+      { Zones:'Sand 3', Facies:'Channel Sand', Region:'R1', 'Bulk volume':12395, 'Net volume':12200, 'Pore volume':2550, 'HCPV oil':1050, 'STOIIP':810, 'GIIP':60 },
+      { Zones:'Sand 3', Facies:'Channel Sand', Region:'R2', 'Bulk volume':9247, 'Net volume':9000, 'Pore volume':1900, 'HCPV oil':560, 'STOIIP':440, 'GIIP':112 },
+      { Zones:'Sand 2', Facies:'Channel Sand', Region:'R3', 'Bulk volume':11947, 'Net volume':11800, 'Pore volume':2600, 'HCPV oil':1120, 'STOIIP':870, 'GIIP':44 },
+      { Zones:'Sand 2', Facies:'Channel Sand', Region:'R4', 'Bulk volume':40982, 'Net volume':40500, 'Pore volume':8800, 'HCPV oil':3850, 'STOIIP':2950, 'GIIP':178 },
+      { Zones:'Sand 2', Facies:'LowQ Sand', Region:'R3', 'Bulk volume':1662, 'Net volume':1380, 'Pore volume':185, 'HCPV oil':45, 'STOIIP':35, 'GIIP':4 },
+    ],
+    units: { 'Bulk volume':'MCM','Net volume':'MCM','Pore volume':'MCM','HCPV oil':'MCM','STOIIP':'MCM','GIIP':'BCM' },
+    format: 'standard_table',
+    volumeGroups: { columns: ['Zones','Facies','Region'] },
+    valueConversions: {},
+  };
+
+  // Case 3: Rev3
+  const case3 = {
+    title: 'Rev3 - New porosity', description: 'CPI porosity update', author: 'Demo',
+    timestamp: '2026-03-10T09:00:00Z',
+    data: [
+      { Zones:'Sand 5', Facies:'Channel Sand', Region:'R1', 'Bulk volume':12500, 'Net volume':9100, 'Pore volume':2400, 'HCPV oil':1920, 'STOIIP':13200, 'GIIP':950 },
+      { Zones:'Sand 5', Facies:'Channel Sand', Region:'R2', 'Bulk volume':8200, 'Net volume':5100, 'Pore volume':1320, 'HCPV oil':1056, 'STOIIP':7400, 'GIIP':560 },
+      { Zones:'Sand 5', Facies:'LowQ Sand', Region:'R1', 'Bulk volume':2853, 'Net volume':1600, 'Pore volume':240, 'HCPV oil':108, 'STOIIP':86, 'GIIP':11 },
+      { Zones:'Sand 3', Facies:'Channel Sand', Region:'R1', 'Bulk volume':12395, 'Net volume':12200, 'Pore volume':2700, 'HCPV oil':1100, 'STOIIP':850, 'GIIP':63 },
+      { Zones:'Sand 3', Facies:'Channel Sand', Region:'R2', 'Bulk volume':9247, 'Net volume':9000, 'Pore volume':2000, 'HCPV oil':590, 'STOIIP':460, 'GIIP':118 },
+      { Zones:'Sand 2', Facies:'Channel Sand', Region:'R3', 'Bulk volume':11947, 'Net volume':11800, 'Pore volume':2750, 'HCPV oil':1180, 'STOIIP':920, 'GIIP':47 },
+      { Zones:'Sand 2', Facies:'Channel Sand', Region:'R4', 'Bulk volume':40982, 'Net volume':40500, 'Pore volume':9200, 'HCPV oil':4050, 'STOIIP':3100, 'GIIP':185 },
+      { Zones:'Sand 2', Facies:'LowQ Sand', Region:'R3', 'Bulk volume':1662, 'Net volume':1380, 'Pore volume':200, 'HCPV oil':50, 'STOIIP':40, 'GIIP':4 },
+    ],
+    units: { 'Bulk volume':'MCM','Net volume':'MCM','Pore volume':'MCM','HCPV oil':'MCM','STOIIP':'MCM','GIIP':'BCM' },
+    format: 'standard_table',
+    volumeGroups: { columns: ['Zones','Facies','Region'] },
+    valueConversions: {},
+  };
+
+  saveCase(field, scenario, 'Rev1 - Initial', case1);
+  saveCase(field, scenario, 'Rev2 - Updated OWC', case2);
+  saveCase(field, scenario, 'Rev3 - New porosity', case3);
+  addCaseToOrder(field, scenario, 'Rev1 - Initial');
+  addCaseToOrder(field, scenario, 'Rev2 - Updated OWC');
+  addCaseToOrder(field, scenario, 'Rev3 - New porosity');
+  saveAppState();
 }
