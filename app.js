@@ -262,9 +262,13 @@ function setupGlobalEvents() {
     saveAppState();
   });
 
-  on(EVENTS.BROWSER_OPENED, () => {
+  on(EVENTS.BROWSER_OPENED, (data) => {
     showBrowser();
     saveAppState();
+    // Handle import action from CaseBrowser's import buttons
+    if (data?.action === 'import') {
+      CaseImport.show();
+    }
   });
 
   on(EVENTS.CASE_CREATED, () => {

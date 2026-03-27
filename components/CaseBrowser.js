@@ -67,9 +67,14 @@ export function render() {
 
   // Main content area
   if (!field) {
-    inner.appendChild(renderEmptyState(
-      'Select a field to get started',
-      'Choose a field above, or create a new one to begin.',
+    inner.appendChild(renderEmptyStateWithInput(
+      'Create your first field',
+      'A field represents a geographical area or project (e.g. a licence or prospect).',
+      (name) => {
+        addField(name);
+        saveAppState();
+        render();
+      },
     ));
   } else if (!scenario) {
     const scenarios = getScenariosForField(field);
@@ -100,7 +105,7 @@ export function render() {
         'Import your first case',
         'Paste volumetric data from Petrel to create your first case revision.',
         'Import Case',
-        () => emit(EVENTS.BROWSER_OPENED, { action: 'import' }),
+        () => import('../components/CaseImport.js').then(m => m.show()),
       ));
     } else {
       inner.appendChild(el('div', { class: 'mt-8' }));
@@ -120,7 +125,7 @@ export function render() {
       });
       importRow.appendChild(el('button', {
         class: 'inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-colors shadow-sm',
-        onClick: () => emit(EVENTS.BROWSER_OPENED, { action: 'import' }),
+        onClick: () => import('../components/CaseImport.js').then(m => m.show()),
       }, [
         el('span', { textContent: '+' }),
         el('span', { textContent: 'Import' }),
@@ -626,7 +631,7 @@ function renderActionBar(selected) {
   // Import button
   const importBtn = el('button', {
     class: 'inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-indigo-600 border border-indigo-200 rounded-full hover:bg-indigo-50 transition-colors',
-    onClick: () => emit(EVENTS.BROWSER_OPENED, { action: 'import' }),
+    onClick: () => import('../components/CaseImport.js').then(m => m.show()),
   }, [
     el('span', { textContent: '+' }),
     el('span', { textContent: 'Import' }),
