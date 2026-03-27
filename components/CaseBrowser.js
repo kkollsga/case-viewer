@@ -1266,7 +1266,7 @@ function renderEmptyStateWithInput(title, subtitle, onSubmit) {
   const input = el('input', {
     type: 'text',
     class: 'px-4 py-2 text-sm border border-gray-300 rounded-full focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 w-48',
-    placeholder: 'Scenario name',
+    placeholder: 'Name',
   });
 
   const btn = el('button', {
