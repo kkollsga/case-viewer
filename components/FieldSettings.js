@@ -177,23 +177,22 @@ function renderGroupSection(field, column) {
 // ─── Pill item (bare, top-level) ────────────────────────────
 function renderPillItem(value) {
   const item = el('div', {
-    class: 'inline-flex items-center gap-0.5 group/pill',
+    class: 'relative inline-flex group/pill',
     dataset: { fsType: 'pill', value },
   });
-  item.appendChild(el('span', {
-    class: 'inline-flex items-center px-2.5 py-1 text-xs rounded-full bg-white border border-gray-200 text-gray-600 cursor-grab hover:border-indigo-300 hover:text-indigo-600 transition-colors select-none whitespace-nowrap',
-    textContent: value,
-  }));
-  // Pen icon on hover → create named stack from this pill
-  item.appendChild(el('button', {
-    class: 'w-4 h-4 flex items-center justify-center text-indigo-400 hover:text-indigo-600 opacity-0 group-hover/pill:opacity-100 transition-all flex-shrink-0',
+
+  // Floating toolbar (above top-left, same style as stack)
+  const toolbar = el('div', {
+    class: 'absolute -top-3 left-1 flex items-center bg-white border border-gray-200 rounded shadow-sm opacity-0 group-hover/pill:opacity-100 transition-all z-10 overflow-hidden',
+  });
+  toolbar.appendChild(el('button', {
+    class: 'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-gray-50 transition-colors',
     innerHTML: '<i class="fas fa-pen text-[7px]"></i>',
     onClick: (e) => {
       e.stopPropagation();
       const field = getActiveField();
       const column = item.closest('.fs-items')?.dataset.column;
       if (!field || !column) return;
-      // Create stack with this value, default name = value
       if (!currentMappings[column]) currentMappings[column] = [];
       const color = defaultColor(currentMappings[column].length);
       currentMappings[column].push({ name: value, color, values: [value] });
@@ -201,6 +200,13 @@ function renderPillItem(value) {
       render();
     },
   }));
+  item.appendChild(toolbar);
+
+  item.appendChild(el('span', {
+    class: 'inline-flex items-center px-2.5 py-1 text-xs rounded-full bg-white border border-gray-200 text-gray-600 cursor-grab hover:border-indigo-300 hover:text-indigo-600 transition-colors select-none whitespace-nowrap',
+    textContent: value,
+  }));
+
   return item;
 }
 
@@ -215,17 +221,19 @@ function renderStack(field, column, stack, index) {
     dataset: { fsType: 'stack', stackName: stack.name, value: stack.values.join(',') },
   });
 
-  // Floating actions (above top-right)
-  const actions = el('div', { class: 'absolute -top-3 -right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-all z-10' });
+  // Floating toolbar (above top-left)
+  const actions = el('div', {
+    class: 'absolute -top-3 left-1 flex items-center bg-white border border-gray-200 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-all z-10 overflow-hidden',
+  });
   actions.append(
     el('button', {
-      class: 'w-4 h-4 flex items-center justify-center rounded-full bg-white border border-gray-200 text-indigo-400 hover:text-indigo-600 shadow-sm',
-      innerHTML: '<i class="fas fa-pen text-[6px]"></i>',
+      class: 'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-gray-50 transition-colors',
+      innerHTML: '<i class="fas fa-pen text-[7px]"></i>',
       onClick: (e) => { e.stopPropagation(); showEdit(); },
     }),
     el('button', {
-      class: 'w-4 h-4 flex items-center justify-center rounded-full bg-white border border-gray-200 text-red-300 hover:text-red-500 shadow-sm',
-      innerHTML: '<i class="fas fa-times text-[6px]"></i>',
+      class: 'px-1.5 py-0.5 text-red-300 hover:text-red-500 hover:bg-gray-50 transition-colors',
+      innerHTML: '<i class="fas fa-times text-[8px]"></i>',
       onClick: () => {
         const s = currentMappings[column] || [];
         const idx = s.indexOf(stack);
