@@ -681,70 +681,157 @@ function renderImportSection(field, scenario) {
 // ─── QC Checks Grid ──────────────────────────────────────────
 
 function renderQCChecks(qc) {
-  const grid = el('div', {
-    class: 'grid grid-cols-[auto_1fr_auto] gap-x-4 gap-y-1.5 text-sm items-baseline',
+  const wrapper = el('div', { class: 'space-y-4' });
+
+  // ── Top: Format + metadata in a subtle card ──
+  const infoCard = el('div', {
+    class: 'bg-gray-50 rounded-xl px-4 py-3 space-y-1',
   });
 
   const meta = qc.petrelMeta || {};
 
-  // Format
-  addQCRow(grid, 'Format', qc.formatLabel || qc.format, true);
+  // Format badge
+  const formatRow = el('div', { class: 'flex items-center gap-2' });
+  formatRow.appendChild(el('span', {
+    class: 'inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700',
+    textContent: qc.formatLabel || qc.format,
+  }));
+  formatRow.appendChild(el('span', {
+    class: 'text-xs text-gray-400',
+    textContent: `${qc.rowCount} rows \u00b7 ${qc.columnCount} columns`,
+  }));
+  if (qc.caseCount > 1) {
+    formatRow.appendChild(el('span', {
+      class: 'text-xs text-indigo-500 font-medium',
+      textContent: `${qc.caseCount} cases detected`,
+    }));
+  }
+  infoCard.appendChild(formatRow);
 
-  // Rows / Columns
-  addQCRow(grid, 'Rows', `${qc.rowCount} data row${qc.rowCount !== 1 ? 's' : ''}, ${qc.columnCount} column${qc.columnCount !== 1 ? 's' : ''}`, qc.rowCount > 0);
+  // Metadata line (project, grid, model, date — only if detected)
+  const metaParts = [];
+  if (meta.project) metaParts.push(meta.project);
+  if (meta.model) metaParts.push(meta.model);
+  if (meta.grid) metaParts.push(meta.grid);
+  if (meta.exportDate) metaParts.push(meta.exportDate);
+  if (metaParts.length > 0) {
+    infoCard.appendChild(el('div', {
+      class: 'text-xs text-gray-400',
+      textContent: metaParts.join(' \u00b7 '),
+    }));
+  }
 
   // Groups
   if (qc.groupColumns && qc.groupColumns.length > 0) {
-    addQCRow(grid, 'Groups', qc.groupColumns.join(', '), null);
+    const groupRow = el('div', { class: 'flex items-center gap-1.5' });
+    groupRow.appendChild(el('span', { class: 'text-xs text-gray-400', textContent: 'Groups:' }));
+    for (const g of qc.groupColumns) {
+      groupRow.appendChild(el('span', {
+        class: 'text-xs font-medium text-gray-600',
+        textContent: g,
+      }));
+      if (g !== qc.groupColumns[qc.groupColumns.length - 1]) {
+        groupRow.appendChild(el('span', { class: 'text-xs text-gray-300', textContent: '\u203a' }));
+      }
+    }
+    infoCard.appendChild(groupRow);
   }
 
-  // Volumes
+  // Volumes (names only, no units)
   if (qc.volumeColumns && qc.volumeColumns.length > 0) {
-    const volStr = qc.volumeColumns.map(v => v.unit ? `${v.name} (${v.unit})` : v.name).join(', ');
-    addQCRow(grid, 'Volumes', volStr, null);
+    const volNames = qc.volumeColumns.map(v => v.name).join(', ');
+    infoCard.appendChild(el('div', {
+      class: 'text-xs text-gray-400',
+      textContent: `Volumes: ${volNames}`,
+    }));
   }
 
-  // Petrel metadata
-  addQCRow(grid, 'Project', meta.project || null, null);
-  addQCRow(grid, 'Grid', meta.grid || null, null);
+  wrapper.appendChild(infoCard);
 
-  // Cases (for single-row)
-  if (qc.caseCount && qc.caseCount > 1) {
-    addQCRow(grid, 'Cases', `${qc.caseCount} detected`, true);
+  // ── Bottom: Volumetric summary (totals from parsed data) ──
+  if (parseResult && parseResult.data && parseResult.data.length > 0) {
+    const summary = computeVolumeSummary(parseResult.data, parseResult.units || parseResult.rawUnits || {});
+    if (summary) {
+      wrapper.appendChild(summary);
+    }
   }
 
-  return grid;
+  return wrapper;
 }
 
-function addQCRow(grid, label, value, showCheck) {
-  // Label
-  grid.appendChild(el('span', {
-    class: 'text-xs font-medium text-gray-500 whitespace-nowrap',
-    textContent: label,
+/**
+ * Compute and render a volumetric summary from parsed data.
+ */
+function computeVolumeSummary(data, units) {
+  // Sum key volumes
+  const sums = {};
+  const keyCols = ['STOIIP', 'STOIIP (in oil)', 'STOIIP (in gas)', 'GIIP', 'GIIP (in gas)', 'GIIP (in oil)', 'Bulk volume'];
+
+  for (const row of data) {
+    for (const col of keyCols) {
+      if (row[col] !== undefined) {
+        sums[col] = (sums[col] || 0) + (parseFloat(row[col]) || 0);
+      }
+    }
+  }
+
+  // Find best STOIIP and GIIP
+  const stoiip = sums['STOIIP'] || sums['STOIIP (in oil)'] || 0;
+  const giip = sums['GIIP'] || sums['GIIP (in gas)'] || 0;
+  const bulk = sums['Bulk volume'] || 0;
+
+  if (stoiip === 0 && giip === 0 && bulk === 0) return null;
+
+  // Get units
+  const stoiipUnit = units['STOIIP'] || units['STOIIP (in oil)'] || '';
+  const giipUnit = units['GIIP'] || units['GIIP (in gas)'] || '';
+  const bulkUnit = units['Bulk volume'] || '';
+
+  const card = el('div', {
+    class: 'flex items-center gap-6 px-4 py-2.5 bg-indigo-50/50 rounded-xl',
+  });
+
+  if (bulk > 0) {
+    addSummaryItem(card, 'GRV', formatCompactNum(bulk), bulkUnit);
+  }
+  if (stoiip > 0) {
+    addSummaryItem(card, 'STOIIP', formatCompactNum(stoiip), stoiipUnit);
+  }
+  if (giip > 0) {
+    addSummaryItem(card, 'GIIP', formatCompactNum(giip), giipUnit);
+  }
+
+  // OE if we have both
+  if (stoiip > 0 || giip > 0) {
+    // OE = STOIIP (MCM equiv) + GIIP (BCM equiv → MCM)
+    // This is approximate — proper conversion depends on actual units
+    const oe = stoiip + giip;
+    addSummaryItem(card, 'OE', formatCompactNum(oe), 'MCM', true);
+  }
+
+  return card;
+}
+
+function addSummaryItem(container, label, value, unit, highlight = false) {
+  const item = el('div', { class: 'flex flex-col items-center' });
+  item.appendChild(el('span', {
+    class: `text-sm font-semibold ${highlight ? 'text-indigo-700' : 'text-gray-700'}`,
+    textContent: value,
   }));
+  const sub = el('span', {
+    class: 'text-[10px] text-gray-400 uppercase tracking-wide',
+    textContent: unit ? `${label} ${unit}` : label,
+  });
+  item.appendChild(sub);
+  container.appendChild(item);
+}
 
-  // Value
-  if (value === null || value === undefined) {
-    grid.appendChild(el('span', {
-      class: 'text-xs text-gray-300 italic',
-      textContent: 'Not detected',
-    }));
-  } else {
-    grid.appendChild(el('span', {
-      class: 'text-xs text-gray-700',
-      textContent: value,
-    }));
-  }
-
-  // Checkmark
-  if (showCheck === true) {
-    grid.appendChild(el('span', {
-      class: 'text-green-500 text-sm',
-      textContent: '\u2713',
-    }));
-  } else {
-    grid.appendChild(el('span', { textContent: '' }));
-  }
+function formatCompactNum(val) {
+  const abs = Math.abs(val);
+  if (abs >= 1e6) return (val / 1e6).toFixed(1) + 'M';
+  if (abs >= 1e3) return (val / 1e3).toFixed(1) + 'k';
+  if (abs >= 1) return val.toFixed(1);
+  return val.toFixed(2);
 }
 
 // ─── Divide by 1000 Toggle ───────────────────────────────────
