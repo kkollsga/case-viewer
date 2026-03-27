@@ -293,9 +293,11 @@ export function applyGroupMappings(data, field) {
 
   const lookup = {};
   for (const [column, stacks] of Object.entries(mappings)) {
-    if (column === '__groupOrder') continue;
+    if (column.startsWith('__')) continue; // Skip __groupOrder, __order_*, etc.
+    if (!Array.isArray(stacks)) continue;
     lookup[column] = {};
     for (const stack of stacks) {
+      if (!stack || !Array.isArray(stack.values)) continue;
       for (const val of stack.values) lookup[column][val] = stack.name;
     }
   }
