@@ -6,11 +6,13 @@ import {
   getActiveField, getActiveScenario, getSelectedCases, getScenariosForField,
   setActiveField, setActiveScenario, setActiveCase, setSelectedCases,
   toggleCaseSelection, openBrowser, addScenario, addField, getFields, getState,
+  renameField, deleteField, renameScenario, deleteScenario,
 } from '../core/state.js';
 import {
   getCasesForScenario, getOrderedCaseNames, saveAppState,
   hasLegacyData, clearLegacyData,
   saveCase, addCaseToOrder, loadDefaultAuthor, saveDefaultAuthor,
+  deleteFieldData, renameFieldData, deleteScenarioData, renameScenarioData,
 } from '../core/storage.js';
 import { parseOutputSheet, FORMAT } from '../core/parser.js';
 import { on, emit, EVENTS } from '../core/events.js';
@@ -217,29 +219,43 @@ function renderLegacyBanner() {
 // ─── Field Tabs ──────────────────────────────────────────────
 
 function renderFieldTabs(activeField) {
-  const row = el('div', {
-    class: 'flex items-center gap-2 flex-wrap',
-  });
+  const row = el('div', { class: 'flex items-center gap-2 flex-wrap' });
 
   for (const field of getFields()) {
     const isActive = field === activeField;
-    const pill = el('button', {
-      class: isActive
-        ? 'px-5 py-2 text-sm font-medium rounded-full bg-indigo-600 text-white transition-all shadow-sm'
-        : 'px-5 py-2 text-sm font-medium rounded-full border border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition-all',
-      textContent: field,
-      onClick: () => {
-        setActiveField(field);
-        saveAppState();
+    row.appendChild(renderEditablePill({
+      name: field,
+      isActive,
+      size: 'lg',
+      onSelect: () => { setActiveField(field); saveAppState(); },
+      onRename: (newName) => {
+        if (renameField(field, newName)) {
+          renameFieldData(field, newName);
+          saveAppState();
+          render();
+        }
       },
-    });
-    row.appendChild(pill);
+      onDelete: () => {
+        deleteFieldData(field);
+        deleteField(field);
+        saveAppState();
+        render();
+      },
+      deleteWarning: () => {
+        const scenarios = getScenariosForField(field);
+        let caseCount = 0;
+        for (const sc of scenarios) {
+          caseCount += getOrderedCaseNames(field, sc).length;
+        }
+        return caseCount > 0
+          ? `Delete "${field}"? ${caseCount} case${caseCount !== 1 ? 's' : ''} across ${scenarios.length} scenario${scenarios.length !== 1 ? 's' : ''} will be lost.`
+          : `Delete "${field}"?`;
+      },
+    }));
   }
 
-  // Add field button / inline input
   row.appendChild(renderInlineAddButton('Field', (name) => {
     addField(name);
-    setActiveField(name);
     saveAppState();
     render();
   }));
@@ -250,28 +266,38 @@ function renderFieldTabs(activeField) {
 // ─── Scenario Pills ─────────────────────────────────────────
 
 function renderScenarioPills(field, activeScenario) {
-  const row = el('div', {
-    class: 'flex items-center gap-2 flex-wrap',
-  });
-
+  const row = el('div', { class: 'flex items-center gap-2 flex-wrap' });
   const scenarios = getScenariosForField(field);
 
   for (const sc of scenarios) {
     const isActive = sc === activeScenario;
-    const pill = el('button', {
-      class: isActive
-        ? 'px-4 py-1.5 text-xs font-medium rounded-full bg-indigo-500 text-white transition-all'
-        : 'px-4 py-1.5 text-xs font-medium rounded-full border border-gray-300 text-gray-500 hover:border-indigo-300 hover:text-indigo-500 transition-all',
-      textContent: sc,
-      onClick: () => {
-        setActiveScenario(sc);
-        saveAppState();
+    row.appendChild(renderEditablePill({
+      name: sc,
+      isActive,
+      size: 'sm',
+      onSelect: () => { setActiveScenario(sc); saveAppState(); },
+      onRename: (newName) => {
+        if (renameScenario(field, sc, newName)) {
+          renameScenarioData(field, sc, newName);
+          saveAppState();
+          render();
+        }
       },
-    });
-    row.appendChild(pill);
+      onDelete: () => {
+        deleteScenarioData(field, sc);
+        deleteScenario(field, sc);
+        saveAppState();
+        render();
+      },
+      deleteWarning: () => {
+        const caseCount = getOrderedCaseNames(field, sc).length;
+        return caseCount > 0
+          ? `Delete "${sc}"? ${caseCount} case${caseCount !== 1 ? 's' : ''} will be lost.`
+          : `Delete "${sc}"?`;
+      },
+    }));
   }
 
-  // Add scenario inline
   row.appendChild(renderInlineAddButton('Scenario', (name) => {
     addScenario(field, name);
     setActiveScenario(name);
@@ -280,6 +306,138 @@ function renderScenarioPills(field, activeScenario) {
   }));
 
   return row;
+}
+
+// ─── Editable Pill (shared by field tabs and scenario pills) ──
+
+function renderEditablePill({ name, isActive, size, onSelect, onRename, onDelete, deleteWarning }) {
+  const isLg = size === 'lg';
+  const basePill = isLg ? 'px-5 py-2 text-sm' : 'px-4 py-1.5 text-xs';
+  const activeClass = isLg
+    ? `${basePill} font-medium rounded-full bg-indigo-600 text-white transition-all shadow-sm`
+    : `${basePill} font-medium rounded-full bg-indigo-500 text-white transition-all`;
+  const inactiveClass = isLg
+    ? `${basePill} font-medium rounded-full border border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition-all`
+    : `${basePill} font-medium rounded-full border border-gray-300 text-gray-500 hover:border-indigo-300 hover:text-indigo-500 transition-all`;
+
+  const wrapper = el('div', { class: 'relative inline-flex items-center group' });
+
+  // Normal state: pill + hover actions
+  const normalState = el('div', { class: 'inline-flex items-center' });
+
+  const pill = el('button', {
+    class: isActive ? activeClass : inactiveClass,
+    textContent: name,
+    onClick: onSelect,
+  });
+  normalState.appendChild(pill);
+
+  // Hover actions (only on active pill)
+  if (isActive) {
+    const actions = el('div', {
+      class: 'hidden group-hover:flex items-center gap-0.5 ml-1',
+    });
+
+    const editBtn = el('button', {
+      class: 'w-6 h-6 flex items-center justify-center rounded-full text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all',
+      innerHTML: '<i class="fas fa-pen text-[10px]"></i>',
+      title: `Rename`,
+      onClick: (e) => {
+        e.stopPropagation();
+        normalState.style.display = 'none';
+        editState.style.display = 'flex';
+        editInput.value = name;
+        requestAnimationFrame(() => { editInput.focus(); editInput.select(); });
+      },
+    });
+
+    const deleteBtn = el('button', {
+      class: 'w-6 h-6 flex items-center justify-center rounded-full text-red-300 hover:text-red-500 hover:bg-red-50 transition-all',
+      innerHTML: '<i class="fas fa-trash text-[10px]"></i>',
+      title: `Delete`,
+      onClick: (e) => {
+        e.stopPropagation();
+        normalState.style.display = 'none';
+        confirmState.style.display = 'block';
+        const msg = deleteWarning();
+        confirmMsg.textContent = msg;
+      },
+    });
+
+    actions.append(editBtn, deleteBtn);
+    normalState.appendChild(actions);
+  }
+
+  // Edit state: inline input + ok/cancel
+  const editState = el('div', { class: 'items-center gap-1', style: { display: 'none' } });
+
+  const editInput = el('input', {
+    type: 'text',
+    class: isLg
+      ? 'px-4 py-1.5 text-sm font-medium rounded-full bg-transparent border-0 focus:outline-none focus:ring-2 focus:ring-indigo-300 w-40 text-indigo-700'
+      : 'px-3 py-1 text-xs font-medium rounded-full bg-transparent border-0 focus:outline-none focus:ring-2 focus:ring-indigo-300 w-32 text-indigo-600',
+  });
+
+  const confirmEdit = el('button', {
+    class: 'w-6 h-6 flex items-center justify-center rounded-full bg-green-500 text-white text-xs hover:bg-green-600 transition-colors',
+    innerHTML: '<i class="fas fa-check text-[10px]"></i>',
+    onClick: (e) => {
+      e.stopPropagation();
+      const newName = editInput.value.trim();
+      if (newName && newName !== name) onRename(newName);
+      else { editState.style.display = 'none'; normalState.style.display = 'inline-flex'; }
+    },
+  });
+
+  const cancelEdit = el('button', {
+    class: 'w-6 h-6 flex items-center justify-center rounded-full text-red-400 hover:text-red-600 text-xs transition-colors',
+    innerHTML: '<i class="fas fa-times text-[10px]"></i>',
+    onClick: (e) => {
+      e.stopPropagation();
+      editState.style.display = 'none';
+      normalState.style.display = 'inline-flex';
+    },
+  });
+
+  editInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') confirmEdit.click();
+    if (e.key === 'Escape') cancelEdit.click();
+  });
+
+  editState.append(editInput, confirmEdit, cancelEdit);
+
+  // Delete confirmation state
+  const confirmState = el('div', { class: 'absolute left-0 top-full mt-1 z-20', style: { display: 'none' } });
+  const confirmCard = el('div', {
+    class: 'bg-white border border-red-200 rounded-xl shadow-lg px-4 py-3 text-sm whitespace-nowrap animate-slide-down',
+  });
+  const confirmMsg = el('div', { class: 'text-red-700 mb-2' });
+  const confirmActions = el('div', { class: 'flex items-center gap-2 justify-end' });
+
+  confirmActions.appendChild(el('button', {
+    class: 'px-3 py-1 text-xs text-gray-500 hover:text-gray-700 transition-colors',
+    textContent: 'Cancel',
+    onClick: (e) => {
+      e.stopPropagation();
+      confirmState.style.display = 'none';
+      normalState.style.display = 'inline-flex';
+    },
+  }));
+
+  confirmActions.appendChild(el('button', {
+    class: 'px-3 py-1 text-xs font-medium text-white bg-red-500 rounded-full hover:bg-red-600 transition-colors',
+    textContent: 'Delete',
+    onClick: (e) => {
+      e.stopPropagation();
+      onDelete();
+    },
+  }));
+
+  confirmCard.append(confirmMsg, confirmActions);
+  confirmState.appendChild(confirmCard);
+
+  wrapper.append(normalState, editState, confirmState);
+  return wrapper;
 }
 
 // ─── Inline Add Button ──────────────────────────────────────

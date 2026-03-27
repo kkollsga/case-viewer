@@ -167,16 +167,14 @@ export function toggleDeltaMode() {
 export function addField(name) {
   if (state.fields.includes(name)) return false;
   state.fields.push(name);
-  state.scenarios[name] = ['Default'];
-  // Auto-select the new field and its Default scenario
+  state.scenarios[name] = [];
   state.activeField = name;
-  state.activeScenario = 'Default';
+  state.activeScenario = null;
   state.activeCase = null;
   state.selectedCases = [];
   state.ui.showBrowser = true;
   emit(EVENTS.FIELD_CREATED, { field: name });
   emit(EVENTS.FIELD_CHANGED, { field: name });
-  emit(EVENTS.SCENARIO_CHANGED, { scenario: 'Default' });
   return true;
 }
 
@@ -216,14 +214,7 @@ export function addScenario(fieldName, scenarioName) {
   if (!state.scenarios[fieldName]) state.scenarios[fieldName] = [];
   if (state.scenarios[fieldName].includes(scenarioName)) return false;
   state.scenarios[fieldName].push(scenarioName);
-  // Auto-select the new scenario
-  if (state.activeField === fieldName) {
-    state.activeScenario = scenarioName;
-    state.activeCase = null;
-    state.selectedCases = [];
-  }
   emit(EVENTS.SCENARIO_CREATED, { field: fieldName, scenario: scenarioName });
-  emit(EVENTS.SCENARIO_CHANGED, { scenario: scenarioName });
   return true;
 }
 
