@@ -58,8 +58,6 @@ export function loadAppState() {
   const author = readJSON('cv3_defaultAuthor', null);
   if (author) setDefaultAuthor(author);
 
-  // Migrate from old multi-key format if needed
-  migrateFromMultiKey();
 }
 
 function migrateAppState(saved) {
@@ -67,78 +65,7 @@ function migrateAppState(saved) {
   if (!saved.scenarios) saved.scenarios = {};
 }
 
-// ─── Legacy data detection + migration from v3 multi-key ────
-
-function migrateFromMultiKey() {
-  // Check if old cv3_cases_ keys exist and migrate to single-key format
-  const toRemove = [];
-  const fieldCases = {};
-
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-
-    // Old format: cv3_cases_{field}_{scenario}
-    const casesMatch = key.match(/^cv3_cases_(.+?)_(.+)$/);
-    if (casesMatch) {
-      const [, field, scenario] = casesMatch;
-      const cases = readJSON(key, {});
-      if (!fieldCases[field]) fieldCases[field] = {};
-      if (!fieldCases[field][scenario]) fieldCases[field][scenario] = { cases: {}, caseOrder: [] };
-      fieldCases[field][scenario].cases = cases;
-      toRemove.push(key);
-    }
-
-    const orderMatch = key.match(/^cv3_order_(.+?)_(.+)$/);
-    if (orderMatch) {
-      const [, field, scenario] = orderMatch;
-      if (!fieldCases[field]) fieldCases[field] = {};
-      if (!fieldCases[field][scenario]) fieldCases[field][scenario] = { cases: {}, caseOrder: [] };
-      fieldCases[field][scenario].caseOrder = readJSON(key, []);
-      toRemove.push(key);
-    }
-  }
-
-  // Migrate field-level settings
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    const settingsMatch = key.match(/^cv3_fieldSettings_(.+)$/);
-    if (settingsMatch) {
-      const field = settingsMatch[1];
-      const fs = getFieldStore(field);
-      fs.settings = { ...fs.settings, ...readJSON(key, {}) };
-      saveFieldStore(field, fs);
-      toRemove.push(key);
-    }
-    const crossMatch = key.match(/^cv3_crossPlot_(.+)$/);
-    if (crossMatch) {
-      const field = crossMatch[1];
-      const fs = getFieldStore(field);
-      fs.settings.crossPlot = readJSON(key, {});
-      saveFieldStore(field, fs);
-      toRemove.push(key);
-    }
-    const mappingsMatch = key.match(/^cv3_groupMappings_(.+)$/);
-    if (mappingsMatch) {
-      const field = mappingsMatch[1];
-      const fs = getFieldStore(field);
-      fs.groupMappings = readJSON(key, {});
-      saveFieldStore(field, fs);
-      toRemove.push(key);
-    }
-  }
-
-  // Write migrated case data into single-key stores
-  for (const [field, scenarios] of Object.entries(fieldCases)) {
-    const fs = getFieldStore(field);
-    for (const [scenario, data] of Object.entries(scenarios)) {
-      fs.scenarios[scenario] = data;
-    }
-    saveFieldStore(field, fs);
-  }
-
-  // Clean up old keys
-  for (const key of toRemove) localStorage.removeItem(key);
-}
+// ─── Legacy data detection ──────────────────────────────────
 
 export function hasLegacyData() {
   for (let i = 0; i < localStorage.length; i++) {
