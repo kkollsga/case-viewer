@@ -32,8 +32,7 @@ export function hide() {
 // ─── Colour helpers ─────────────────────────────────────────
 
 function persistMappings(field) {
-  persistMappings(field);
-  emit(EVENTS.FIELD_CHANGED, { field });
+  saveGroupMappings(field, currentMappings);
 }
 
 function contrastColor(hex) {
