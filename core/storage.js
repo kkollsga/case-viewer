@@ -143,7 +143,14 @@ function migrateFromMultiKey() {
 export function hasLegacyData() {
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
+    // v2 keys
     if (key.startsWith('volumetricCases_') || key === 'caseviewer_v2_state') return true;
+    // v3 multi-key format (migrated automatically, but leftovers may exist)
+    if (key.startsWith('cv3_cases_') || key.startsWith('cv3_order_') ||
+        key.startsWith('cv3_fieldSettings_') || key.startsWith('cv3_crossPlot_') ||
+        key.startsWith('cv3_circle_') || key.startsWith('cv3_fieldCircle_') ||
+        key.startsWith('cv3_legend_') || key.startsWith('cv3_groupMappings_') ||
+        key === 'caseviewer_v3_state') return true;
   }
   return false;
 }
@@ -152,11 +159,20 @@ export function clearLegacyData() {
   const toRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
+    // v2
     if (key.startsWith('volumetricCases') || key.startsWith('volumetricFields') ||
         key.startsWith('volumetricSession') || key.startsWith('fieldSettings_') ||
         key.startsWith('crossPlotSettings_') || key.startsWith('circleSettings_') ||
         key.startsWith('fieldCircleSettings_') || key.startsWith('legendLayer_') ||
         key === 'caseviewer_v2_state' || key === 'defaultAuthor' || key === 'caseviewer_v2_settings') {
+      toRemove.push(key);
+    }
+    // v3 multi-key
+    if (key.startsWith('cv3_cases_') || key.startsWith('cv3_order_') ||
+        key.startsWith('cv3_fieldSettings_') || key.startsWith('cv3_crossPlot_') ||
+        key.startsWith('cv3_circle_') || key.startsWith('cv3_fieldCircle_') ||
+        key.startsWith('cv3_legend_') || key.startsWith('cv3_groupMappings_') ||
+        key === 'caseviewer_v3_state') {
       toRemove.push(key);
     }
   }
