@@ -1,7 +1,7 @@
 // components/DeltaTable.js — Delta comparison overlay for PivotTable
 // Shows side-by-side values, Δ and Δ% when a compare case is selected.
 
-import { getRuntime, getUI, getActiveField, getActiveCase, getBaseCase } from '../core/state.js';
+import { getRuntime, getUI, getActiveField, getActiveCase, getActiveScenario } from '../core/state.js';
 import { getCaseData } from '../core/storage.js';
 import { on, EVENTS } from '../core/events.js';
 import { formatNumber } from '../utils/format.js';
@@ -32,7 +32,8 @@ export function render() {
   if (!compareCaseName || !activeCase || !field) return false;
 
   const activeData = runtime.volumetricData;
-  const compareData = getCaseData(field, compareCaseName);
+  const scenario = getActiveScenario();
+  const compareData = getCaseData(field, compareCaseName, scenario);
 
   if (!activeData || !activeData.data || !compareData || !compareData.data) return false;
 

@@ -1,37 +1,34 @@
 // app.js — Main application entry point
-// Initialises all modules, wires events, and loads persisted state.
+// Browser-first flow: open → case browser → select case(s) → data view
 
-import { getState, getActiveField, getActiveCase, setActiveField, setActiveCase,
+import { getState, getActiveField, getActiveCase, getActiveScenario,
+         setActiveField, setActiveScenario, setActiveCase, setSelectedCases,
          setShowParameters, setHideEmpty, setMetric, setVolumetricData, clearVolumetricData,
-         getRuntime, getUI, setAvailableCases, setCompareCase, setBaseCase, getBaseCase,
-         addField } from './core/state.js';
+         getRuntime, getUI, setAvailableCases, setCompareCase,
+         addField, openBrowser, getSelectedCases, getScenariosForField } from './core/state.js';
 import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames, getCasesForField,
          loadFieldSettings, saveFieldSettings, loadCrossPlotSettings,
-         saveCase, addCaseToOrder, saveCaseOrder, saveFields } from './core/storage.js';
+         saveCase, addCaseToOrder, saveCaseOrder, saveFields,
+         hasLegacyData, clearLegacyData } from './core/storage.js';
 import { on, emit, EVENTS } from './core/events.js';
 import { formatDateTime, formatCompact } from './utils/format.js';
 import { $ } from './utils/dom.js';
 
-import * as CaseList from './components/CaseList.js';
 import * as CaseImport from './components/CaseImport.js';
 import * as CaseEditor from './components/CaseEditor.js';
 import * as FieldManager from './components/FieldManager.js';
 import * as PivotTable from './components/PivotTable.js';
-
 import * as DeltaTable from './components/DeltaTable.js';
 import * as DriverChart from './components/DriverChart.js';
 
-// These may load asynchronously
-let BallChart, CrossPlot;
+let BallChart, CrossPlot, RevisionTimeline, CaseBrowser;
 
 // ─── Initialisation ─────────────────────────────────────────
 
 export async function init() {
-  // Load persisted state
   loadAppState();
 
-  // Init components
-  CaseList.init();
+  // Init static components
   CaseImport.init();
   CaseEditor.init();
   FieldManager.init();
@@ -39,32 +36,14 @@ export async function init() {
   DeltaTable.init();
   DriverChart.init();
 
-  // Dynamically import chart components
-  try {
-    BallChart = await import('./components/BallChart.js');
-    BallChart.init();
-  } catch (e) {
-    console.warn('BallChart not loaded:', e.message);
-  }
+  // Dynamic imports
+  try { BallChart = await import('./components/BallChart.js'); BallChart.init(); } catch (e) { console.warn('BallChart:', e.message); }
+  try { CrossPlot = await import('./components/CrossPlot.js'); CrossPlot.init(); } catch (e) { console.warn('CrossPlot:', e.message); }
+  try { RevisionTimeline = await import('./components/RevisionTimeline.js'); RevisionTimeline.init(); } catch (e) { console.warn('Timeline:', e.message); }
+  try { CaseBrowser = await import('./components/CaseBrowser.js'); CaseBrowser.init(); } catch (e) { console.warn('CaseBrowser:', e.message); }
 
-  try {
-    CrossPlot = await import('./components/CrossPlot.js');
-    CrossPlot.init();
-  } catch (e) {
-    console.warn('CrossPlot not loaded:', e.message);
-  }
-
-  let RevisionTimeline;
-  try {
-    RevisionTimeline = await import('./components/RevisionTimeline.js');
-    RevisionTimeline.init();
-  } catch (e) {
-    console.warn('RevisionTimeline not loaded:', e.message);
-  }
-
-  // Wire up events
+  // Wire events
   setupGlobalEvents();
-  CaseList.setupEvents();
   CaseImport.setupEvents();
   CaseEditor.setupEvents();
   FieldManager.setupEvents();
@@ -74,99 +53,95 @@ export async function init() {
   if (BallChart?.setupEvents) BallChart.setupEvents();
   if (CrossPlot?.setupEvents) CrossPlot.setupEvents();
   if (RevisionTimeline?.setupEvents) RevisionTimeline.setupEvents();
+  if (CaseBrowser?.setupEvents) CaseBrowser.setupEvents();
 
-  // Setup UI controls
-  setupToggles();
-  setupCompareSelector();
-  setupFieldSelector();
-  setupSettingsPanel();
+  setupDataViewControls();
   setupKeyboardShortcuts();
   setupExportImport();
 
-  // Initial load
+  // Start in browser mode
+  showBrowser();
+}
+
+// ─── View switching ─────────────────────────────────────────
+
+function showBrowser() {
+  const browserEl = $('#case-browser');
+  const dataViewEl = $('#data-view');
+  if (browserEl) browserEl.classList.remove('hidden');
+  if (dataViewEl) dataViewEl.classList.add('hidden');
+
+  // Render browser with last-active field/scenario
   const state = getState();
   if (!state.activeField && state.fields.length > 0) {
     setActiveField(state.fields[0]);
   }
-
-  if (state.activeField) {
-    loadFieldData(state.activeField);
+  if (state.activeField && !state.activeScenario) {
+    const scenarios = getScenariosForField(state.activeField);
+    if (scenarios.length > 0) setActiveScenario(scenarios[0]);
   }
 
-  // Ensure selection is highlighted after load
-  setTimeout(() => CaseList.render(), 100);
+  if (CaseBrowser?.render) CaseBrowser.render();
+  document.title = 'Case Viewer';
 }
 
-// ─── Data loading pipeline ──────────────────────────────────
+function showDataView() {
+  const browserEl = $('#case-browser');
+  const dataViewEl = $('#data-view');
+  if (browserEl) browserEl.classList.add('hidden');
+  if (dataViewEl) dataViewEl.classList.remove('hidden');
 
-function loadFieldData(field) {
-  // Load field-level settings
-  const fieldSettings = loadFieldSettings(field);
-  if (fieldSettings.currentMetric) {
-    setMetric(fieldSettings.currentMetric);
-    const metricSelector = $('#metric-selector');
-    if (metricSelector) metricSelector.value = fieldSettings.currentMetric;
-  }
-
-  // Load cross-plot settings
-  const crossSettings = loadCrossPlotSettings(field);
-  if (crossSettings.xMetric) {
-    const ui = getUI();
-    ui.crossPlotX = crossSettings.xMetric;
-    ui.crossPlotY = crossSettings.yMetric || ui.crossPlotY;
-  }
-
-  // Load case list
-  CaseList.render();
-
-  // Load active case data
   loadCaseData();
 }
 
+// ─── Data loading ───────────────────────────────────────────
+
 function loadCaseData() {
   const field = getActiveField();
+  const scenario = getActiveScenario();
   const caseName = getActiveCase();
 
-  if (!field || !caseName) {
+  if (!field || !scenario || !caseName) {
     clearVolumetricData();
-    updatePageTitle();
     return;
   }
 
-  const caseData = getCaseData(field, caseName);
-  if (!caseData) {
-    clearVolumetricData();
-    updatePageTitle();
-    return;
-  }
+  const caseData = getCaseData(field, caseName, scenario);
+  if (!caseData) { clearVolumetricData(); return; }
 
   // Apply value conversions
   let data = caseData.data;
   if (caseData.valueConversions) {
-    data = applyValueConversions(data, caseData.valueConversions);
+    data = applyConversions(data, caseData.valueConversions);
   }
 
-  // Set volumetric data (triggers DATA_LOADED event)
-  setVolumetricData({
-    ...caseData,
-    data,
-  });
+  setVolumetricData({ ...caseData, data });
 
-  updatePageTitle();
-  updateMetadataCard();
+  // Load field settings
+  const fieldSettings = loadFieldSettings(field);
+  if (fieldSettings.currentMetric) {
+    setMetric(fieldSettings.currentMetric);
+    const ms = $('#metric-selector');
+    if (ms) ms.value = fieldSettings.currentMetric;
+  }
+
+  updateBreadcrumb();
+  updateMetadata();
   updateCurrentUnit();
+  updateCompareSelector();
+  updateNavigationButtons();
+
+  // Browser title
+  document.title = `${field} / ${caseName} — Case Viewer`;
 }
 
-function applyValueConversions(data, conversions) {
+function applyConversions(data, conversions) {
   if (!conversions || Object.keys(conversions).length === 0) return data;
-
   const converted = JSON.parse(JSON.stringify(data));
   for (const [col, config] of Object.entries(conversions)) {
-    if (config.enabled && config.mappings && Object.keys(config.mappings).length > 0) {
+    if (config.enabled && config.mappings) {
       for (const row of converted) {
-        if (row[col] in config.mappings) {
-          row[col] = config.mappings[row[col]];
-        }
+        if (row[col] in config.mappings) row[col] = config.mappings[row[col]];
       }
     }
   }
@@ -175,397 +150,250 @@ function applyValueConversions(data, conversions) {
 
 // ─── UI updates ─────────────────────────────────────────────
 
-function updatePageTitle() {
-  const field = getActiveField() || '';
-  const caseName = getActiveCase() || '';
+function updateBreadcrumb() {
+  const bf = $('#breadcrumb-field');
+  const bs = $('#breadcrumb-scenario');
+  const bc = $('#breadcrumb-case');
+  const ct = $('#case-title');
 
-  // Header
-  const fieldTitle = $('#field-title');
-  const separator = $('#separator');
-  const caseTitle = $('#case-title');
-
-  if (fieldTitle) {
-    fieldTitle.textContent = field || 'No field selected';
-    fieldTitle.classList.toggle('text-gray-400', !field);
-    fieldTitle.classList.toggle('text-gray-600', !!field);
-  }
-
-  if (caseTitle) {
-    if (caseName) {
-      caseTitle.textContent = caseName;
-      caseTitle.classList.remove('text-gray-400');
-      caseTitle.classList.add('text-gray-800');
-    } else {
-      caseTitle.textContent = field ? 'No case selected' : '';
-      caseTitle.classList.remove('text-gray-800');
-      caseTitle.classList.add('text-gray-400');
-    }
-  }
-
-  if (separator) {
-    separator.style.display = field ? 'inline' : 'none';
-  }
-
-  // Browser tab
-  const title = field && caseName ? `${field} - ${caseName}` : 'Volumetric Data';
-  document.title = title + ' | Volumetric Data Visualization';
+  if (bf) bf.textContent = getActiveField() || '';
+  if (bs) bs.textContent = getActiveScenario() || '';
+  if (bc) bc.textContent = getActiveCase() || '';
+  if (ct) ct.textContent = getActiveCase() || '';
 
   // Ball chart title
   const ballTitle = $('#ball-chart-title');
   const ballSub = $('#ball-chart-subtitle');
-  if (ballTitle) ballTitle.textContent = caseName || 'Ball Chart';
-  if (ballSub) ballSub.textContent = field || 'No case selected';
+  if (ballTitle) ballTitle.textContent = getActiveCase() || '';
+  if (ballSub) ballSub.textContent = getActiveField() || '';
 }
 
-function updateMetadataCard() {
+function updateMetadata() {
   const field = getActiveField();
   const caseName = getActiveCase();
-  const authorEl = document.querySelector('#case-author-timestamp .author-name');
-  const timestampEl = document.querySelector('#case-author-timestamp .timestamp-value');
+  const scenario = getActiveScenario();
+
+  const authorEl = document.querySelector('.author-name');
+  const timestampEl = document.querySelector('.timestamp-value');
   const descEl = $('#case-description');
 
-  if (!field || !caseName) {
-    if (authorEl) authorEl.textContent = 'Not specified';
-    if (timestampEl) timestampEl.textContent = 'No date available';
-    if (descEl) descEl.innerHTML = '<span class="text-gray-400">No description available</span>';
+  if (!field || !caseName || !scenario) {
+    if (authorEl) authorEl.textContent = '—';
+    if (timestampEl) timestampEl.textContent = '—';
+    if (descEl) descEl.textContent = '';
     return;
   }
 
-  const caseData = getCaseData(field, caseName);
+  const caseData = getCaseData(field, caseName, scenario);
   if (!caseData) return;
 
-  if (authorEl) authorEl.textContent = caseData.author || 'Not specified';
-  if (timestampEl) timestampEl.textContent = caseData.timestamp ? formatDateTime(caseData.timestamp) : 'No date available';
-  if (descEl) {
-    descEl.textContent = caseData.description || '';
-    if (!caseData.description) descEl.innerHTML = '<span class="text-gray-400">No description available</span>';
-  }
+  if (authorEl) authorEl.textContent = caseData.author || '—';
+  if (timestampEl) timestampEl.textContent = caseData.timestamp ? formatDateTime(caseData.timestamp) : '—';
+  if (descEl) descEl.textContent = caseData.description || '';
 
-  // Click metadata card to edit
+  // Click metadata to edit
   const card = $('#case-author-timestamp');
-  if (card) {
-    card.onclick = () => CaseEditor.show(field, caseName);
-  }
+  if (card) card.onclick = () => CaseEditor.show(field, caseName, scenario);
 }
 
 function updateCurrentUnit() {
   const unitEl = $('#current-unit');
   if (!unitEl) return;
-
   const runtime = getRuntime();
   const ui = getUI();
-  const vData = runtime.volumetricData;
-
-  if (!vData || !ui.metric) {
-    unitEl.textContent = '';
-    return;
-  }
-
-  const units = vData.units || {};
-  const currentUnit = units[ui.metric] || '';
-  const total = vData.data.reduce((sum, row) => sum + (parseFloat(row[ui.metric]) || 0), 0);
-
-  unitEl.textContent = `Total ${ui.metric}: ${formatCompact(total)} ${currentUnit}`;
+  if (!runtime.volumetricData || !ui.metric) { unitEl.textContent = ''; return; }
+  const units = runtime.volumetricData.units || {};
+  const total = runtime.volumetricData.data.reduce((s, r) => s + (parseFloat(r[ui.metric]) || 0), 0);
+  unitEl.textContent = `Total ${ui.metric}: ${formatCompact(total)} ${units[ui.metric] || ''}`;
 }
 
-// ─── Global event handlers ──────────────────────────────────
+function updateCompareSelector() {
+  const selector = $('#compare-case-selector');
+  if (!selector) return;
+  const field = getActiveField();
+  const scenario = getActiveScenario();
+  const activeCase = getActiveCase();
+  selector.innerHTML = '<option value="">None</option>';
+  if (!field || !scenario) return;
+
+  const names = getOrderedCaseNames(field, scenario);
+  for (const name of names) {
+    if (name === activeCase) continue;
+    selector.appendChild(Object.assign(document.createElement('option'), { value: name, textContent: name }));
+  }
+}
+
+function updateNavigationButtons() {
+  const prev = $('#prev-case-btn');
+  const next = $('#next-case-btn');
+  if (!prev || !next) return;
+
+  const field = getActiveField();
+  const scenario = getActiveScenario();
+  if (!field || !scenario) { prev.classList.add('opacity-30'); next.classList.add('opacity-30'); return; }
+
+  const names = getOrderedCaseNames(field, scenario);
+  const idx = names.indexOf(getActiveCase());
+  prev.classList.toggle('opacity-30', idx <= 0);
+  next.classList.toggle('opacity-30', idx >= names.length - 1);
+}
+
+function navigateCase(dir) {
+  const field = getActiveField();
+  const scenario = getActiveScenario();
+  if (!field || !scenario) return;
+  const names = getOrderedCaseNames(field, scenario);
+  const idx = names.indexOf(getActiveCase());
+  const newIdx = dir === 'prev' ? idx - 1 : idx + 1;
+  if (newIdx < 0 || newIdx >= names.length) return;
+  setActiveCase(names[newIdx]);
+  saveAppState();
+  loadCaseData();
+}
+
+// ─── Global events ──────────────────────────────────────────
 
 function setupGlobalEvents() {
-  // When field changes, reload everything
-  on(EVENTS.FIELD_CHANGED, ({ field }) => {
-    setCompareCase(null); // Clear compare when switching fields
-    loadFieldData(field);
-    updateCompareSelector();
+  on(EVENTS.FIELD_CHANGED, () => { saveAppState(); if (CaseBrowser?.render) CaseBrowser.render(); });
+  on(EVENTS.SCENARIO_CHANGED, () => { saveAppState(); if (CaseBrowser?.render) CaseBrowser.render(); });
+
+  on(EVENTS.CASE_SELECTED, () => {
+    showDataView();
     saveAppState();
   });
 
-  // When case is selected, load its data and update compare selector
-  on(EVENTS.CASE_SELECTED, () => {
-    loadCaseData();
-    updateCompareSelector();
+  on(EVENTS.BROWSER_OPENED, () => {
+    showBrowser();
+    saveAppState();
   });
 
-  // When case is created or updated, reload
-  on(EVENTS.CASE_CREATED, ({ field }) => {
-    loadFieldData(field);
+  on(EVENTS.CASE_CREATED, () => {
+    saveAppState();
+    if (CaseBrowser?.render) CaseBrowser.render();
   });
 
   on(EVENTS.CASE_UPDATED, () => {
     loadCaseData();
-    CaseList.render();
+    if (CaseBrowser?.render) CaseBrowser.render();
   });
 
-  on(EVENTS.CASE_DELETED, ({ field }) => {
-    loadCaseData();
+  on(EVENTS.CASE_DELETED, () => {
+    if (CaseBrowser?.render) CaseBrowser.render();
   });
 
-  // Metric change
-  on(EVENTS.METRIC_CHANGED, () => {
-    updateCurrentUnit();
-    const field = getActiveField();
-    if (field) saveFieldSettings(field, { currentMetric: getUI().metric });
-  });
-
-  // Window resize
-  window.addEventListener('resize', () => {
-    if (BallChart?.render && getRuntime().volumetricData) BallChart.render();
-    if (CrossPlot?.render) CrossPlot.render();
-  });
-
-  // Compare case changes — render delta table or fall back to normal pivot
   on(EVENTS.COMPARE_CHANGED, () => {
     const ui = getUI();
     const driverSection = $('#driver-chart-section');
     if (ui.compareCase) {
-      // Try rendering delta table; if it succeeds, it replaces the pivot
-      const rendered = DeltaTable.render();
-      if (!rendered) PivotTable.render();
-      // Show driver chart section
+      DeltaTable.render() || PivotTable.render();
       if (driverSection) driverSection.classList.remove('hidden');
     } else {
-      // No compare — show normal pivot, hide driver section
       PivotTable.render();
       if (driverSection) driverSection.classList.add('hidden');
     }
     saveAppState();
   });
 
-  // Field rename/delete cascades
-  on(EVENTS.FIELD_CREATED, () => updateFieldDropdown());
-  on(EVENTS.FIELD_RENAMED, () => updateFieldDropdown());
-  on(EVENTS.FIELD_DELETED, () => {
-    updateFieldDropdown();
-    const state = getState();
-    if (state.activeField) loadFieldData(state.activeField);
+  on(EVENTS.METRIC_CHANGED, () => {
+    updateCurrentUnit();
+    const field = getActiveField();
+    if (field) saveFieldSettings(field, { currentMetric: getUI().metric });
+  });
+
+  window.addEventListener('resize', () => {
+    if (BallChart?.render && getRuntime().volumetricData) BallChart.render();
+    if (CrossPlot?.render) CrossPlot.render();
   });
 }
 
-// ─── UI control setup ───────────────────────────────────────
+// ─── Data view controls ─────────────────────────────────────
 
-function setupToggles() {
-  const hideEmptyToggle = $('#hide-empty-toggle');
-  if (hideEmptyToggle) {
-    hideEmptyToggle.checked = getUI().hideEmpty;
-    hideEmptyToggle.addEventListener('change', (e) => setHideEmpty(e.target.checked));
+function setupDataViewControls() {
+  // Back button
+  const backBtn = $('#back-to-browser');
+  if (backBtn) backBtn.addEventListener('click', () => openBrowser());
+
+  // Breadcrumb clicks
+  const bf = $('#breadcrumb-field');
+  const bs = $('#breadcrumb-scenario');
+  if (bf) bf.addEventListener('click', () => openBrowser());
+  if (bs) bs.addEventListener('click', () => openBrowser());
+
+  // Navigation
+  const prev = $('#prev-case-btn');
+  const next = $('#next-case-btn');
+  if (prev) prev.addEventListener('click', () => navigateCase('prev'));
+  if (next) next.addEventListener('click', () => navigateCase('next'));
+
+  // Compare selector
+  const compareSel = $('#compare-case-selector');
+  if (compareSel) compareSel.addEventListener('change', (e) => setCompareCase(e.target.value || null));
+
+  // Toggles
+  const hideEmpty = $('#hide-empty-toggle');
+  if (hideEmpty) {
+    hideEmpty.checked = getUI().hideEmpty;
+    hideEmpty.addEventListener('change', (e) => setHideEmpty(e.target.checked));
   }
 
-  const showParamsToggle = $('#show-parameters-toggle');
-  if (showParamsToggle) {
-    showParamsToggle.checked = getUI().showParameters;
-    showParamsToggle.addEventListener('change', (e) => setShowParameters(e.target.checked));
+  const showParams = $('#show-parameters-toggle');
+  if (showParams) {
+    showParams.checked = getUI().showParameters;
+    showParams.addEventListener('change', (e) => setShowParameters(e.target.checked));
   }
 
-  const metricSelector = $('#metric-selector');
-  if (metricSelector) {
-    metricSelector.value = getUI().metric;
-    metricSelector.addEventListener('change', (e) => {
+  const metricSel = $('#metric-selector');
+  if (metricSel) {
+    metricSel.value = getUI().metric;
+    metricSel.addEventListener('change', (e) => {
       setMetric(e.target.value);
       if (BallChart?.render) BallChart.render();
     });
   }
 }
 
-function setupCompareSelector() {
-  const selector = $('#compare-case-selector');
-  if (!selector) return;
-
-  selector.addEventListener('change', (e) => {
-    setCompareCase(e.target.value || null);
-  });
-}
-
-function updateCompareSelector() {
-  const selector = $('#compare-case-selector');
-  if (!selector) return;
-
-  const field = getActiveField();
-  const activeCase = getActiveCase();
-  const ui = getUI();
-
-  selector.innerHTML = '<option value="">None</option>';
-
-  if (!field) return;
-
-  const caseNames = getOrderedCaseNames(field);
-  for (const name of caseNames) {
-    if (name === activeCase) continue; // Don't compare to self
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    selector.appendChild(opt);
-  }
-
-  // Restore selection if still valid
-  if (ui.compareCase && caseNames.includes(ui.compareCase)) {
-    selector.value = ui.compareCase;
-  } else {
-    selector.value = '';
-    if (ui.compareCase) setCompareCase(null);
-  }
-}
-
-function setupFieldSelector() {
-  const fieldTitle = $('#field-title');
-  let dropdown = $('#field-dropdown');
-
-  if (!dropdown) {
-    dropdown = document.createElement('div');
-    dropdown.id = 'field-dropdown';
-    dropdown.className = 'absolute mt-2 w-56 bg-white rounded-md shadow-lg z-50 border border-gray-200 hidden';
-    document.body.appendChild(dropdown);
-  }
-
-  if (fieldTitle) {
-    fieldTitle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (dropdown.classList.contains('hidden')) {
-        updateFieldDropdown();
-        const rect = fieldTitle.getBoundingClientRect();
-        dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
-        dropdown.style.left = (rect.left + window.scrollX) + 'px';
-        dropdown.classList.remove('hidden');
-      } else {
-        dropdown.classList.add('hidden');
-      }
-    });
-  }
-
-  document.addEventListener('click', (e) => {
-    if (dropdown && !dropdown.contains(e.target) && e.target !== fieldTitle) {
-      dropdown.classList.add('hidden');
-    }
-  });
-
-  // Settings panel field selector
-  const fieldSelector = $('#field-selector');
-  if (fieldSelector) {
-    updateFieldSelectorOptions();
-    fieldSelector.addEventListener('change', (e) => {
-      setActiveField(e.target.value);
-      saveAppState();
-    });
-  }
-
-  // Edit fields button
-  const editFieldBtn = $('#edit-field-btn');
-  if (editFieldBtn) {
-    editFieldBtn.addEventListener('click', () => FieldManager.show());
-  }
-}
-
-function updateFieldDropdown() {
-  const dropdown = $('#field-dropdown');
-  if (!dropdown) return;
-
-  dropdown.innerHTML = '';
-  const heading = document.createElement('div');
-  heading.className = 'px-4 py-2 text-sm text-gray-700 font-medium border-b border-gray-200';
-  heading.textContent = 'Select Field';
-  dropdown.appendChild(heading);
-
-  const state = getState();
-  for (const field of state.fields) {
-    const item = document.createElement('div');
-    item.className = 'px-4 py-2 text-sm hover:bg-blue-50 cursor-pointer';
-    if (field === state.activeField) {
-      item.className += ' bg-blue-100 font-medium text-blue-700';
-    } else {
-      item.className += ' text-gray-700';
-    }
-    item.textContent = field;
-    item.addEventListener('click', () => {
-      setActiveField(field);
-      saveAppState();
-      dropdown.classList.add('hidden');
-    });
-    dropdown.appendChild(item);
-  }
-
-  updateFieldSelectorOptions();
-}
-
-function updateFieldSelectorOptions() {
-  const selector = $('#field-selector');
-  if (!selector) return;
-  selector.innerHTML = '';
-  for (const field of getState().fields) {
-    const opt = document.createElement('option');
-    opt.value = field;
-    opt.textContent = field;
-    selector.appendChild(opt);
-  }
-  if (getActiveField()) selector.value = getActiveField();
-}
-
-function setupSettingsPanel() {
-  const settingsBtn = $('#settings-button');
-  const contextMenu = $('#context-menu');
-  if (!settingsBtn || !contextMenu) return;
-
-  settingsBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = settingsBtn.getBoundingClientRect();
-    contextMenu.style.display = 'block';
-    contextMenu.style.left = `${rect.left - contextMenu.offsetWidth + rect.width}px`;
-    contextMenu.style.top = `${rect.top - contextMenu.offsetHeight}px`;
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!contextMenu.contains(e.target) && e.target !== settingsBtn) {
-      contextMenu.style.display = 'none';
-    }
-  });
-}
-
-// ─── Keyboard shortcuts (Phase 4) ──────────────────────────
+// ─── Keyboard shortcuts ─────────────────────────────────────
 
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
-    // Don't trigger in input fields
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
 
-    switch (e.key) {
-      case 'd':
-      case 'D':
-        // Toggle delta mode — if compare is set, clear it; otherwise no-op
-        if (getUI().compareCase) {
-          setCompareCase(null);
-          const selector = $('#compare-case-selector');
-          if (selector) selector.value = '';
-        }
-        break;
+    if (e.key === 'Escape') {
+      const overlay = $('#modal-overlay');
+      if (overlay && !overlay.classList.contains('hidden')) {
+        overlay.classList.add('hidden');
+        overlay.querySelectorAll(':scope > div').forEach(d => d.classList.add('hidden'));
+      } else if (!getUI().showBrowser && getActiveCase()) {
+        openBrowser();
+      }
+    }
 
-      case 'Escape':
-        // Close any open modal
-        const overlay = $('#modal-overlay');
-        if (overlay && !overlay.classList.contains('hidden')) {
-          overlay.classList.add('hidden');
-          overlay.querySelectorAll(':scope > div').forEach(d => d.classList.add('hidden'));
-        }
-        break;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); navigateCase('prev'); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); navigateCase('next'); }
 
-      case 'i':
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          CaseImport.show();
-        }
-        break;
+    if (e.key === 'd' || e.key === 'D') {
+      if (getUI().compareCase) {
+        setCompareCase(null);
+        const sel = $('#compare-case-selector');
+        if (sel) sel.value = '';
+      }
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+      e.preventDefault();
+      CaseImport.show();
     }
   });
 }
 
-// ─── JSON Export / Import (Phase 4) ─────────────────────────
+// ─── Export / Import ────────────────────────────────────────
 
 function setupExportImport() {
   const exportBtn = $('#export-json-btn');
   const importBtn = $('#import-json-btn');
   const importInput = $('#import-json-input');
 
-  if (exportBtn) {
-    exportBtn.addEventListener('click', exportFieldJSON);
-  }
-
+  if (exportBtn) exportBtn.addEventListener('click', exportFieldJSON);
   if (importBtn && importInput) {
     importBtn.addEventListener('click', () => importInput.click());
     importInput.addEventListener('change', importFieldJSON);
@@ -574,101 +402,84 @@ function setupExportImport() {
 
 function exportFieldJSON() {
   const field = getActiveField();
-  if (!field) {
-    alert('No field selected to export.');
-    return;
-  }
+  const scenario = getActiveScenario();
+  if (!field || !scenario) { alert('Select a field and scenario first.'); return; }
 
   const cases = getCasesForField(field);
-  const caseOrder = getOrderedCaseNames(field);
+  const caseOrder = getOrderedCaseNames(field, scenario);
+  const blob = new Blob([JSON.stringify({
+    version: 3, exportDate: new Date().toISOString(),
+    field, scenario, caseOrder, cases,
+  }, null, 2)], { type: 'application/json' });
 
-  const exportData = {
-    version: 2,
-    exportDate: new Date().toISOString(),
-    field: field,
-    caseOrder: caseOrder,
-    cases: cases,
-  };
-
-  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = `${field.replace(/\s+/g, '_')}_cases.json`;
+  a.href = URL.createObjectURL(blob);
+  a.download = `${field}_${scenario}_cases.json`.replace(/\s+/g, '_');
   a.click();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(a.href);
 }
 
 function importFieldJSON(e) {
   const file = e.target.files[0];
   if (!file) return;
-
   const reader = new FileReader();
   reader.onload = (evt) => {
     try {
       const data = JSON.parse(evt.target.result);
-      if (!data.field || !data.cases) {
-        alert('Invalid export file: missing field or cases.');
-        return;
-      }
+      if (!data.field || !data.cases) { alert('Invalid export file.'); return; }
 
-      const targetField = data.field;
-
-      // Ensure field exists
+      const field = data.field;
+      const scenario = data.scenario || 'Default';
       const state = getState();
-      if (!state.fields.includes(targetField)) {
-        addField(targetField);
-        saveFields(state.fields);
-      }
+      if (!state.fields.includes(field)) { addField(field); }
 
-      // Merge cases (import adds/overwrites, doesn't delete existing)
-      const existingCases = getCasesForField(targetField);
-      const merged = { ...existingCases, ...data.cases };
+      const { addScenario } = require_state();
+      addScenario(field, scenario);
 
-      // Save merged cases
-      localStorage.setItem(`volumetricCases_${targetField}`, JSON.stringify(merged));
+      const existing = getCasesForField(field);
+      const merged = { ...existing, ...data.cases };
+      localStorage.setItem(`cv3_cases_${field}_${scenario}`, JSON.stringify(merged));
 
-      // Update case order if provided
-      if (data.caseOrder) {
-        saveCaseOrder(targetField, data.caseOrder);
-      }
+      if (data.caseOrder) saveCaseOrder(field, scenario, data.caseOrder);
 
-      // Reload
-      setActiveField(targetField);
-      loadFieldData(targetField);
+      setActiveField(field);
+      setActiveScenario(scenario);
       saveAppState();
+      if (CaseBrowser?.render) CaseBrowser.render();
 
-      alert(`Imported ${Object.keys(data.cases).length} cases into "${targetField}".`);
-    } catch (err) {
-      alert('Failed to parse import file: ' + err.message);
-    }
+      alert(`Imported ${Object.keys(data.cases).length} cases.`);
+    } catch (err) { alert('Import failed: ' + err.message); }
   };
   reader.readAsText(file);
-  e.target.value = ''; // Reset file input
+  e.target.value = '';
 }
 
-// ─── Case duplication (Phase 4) ─────────────────────────────
+// Workaround for circular import
+function require_state() {
+  return { addScenario: (f, s) => {
+    const state = getState();
+    if (!state.scenarios[f]) state.scenarios[f] = [];
+    if (!state.scenarios[f].includes(s)) state.scenarios[f].push(s);
+  }};
+}
 
-export function duplicateCase(field, caseName) {
-  const caseData = getCaseData(field, caseName);
+// ─── Case duplication ───────────────────────────────────────
+
+export function duplicateCase(field, scenario, caseName) {
+  const caseData = getCaseData(field, caseName, scenario);
   if (!caseData) return;
 
   let newName = caseName + ' (copy)';
   let counter = 1;
   const existing = getCasesForField(field);
-  while (existing[newName]) {
-    counter++;
-    newName = `${caseName} (copy ${counter})`;
-  }
+  while (existing[newName]) { counter++; newName = `${caseName} (copy ${counter})`; }
 
-  const duplicated = JSON.parse(JSON.stringify(caseData));
-  duplicated.title = newName;
-  duplicated.timestamp = new Date().toISOString();
+  const dup = JSON.parse(JSON.stringify(caseData));
+  dup.title = newName;
+  dup.timestamp = new Date().toISOString();
 
-  saveCase(field, newName, duplicated);
-  addCaseToOrder(field, newName);
-  setActiveCase(newName);
+  saveCase(field, scenario, newName, dup);
+  addCaseToOrder(field, scenario, newName);
   saveAppState();
-
-  emit(EVENTS.CASE_CREATED, { field, caseName: newName, caseData: duplicated });
+  emit(EVENTS.CASE_CREATED, { field, scenario, caseName: newName });
 }

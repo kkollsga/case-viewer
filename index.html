@@ -16,111 +16,130 @@
     <!-- App styles -->
     <link rel="stylesheet" href="./styles.css">
 </head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto px-4 py-6">
+<body class="bg-gray-50 min-h-screen">
 
-        <!-- ==================== HEADER ==================== -->
-        <header class="mb-2">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center flex-grow">
-                    <h1 class="text-3xl font-bold flex items-center">
-                        <span id="field-title" class="text-gray-600">Volumetric Data</span>
-                        <span id="separator" class="mx-2 text-gray-400">&bull;</span>
-                        <span id="case-title" class="text-gray-800">No case selected</span>
-                    </h1>
-                </div>
-                <!-- Compare case selector -->
-                <div id="compare-selector-container" class="flex items-center gap-2 ml-4">
-                    <label for="compare-case-selector" class="text-xs text-gray-500 uppercase tracking-wider whitespace-nowrap">Compare to:</label>
-                    <select id="compare-case-selector" class="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                        <option value="">None</option>
-                    </select>
-                </div>
-                <div class="flex space-x-1 ml-3">
-                    <button id="prev-case-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded p-1 w-8 h-8 flex items-center justify-center transition-colors duration-150">
-                        <i class="fas fa-chevron-left"></i>
+    <!-- ===== CASE BROWSER (opening screen) ===== -->
+    <div id="case-browser" class="container mx-auto px-6 py-8 max-w-6xl">
+        <!-- CaseBrowser.js renders everything here -->
+    </div>
+
+    <!-- ===== DATA VIEW (shown when a case is selected) ===== -->
+    <div id="data-view" class="hidden">
+
+        <!-- Minimal header bar -->
+        <div class="sticky top-0 z-30 bg-white/80 backdrop-blur-sm border-b border-gray-200/50">
+            <div class="container mx-auto px-6 py-3 max-w-6xl flex items-center justify-between">
+                <!-- Left: Back button + breadcrumb -->
+                <div class="flex items-center gap-3">
+                    <button id="back-to-browser" class="text-gray-400 hover:text-gray-700 transition-colors">
+                        <i class="fas fa-arrow-left"></i>
                     </button>
-                    <button id="next-case-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded p-1 w-8 h-8 flex items-center justify-center transition-colors duration-150">
-                        <i class="fas fa-chevron-right"></i>
+                    <div class="text-sm text-gray-500">
+                        <span id="breadcrumb-field" class="hover:text-indigo-600 cursor-pointer"></span>
+                        <span class="mx-1 text-gray-300">/</span>
+                        <span id="breadcrumb-scenario" class="hover:text-indigo-600 cursor-pointer"></span>
+                        <span class="mx-1 text-gray-300">/</span>
+                        <span id="breadcrumb-case" class="font-medium text-gray-800"></span>
+                    </div>
+                </div>
+
+                <!-- Center: Case navigation -->
+                <div class="flex items-center gap-2">
+                    <button id="prev-case-btn" class="text-gray-400 hover:text-gray-700 p-1 transition-colors">
+                        <i class="fas fa-chevron-left text-xs"></i>
+                    </button>
+                    <span id="case-title" class="text-sm font-medium text-gray-700"></span>
+                    <button id="next-case-btn" class="text-gray-400 hover:text-gray-700 p-1 transition-colors">
+                        <i class="fas fa-chevron-right text-xs"></i>
                     </button>
                 </div>
-            </div>
-        </header>
 
-        <!-- ==================== METADATA ==================== -->
-        <div id="case-metadata-container" class="mb-6 flex items-start">
-            <div id="case-author-timestamp" class="metadata-card cursor-pointer hover:border-blue-300 mr-3">
-                <div class="metadata-card-row">
-                    <i class="fas fa-user"></i>
-                    <span class="author-name">Not specified</span>
-                </div>
-                <div class="metadata-card-row timestamp-row">
-                    <i class="fas fa-calendar-alt"></i>
-                    <span class="timestamp-value">No date available</span>
-                </div>
-            </div>
-            <div id="case-description" class="text-gray-600 italic ml-2 mt-1"></div>
-        </div>
-
-        <!-- ==================== PIVOT TABLE ==================== -->
-        <div class="bg-white rounded-lg shadow-md p-4 mb-6 overflow-x-auto">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold">Volumetrics</h2>
-                <div class="flex items-center gap-4">
-                    <label class="inline-flex items-center cursor-pointer text-sm text-gray-700">
-                        <input type="checkbox" id="hide-empty-toggle" class="sr-only peer">
-                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                        <span class="ml-2">Hide Empty</span>
-                    </label>
-                    <label class="inline-flex items-center cursor-pointer text-sm text-gray-700">
-                        <input type="checkbox" id="show-parameters-toggle" class="sr-only peer">
-                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                        <span class="ml-2">Show Parameters</span>
-                    </label>
-                </div>
-            </div>
-
-            <div class="overflow-x-auto">
-                <div class="pivot-table-container">
-                    <table id="pivot-table" class="min-w-full divide-y divide-gray-200 table-auto">
-                        <thead class="bg-gray-50 rounded-t-lg" id="pivot-headers"></thead>
-                        <tbody class="bg-white divide-y divide-gray-200" id="pivot-body"></tbody>
-                    </table>
-                </div>
-                <div style="display: flex; justify-content: flex-end;">
-                    <div id="pivot-legend" class="pivot-legend"></div>
+                <!-- Right: Compare selector -->
+                <div class="flex items-center gap-3">
+                    <div id="compare-selector-container" class="flex items-center gap-2">
+                        <label class="text-xs text-gray-400">Compare</label>
+                        <select id="compare-case-selector" class="text-xs border-0 bg-gray-100 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500">
+                            <option value="">None</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- ==================== DRIVER CHART ==================== -->
-        <div id="driver-chart-section" class="bg-white rounded-lg shadow-md p-4 mb-6 hidden">
-            <div class="flex justify-between items-center mb-3">
-                <h2 class="text-xl font-semibold">Driver Analysis</h2>
-                <span class="text-xs text-gray-400 uppercase tracking-wider">Informal Tornado</span>
+        <!-- Main content area -->
+        <div class="container mx-auto px-6 py-6 max-w-6xl">
+
+            <!-- Case metadata -->
+            <div id="case-metadata-container" class="mb-6 flex items-center gap-6 text-sm text-gray-500">
+                <div id="case-author-timestamp" class="flex items-center gap-4 cursor-pointer hover:text-gray-700 transition-colors">
+                    <span class="flex items-center gap-1.5">
+                        <i class="fas fa-user text-xs text-gray-400"></i>
+                        <span class="author-name">&mdash;</span>
+                    </span>
+                    <span class="flex items-center gap-1.5">
+                        <i class="fas fa-calendar-alt text-xs text-gray-400"></i>
+                        <span class="timestamp-value">&mdash;</span>
+                    </span>
+                </div>
+                <div id="case-description" class="text-gray-400 italic truncate"></div>
             </div>
-            <div id="driver-chart-container"></div>
-        </div>
 
-        <!-- ==================== BALL CHART ==================== -->
-        <div class="bg-white rounded-lg shadow-md p-4 mb-6">
-            <div class="circle-diagram-container">
-                <div class="circle-diagram-header">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h2 id="ball-chart-title" class="text-xl font-semibold">Ball Chart</h2>
-                            <p id="ball-chart-subtitle" class="text-sm text-gray-500">Field Name</p>
-                        </div>
-                        <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm space-y-3 min-w-[200px]" style="pointer-events: auto;">
-                            <!-- Settings header -->
-                            <div class="text-xs font-light text-gray-500 mb-1.5 text-right uppercase tracking-wider cursor-pointer flex items-center justify-end" id="settings-header">
-                                <span>Metric</span>
-                                <i class="fas fa-chevron-down ml-1 text-[8px] transition-transform duration-200" id="settings-arrow"></i>
-                            </div>
+            <!-- Pivot table section -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-base font-semibold text-gray-800">Volumetrics</h2>
+                    <div class="flex items-center gap-3">
+                        <label class="inline-flex items-center cursor-pointer text-xs text-gray-500 hover:text-gray-700">
+                            <input type="checkbox" id="hide-empty-toggle" class="sr-only peer">
+                            <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                            <span class="ml-1.5">Hide empty</span>
+                        </label>
+                        <label class="inline-flex items-center cursor-pointer text-xs text-gray-500 hover:text-gray-700">
+                            <input type="checkbox" id="show-parameters-toggle" class="sr-only peer">
+                            <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                            <span class="ml-1.5">Parameters</span>
+                        </label>
+                    </div>
+                </div>
 
-                            <!-- Metric selector -->
+                <div class="overflow-x-auto">
+                    <div class="pivot-table-container">
+                        <table id="pivot-table" class="min-w-full divide-y divide-gray-200 table-auto">
+                            <thead class="bg-gray-50/50" id="pivot-headers"></thead>
+                            <tbody class="divide-y divide-gray-100" id="pivot-body"></tbody>
+                        </table>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end">
+                        <div id="pivot-legend" class="pivot-legend"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Driver chart (hidden until compare active) -->
+            <div id="driver-chart-section" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-base font-semibold text-gray-800">Driver Analysis</h2>
+                    <span class="text-xs text-gray-400">Informal tornado</span>
+                </div>
+                <div id="driver-chart-container"></div>
+            </div>
+
+            <!-- Ball chart section -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+                <div class="circle-diagram-container">
+                    <div class="circle-diagram-header">
+                        <div class="flex justify-between items-start">
                             <div>
-                                <select id="metric-selector" class="block w-full pl-3 pr-10 py-2 text-sm text-gray-700 bg-blue-50 border border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 rounded-md font-medium">
+                                <h2 id="ball-chart-title" class="text-base font-semibold text-gray-800">Ball Chart</h2>
+                                <p id="ball-chart-subtitle" class="text-xs text-gray-400"></p>
+                            </div>
+                            <!-- Metric + settings: compact, right-aligned -->
+                            <div class="bg-white/90 backdrop-blur-sm border border-gray-200/50 rounded-lg p-3 shadow-sm space-y-2 min-w-[180px]" style="pointer-events:auto">
+                                <div class="text-xs text-gray-400 text-right uppercase tracking-wider cursor-pointer flex items-center justify-end" id="settings-header">
+                                    <span>Metric</span>
+                                    <i class="fas fa-chevron-down ml-1 text-[8px] transition-transform duration-200" id="settings-arrow"></i>
+                                </div>
+                                <select id="metric-selector" class="block w-full text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 focus:ring-1 focus:ring-indigo-500 focus:border-transparent">
                                     <option value="bulkVolume">Bulk volume</option>
                                     <option value="netVolume">Net volume</option>
                                     <option value="poreVolume">Pore volume</option>
@@ -129,301 +148,246 @@
                                     <option value="stoiip" selected>STOIIP</option>
                                     <option value="giip">GIIP</option>
                                 </select>
-                            </div>
-                            <div id="current-unit" class="text-xs text-gray-700 font-medium bg-white px-3 py-1 rounded border border-gray-200"></div>
+                                <div id="current-unit" class="text-xs text-gray-500 px-1"></div>
 
-                            <!-- Extended settings (hidden by default) -->
-                            <div id="extended-settings" class="space-y-3 hidden">
-                                <div class="flex items-center">
-                                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                <div id="extended-settings" class="space-y-2 hidden">
+                                    <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
                                         <input type="checkbox" id="show-values-toggle" class="sr-only peer">
-                                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                                        <span class="ml-2">Show Values</span>
+                                        <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                                        <span class="ml-1.5">Values</span>
                                     </label>
-                                </div>
-                                <div class="flex items-center">
-                                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                    <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
                                         <input type="checkbox" id="enable-zoom-toggle" class="sr-only peer">
-                                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                                        <span class="ml-2">Enable Zoom</span>
+                                        <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                                        <span class="ml-1.5">Zoom</span>
                                     </label>
-                                </div>
-                                <div class="flex items-center">
-                                    <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
+                                    <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
                                         <input type="checkbox" id="show-legend-toggle" class="sr-only peer">
-                                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                                        <span class="ml-2">Show Legend</span>
+                                        <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                                        <span class="ml-1.5">Legend</span>
                                     </label>
-                                </div>
-                                <div class="w-full">
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Max Depth</label>
-                                    <div class="flex items-center space-x-2">
-                                        <input type="range" id="max-depth-slider" min="1" max="5" value="5" class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                                        <span id="max-depth-value" class="text-sm text-gray-700 w-8 text-center bg-white px-2 py-1 rounded border border-gray-200">5</span>
+                                    <div>
+                                        <label class="text-xs text-gray-500">Depth</label>
+                                        <div class="flex items-center gap-2">
+                                            <input type="range" id="max-depth-slider" min="1" max="5" value="5" class="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                            <span id="max-depth-value" class="text-xs text-gray-500 w-4 text-center">5</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Main diagram container -->
-                <div id="circle-diagram" class="w-full h-full">
-                    <!-- Legend panel -->
-                    <div class="circle-legend" id="circle-legend">
-                        <div class="text-xs font-light text-gray-500 mb-1.5 text-right uppercase tracking-wider legend-title-text">Legend</div>
-                        <div class="mb-3 pb-3 border-b border-gray-100 flex items-center gap-2">
-                            <div class="text-xs font-medium text-gray-600 min-w-fit" id="legend-layer-label">Layer 1</div>
-                            <div class="slider-container flex-1">
-                                <input type="range" class="layer-slider w-full" id="legend-layer-slider" min="1" max="5" value="1" step="1">
+                    <!-- Main diagram container -->
+                    <div id="circle-diagram" class="w-full h-full">
+                        <!-- Legend panel -->
+                        <div class="circle-legend" id="circle-legend">
+                            <div class="text-xs text-gray-400 mb-1.5 text-right uppercase tracking-wider legend-title-text">Legend</div>
+                            <div class="mb-3 pb-3 border-b border-gray-100 flex items-center gap-2">
+                                <div class="text-xs text-gray-500 min-w-fit" id="legend-layer-label">Layer 1</div>
+                                <div class="slider-container flex-1">
+                                    <input type="range" class="layer-slider w-full" id="legend-layer-slider" min="1" max="5" value="1" step="1">
+                                </div>
+                                <div class="text-xs text-gray-400 min-w-fit">5</div>
                             </div>
-                            <div class="text-xs text-gray-500 min-w-fit">5</div>
+                            <div class="legend-items" id="legend-items"></div>
                         </div>
-                        <div class="legend-items" id="legend-items"></div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- ==================== CROSS PLOT ==================== -->
-        <button id="toggle-cross-plot" class="text-xs font-light text-gray-500 hover:text-blue-600 uppercase tracking-wider flex items-center mb-4">
-            <span class="mr-2">Cross Plot</span>
-            <i class="fas fa-chevron-down"></i>
-        </button>
-
-        <div id="cross-plot-outer-container" class="bg-white rounded-lg shadow-md p-4 mb-6 overflow-x-auto hidden">
-            <div class="flex justify-between items-center mb-3">
-                <div></div>
-                <div>
-                    <select id="cross-plot-grouping" class="pl-3 pr-10 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150"></select>
-                </div>
-            </div>
-            <div id="cross-plot" class="w-full h-[500px] relative"></div>
-        </div>
-
-        <!-- ==================== REVISION TIMELINE ==================== -->
-        <button id="toggle-timeline" class="text-xs font-light text-gray-500 hover:text-blue-600 uppercase tracking-wider flex items-center mb-4">
-            <span class="mr-2">Revision Timeline</span>
-            <i class="fas fa-chevron-down"></i>
-        </button>
-
-        <div id="timeline-outer-container" class="bg-white rounded-lg shadow-md p-4 mb-6 hidden">
-            <div id="timeline-container"></div>
-        </div>
-
-        <!-- ==================== EXPORT / IMPORT ==================== -->
-        <div class="flex items-center gap-3 mb-6">
-            <button id="export-json-btn" class="text-xs text-gray-500 hover:text-blue-600 uppercase tracking-wider flex items-center gap-1">
-                <i class="fas fa-download"></i> Export Field
+            <!-- Cross-plot (collapsible) -->
+            <button id="toggle-cross-plot" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
+                <span class="mr-1.5">Cross Plot</span>
+                <i class="fas fa-chevron-down text-[10px]"></i>
             </button>
-            <button id="import-json-btn" class="text-xs text-gray-500 hover:text-blue-600 uppercase tracking-wider flex items-center gap-1">
-                <i class="fas fa-upload"></i> Import Field
-            </button>
-            <input id="import-json-input" type="file" accept=".json" class="hidden">
-        </div>
-    </div>
-
-    <!-- ==================== SETTINGS BUTTON (floating) ==================== -->
-    <div class="fixed bottom-4 right-4" style="z-index: 2000;">
-        <button id="settings-button" class="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg">
-            <i class="fas fa-cog"></i>
-        </button>
-    </div>
-
-    <!-- ==================== CONTEXT MENU (settings panel) ==================== -->
-    <div id="context-menu" class="context-menu bg-white rounded-lg shadow-2xl p-4 w-72 border border-gray-200">
-        <div class="mb-4">
-            <!-- Field selector -->
-            <div class="mb-4">
-                <label for="field-selector" class="block text-sm font-medium text-gray-700 mb-2">Field</label>
-                <div class="flex items-center space-x-2">
-                    <select id="field-selector" class="flex-1 pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 sm:text-sm"></select>
-                    <button id="edit-field-btn" class="text-gray-500 hover:text-blue-600 transition-colors duration-150 p-2 hover:bg-gray-50 rounded-md">
-                        <i class="fas fa-cog"></i>
-                    </button>
+            <div id="cross-plot-outer-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
+                <div class="flex justify-end mb-3">
+                    <select id="cross-plot-grouping" class="text-xs bg-gray-50 border border-gray-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500"></select>
                 </div>
+                <div id="cross-plot" class="w-full h-[500px] relative"></div>
             </div>
-            <!-- Case list -->
-            <div class="mb-2">
-                <label class="block text-sm font-medium text-gray-700">Volumetric Cases</label>
+
+            <!-- Timeline (collapsible) -->
+            <button id="toggle-timeline" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
+                <span class="mr-1.5">Revision Timeline</span>
+                <i class="fas fa-chevron-down text-[10px]"></i>
+            </button>
+            <div id="timeline-outer-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
+                <div id="timeline-container"></div>
             </div>
-            <div class="case-list-container border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                <div id="case-list" class="max-h-80 overflow-y-auto bg-gray-50"></div>
-                <button id="add-case-btn" class="text-left px-3 py-2 text-sm text-gray-500 hover:text-blue-600 bg-white border-t border-gray-200 sticky bottom-0 z-10 w-full transition-colors duration-150">
-                    <i class="fas fa-plus mr-2 text-xs"></i>Add new case
+
+            <!-- Export/Import (subtle, bottom) -->
+            <div class="flex items-center gap-4 mb-8 opacity-50 hover:opacity-100 transition-opacity">
+                <button id="export-json-btn" class="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                    <i class="fas fa-download text-[10px]"></i> Export
                 </button>
+                <button id="import-json-btn" class="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                    <i class="fas fa-upload text-[10px]"></i> Import
+                </button>
+                <input id="import-json-input" type="file" accept=".json" class="hidden">
             </div>
         </div>
     </div>
 
-    <!-- ==================== MODAL OVERLAY ==================== -->
-    <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <!-- ===== MODALS ===== -->
+    <div id="modal-overlay" class="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center hidden z-50">
 
-        <!-- ========== ADD CASE MODAL ========== -->
-        <div id="add-case-modal" class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg hidden">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-semibold">Add New Volumetric Case</h3>
-                <div id="timestamp-display" class="text-xs text-gray-500 cursor-pointer hover:text-blue-600"></div>
+        <!-- Add Case Modal -->
+        <div id="add-case-modal" class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg hidden">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-base font-semibold text-gray-800">Add New Volumetric Case</h3>
+                <div id="timestamp-display" class="text-xs text-gray-400 cursor-pointer hover:text-indigo-600 transition-colors"></div>
             </div>
 
             <div class="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Field</label>
-                    <select id="new-case-field" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border"></select>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Field</label>
+                    <select id="new-case-field" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"></select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Case Title</label>
-                    <input type="text" id="new-case-title" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter case title">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Scenario</label>
+                    <select id="new-case-scenario" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"></select>
                 </div>
             </div>
 
-            <!-- Author with default toggle -->
-            <div class="flex items-center gap-2 mb-4">
+            <div class="mb-4">
+                <label class="block text-xs font-medium text-gray-500 mb-1">Case Title</label>
+                <input type="text" id="new-case-title" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" placeholder="Enter case title">
+            </div>
+
+            <div class="flex items-end gap-3 mb-4">
                 <div class="flex-1">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Author</label>
-                    <input type="text" id="new-case-author" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter author name">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Author</label>
+                    <input type="text" id="new-case-author" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" placeholder="Enter author name">
                 </div>
-                <div class="flex items-end h-full pb-1">
-                    <label class="inline-flex items-center cursor-pointer text-sm text-gray-700">
-                        <input type="checkbox" id="default-author-toggle" class="sr-only peer">
-                        <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-500"></div>
-                        <span class="ml-2">Default</span>
+                <label class="inline-flex items-center cursor-pointer text-xs text-gray-500 pb-2">
+                    <input type="checkbox" id="default-author-toggle" class="sr-only peer">
+                    <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-gray-400"></div>
+                    <span class="ml-1.5">Default</span>
+                </label>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-xs font-medium text-gray-500 mb-1">Description</label>
+                <textarea id="new-case-description" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" placeholder="Optional description" rows="2"></textarea>
+            </div>
+
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-xs font-medium text-gray-500">Volumetric Data</label>
+                    <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
+                        <input type="checkbox" id="divide-by-1000-toggle" class="sr-only peer" checked>
+                        <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-gray-400"></div>
+                        <span class="ml-1.5">Divide by 1000</span>
                     </label>
                 </div>
+                <textarea id="new-case-data" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent h-36 font-mono transition-colors" placeholder="Paste tab-separated data or copy from Excel..."></textarea>
             </div>
 
-            <!-- Description -->
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea id="new-case-description" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter description (optional)" rows="2"></textarea>
-            </div>
-
-            <!-- Data textarea with divide toggle -->
             <div class="mb-4">
                 <div class="flex justify-between items-center mb-1">
-                    <label class="block text-sm font-medium text-gray-700">Volumetric Data (Tab-separated or Copy from Excel)</label>
-                    <div class="flex items-center">
-                        <label class="inline-flex items-center cursor-pointer mr-2 text-sm text-gray-700">
-                            <input type="checkbox" id="divide-by-1000-toggle" class="sr-only peer" checked>
-                            <div class="relative w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-500"></div>
-                            <span class="ml-2">Divide values by 1000</span>
-                        </label>
-                    </div>
-                </div>
-                <textarea id="new-case-data" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border h-40 font-mono" placeholder="Paste your data here..."></textarea>
-            </div>
-
-            <!-- Volume groups -->
-            <div class="mb-4">
-                <div class="flex justify-between items-center mb-1">
-                    <label class="block text-sm font-medium text-gray-700">Volume Groups</label>
-                    <div class="text-xs text-gray-500">Used for table and visualization grouping</div>
+                    <label class="block text-xs font-medium text-gray-500">Volume Groups</label>
+                    <span class="text-xs text-gray-400">For table and visualization grouping</span>
                 </div>
                 <div id="volume-group-container" class="space-y-2"></div>
                 <div class="flex justify-end mt-2">
-                    <button id="add-group-level" type="button" class="text-blue-600 hover:text-blue-800 text-sm flex items-center">
-                        <i class="fas fa-plus mr-1"></i> Add Level
+                    <button id="add-group-level" type="button" class="text-indigo-500 hover:text-indigo-700 text-xs flex items-center transition-colors">
+                        <i class="fas fa-plus mr-1 text-[10px]"></i> Add Level
                     </button>
                 </div>
             </div>
 
-            <!-- Hidden timestamp picker -->
             <div class="mb-4 hidden" id="timestamp-picker-container">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Custom Timestamp</label>
-                <input type="datetime-local" id="custom-timestamp" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border">
+                <label class="block text-xs font-medium text-gray-500 mb-1">Custom Timestamp</label>
+                <input type="datetime-local" id="custom-timestamp" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors">
             </div>
 
-            <!-- Import preview (NEW in v2) -->
             <div id="import-preview" class="mb-4"></div>
 
-            <!-- Action buttons -->
-            <div class="flex justify-end space-x-2">
-                <button id="cancel-add-case" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
-                <button id="confirm-add-case" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Add Case</button>
+            <div class="flex justify-end gap-2 pt-2">
+                <button id="cancel-add-case" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">Cancel</button>
+                <button id="confirm-add-case" class="px-4 py-2 text-sm text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl transition-colors">Add Case</button>
             </div>
         </div>
 
-        <!-- ========== MANAGE FIELDS MODAL ========== -->
-        <div id="manage-fields-modal" class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg hidden">
-            <h3 class="text-lg font-semibold mb-4">Manage Fields</h3>
+        <!-- Manage Fields Modal -->
+        <div id="manage-fields-modal" class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg hidden">
+            <h3 class="text-base font-semibold text-gray-800 mb-5">Manage Fields</h3>
 
             <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Fields</label>
-                <ul id="field-list" class="border border-gray-300 rounded-md max-h-60 overflow-y-auto"></ul>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Fields</label>
+                <ul id="field-list" class="border border-gray-200 rounded-xl max-h-60 overflow-y-auto bg-gray-50"></ul>
             </div>
 
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Add New Field</label>
-                <div class="flex">
-                    <input type="text" id="new-field-name" class="flex-1 block pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter field name">
-                    <button id="add-field-btn" class="ml-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Add</button>
+            <div class="mb-5">
+                <label class="block text-xs font-medium text-gray-500 mb-1">Add New Field</label>
+                <div class="flex gap-2">
+                    <input type="text" id="new-field-name" class="flex-1 block px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" placeholder="Enter field name">
+                    <button id="add-field-btn" class="px-4 py-2 text-sm text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl transition-colors">Add</button>
                 </div>
             </div>
 
             <div class="flex justify-end">
-                <button id="close-manage-fields" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Close</button>
+                <button id="close-manage-fields" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">Close</button>
             </div>
         </div>
 
-        <!-- ========== RENAME/EDIT CASE MODAL ========== -->
-        <div id="rename-case-modal" class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg hidden">
-            <h3 class="text-lg font-semibold mb-4">Edit Volumetric Case</h3>
+        <!-- Edit Case Modal -->
+        <div id="rename-case-modal" class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg hidden">
+            <h3 class="text-base font-semibold text-gray-800 mb-5">Edit Volumetric Case</h3>
 
-            <div class="modal-content-scroll" style="max-height: calc(100vh - 200px); overflow-y: auto; padding-right: 0.5rem;">
+            <div class="modal-content-scroll" style="max-height:calc(100vh - 200px);overflow-y:auto;padding-right:0.5rem;">
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Case Title</label>
-                    <input type="text" id="rename-case-title" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter case title">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Case Title</label>
+                    <input type="text" id="rename-case-title" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" placeholder="Enter case title">
                 </div>
 
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Author</label>
-                    <input type="text" id="edit-case-author" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter author name">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Author</label>
+                    <input type="text" id="edit-case-author" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" placeholder="Enter author name">
                 </div>
 
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                    <textarea id="edit-case-description" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border" placeholder="Enter description (optional)" rows="2"></textarea>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Description</label>
+                    <textarea id="edit-case-description" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" placeholder="Optional description" rows="2"></textarea>
                 </div>
 
-                <!-- Volume groups for edit -->
                 <div class="mb-4">
                     <div class="flex justify-between items-center mb-1">
-                        <label class="block text-sm font-medium text-gray-700">Volume Groups</label>
-                        <div class="text-xs text-gray-500">Used for table and visualization grouping</div>
+                        <label class="block text-xs font-medium text-gray-500">Volume Groups</label>
+                        <span class="text-xs text-gray-400">For table and visualization grouping</span>
                     </div>
                     <div id="edit-volume-group-container" class="space-y-2"></div>
                     <div class="flex justify-end mt-2">
-                        <button id="edit-add-group-level" type="button" class="text-blue-600 hover:text-blue-800 text-sm flex items-center">
-                            <i class="fas fa-plus mr-1"></i> Add Level
+                        <button id="edit-add-group-level" type="button" class="text-indigo-500 hover:text-indigo-700 text-xs flex items-center transition-colors">
+                            <i class="fas fa-plus mr-1 text-[10px]"></i> Add Level
                         </button>
                     </div>
                 </div>
 
-                <!-- Value conversions -->
                 <div class="mb-4">
                     <div class="flex justify-between items-center mb-2">
-                        <label class="block text-sm font-medium text-gray-700">Value Conversions</label>
-                        <div class="text-xs text-gray-500">Convert discrete column values</div>
+                        <label class="block text-xs font-medium text-gray-500">Value Conversions</label>
+                        <span class="text-xs text-gray-400">Convert discrete column values</span>
                     </div>
                     <div id="edit-value-conversions-container" class="space-y-2"></div>
                 </div>
 
-                <!-- Timestamp for editing -->
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Timestamp</label>
-                    <input type="datetime-local" id="edit-timestamp" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Timestamp</label>
+                    <input type="datetime-local" id="edit-timestamp" class="block w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors">
                 </div>
             </div>
 
-            <!-- Buttons outside scrollable area -->
-            <div class="flex justify-end space-x-2 mt-4 pt-4 border-t border-gray-200">
-                <button id="cancel-rename-case" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
-                <button id="confirm-rename-case" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Changes</button>
+            <div class="flex justify-end gap-2 pt-4 mt-4 border-t border-gray-100">
+                <button id="cancel-rename-case" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">Cancel</button>
+                <button id="confirm-rename-case" class="px-4 py-2 text-sm text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl transition-colors">Save Changes</button>
             </div>
         </div>
     </div>
 
-    <!-- ==================== APP MODULE ==================== -->
+    <!-- App module -->
     <script type="module">
         import { init } from './app.js';
         document.addEventListener('DOMContentLoaded', init);

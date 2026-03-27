@@ -3,11 +3,8 @@
 const listeners = new Map();
 
 export function on(event, callback) {
-  if (!listeners.has(event)) {
-    listeners.set(event, []);
-  }
+  if (!listeners.has(event)) listeners.set(event, []);
   listeners.get(event).push(callback);
-  // Return unsubscribe function
   return () => off(event, callback);
 }
 
@@ -21,23 +18,24 @@ export function off(event, callback) {
 export function emit(event, data) {
   if (!listeners.has(event)) return;
   for (const cb of listeners.get(event)) {
-    try {
-      cb(data);
-    } catch (e) {
-      console.error(`Event handler error for "${event}":`, e);
-    }
+    try { cb(data); } catch (e) { console.error(`Event "${event}":`, e); }
   }
 }
 
-// Event name constants
 export const EVENTS = {
-  // Field events
+  // Field
   FIELD_CHANGED: 'field:changed',
   FIELD_CREATED: 'field:created',
   FIELD_RENAMED: 'field:renamed',
   FIELD_DELETED: 'field:deleted',
 
-  // Case events
+  // Scenario
+  SCENARIO_CHANGED: 'scenario:changed',
+  SCENARIO_CREATED: 'scenario:created',
+  SCENARIO_RENAMED: 'scenario:renamed',
+  SCENARIO_DELETED: 'scenario:deleted',
+
+  // Case
   CASE_SELECTED: 'case:selected',
   CASE_CREATED: 'case:created',
   CASE_UPDATED: 'case:updated',
@@ -45,21 +43,27 @@ export const EVENTS = {
   CASE_REORDERED: 'case:reordered',
   CASE_NAVIGATE: 'case:navigate',
 
-  // View events
+  // Multi-select
+  SELECTION_CHANGED: 'selection:changed',
+
+  // Browser
+  BROWSER_OPENED: 'browser:opened',
+
+  // View
   VIEW_CHANGED: 'view:changed',
   METRIC_CHANGED: 'metric:changed',
   COMPARE_CHANGED: 'compare:changed',
 
-  // UI toggle events
+  // Toggles
   TOGGLE_PARAMETERS: 'toggle:parameters',
   TOGGLE_HIDE_EMPTY: 'toggle:hideEmpty',
   TOGGLE_DELTA: 'toggle:delta',
   BASE_CASE_CHANGED: 'base:changed',
 
-  // Data events
+  // Data
   DATA_LOADED: 'data:loaded',
   DATA_CLEARED: 'data:cleared',
 
-  // State events
+  // State
   STATE_LOADED: 'state:loaded',
 };

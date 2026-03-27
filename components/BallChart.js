@@ -3,7 +3,7 @@
 // volumetric data, with metric selection, depth control, legend, and
 // per-case persisted settings.
 
-import { getRuntime, getUI, getActiveField, getActiveCase, getBaseCase } from '../core/state.js';
+import { getRuntime, getUI, getActiveField, getActiveCase, getActiveScenario } from '../core/state.js';
 import {
   saveCircleSettings, loadCircleSettings,
   saveFieldCircleSettings, loadFieldCircleSettings,
@@ -651,7 +651,7 @@ function applyDeltaOverlay(g, descendants, metric) {
   if (!compareCaseName) return;
 
   const field = getActiveField();
-  const compareData = getCaseData(field, compareCaseName);
+  const compareData = getCaseData(field, compareCaseName, getActiveScenario());
   if (!compareData || !compareData.data) return;
 
   const runtime = getRuntime();

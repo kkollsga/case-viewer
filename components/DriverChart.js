@@ -1,7 +1,7 @@
 // components/DriverChart.js — Informal tornado chart: Δ ranked by absolute value
 // Shows which zone/segment is driving the volume change between two cases.
 
-import { getRuntime, getUI, getActiveField, getActiveCase } from '../core/state.js';
+import { getRuntime, getUI, getActiveField, getActiveCase, getActiveScenario } from '../core/state.js';
 import { getCaseData } from '../core/storage.js';
 import { on, EVENTS } from '../core/events.js';
 import { formatNumber } from '../utils/format.js';
@@ -30,7 +30,7 @@ export function render() {
   }
 
   const activeData = runtime.volumetricData;
-  const compareData = getCaseData(field, compareCaseName);
+  const compareData = getCaseData(field, compareCaseName, getActiveScenario());
 
   if (!activeData?.data || !compareData?.data) {
     containerEl.innerHTML = '<div class="text-gray-400 text-sm text-center py-8">No data available for comparison</div>';

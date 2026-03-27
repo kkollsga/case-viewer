@@ -1,23 +1,22 @@
 // core/state.js — Central application state
-// Single source of truth for all app data and UI state.
+// Single source of truth. Hierarchy: Field → Scenario → Case.
 
 import { emit, EVENTS } from './events.js';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
-/**
- * Default state structure.
- */
 function createDefaultState() {
   return {
     schema: SCHEMA_VERSION,
     fields: ['Cerisa', 'Gjøa Nord'],
     activeField: null,
-    activeCase: null,
+    activeScenario: null,
+    activeCase: null,        // primary case for viewing
+    selectedCases: [],       // multi-select for comparison
     defaultAuthor: '',
 
-    // Per-field base cases: { fieldName: caseName }
-    baseCases: {},
+    // Per-field scenarios: { fieldName: ['Default', 'High Case', ...] }
+    scenarios: {},
 
     ui: {
       metric: 'STOIIP',
@@ -26,6 +25,7 @@ function createDefaultState() {
       view: 'pivot',
       compareCase: null,
       deltaMode: false,
+      showBrowser: true,     // show case browser on load
       crossPlotX: 'bulkVolume',
       crossPlotY: 'stoiip',
       crossPlotGroupLevel: 1,
@@ -33,48 +33,31 @@ function createDefaultState() {
   };
 }
 
-// The app state — module-level singleton
 const state = createDefaultState();
 
 // In-memory runtime state (not persisted)
 const runtime = {
-  // Current case's parsed data
   volumetricData: null,
-  // All columns for current case
   columns: [],
-  // Available cases for current field (ordered)
   availableCases: [],
-  // Expanded zones in pivot table { caseKey: { groupKey: boolean } }
   expandedZones: {},
-  // Colour map (see color.js — managed there, referenced here)
-  // Cross-plot visibility state
   crossPlotVisibility: { groups: {}, cases: {} },
 };
 
 // ─── Accessors ──────────────────────────────────────────────
 
-export function getState() {
-  return state;
-}
+export function getState() { return state; }
+export function getRuntime() { return runtime; }
+export function getActiveField() { return state.activeField; }
+export function getActiveScenario() { return state.activeScenario; }
+export function getActiveCase() { return state.activeCase; }
+export function getSelectedCases() { return state.selectedCases; }
+export function getUI() { return state.ui; }
+export function getFields() { return state.fields; }
 
-export function getRuntime() {
-  return runtime;
-}
-
-export function getActiveField() {
-  return state.activeField;
-}
-
-export function getActiveCase() {
-  return state.activeCase;
-}
-
-export function getUI() {
-  return state.ui;
-}
-
-export function getFields() {
-  return state.fields;
+export function getScenariosForField(fieldName) {
+  const f = fieldName || state.activeField;
+  return state.scenarios[f] || [];
 }
 
 // ─── Mutators ───────────────────────────────────────────────
@@ -82,13 +65,49 @@ export function getFields() {
 export function setActiveField(fieldName) {
   if (state.activeField === fieldName) return;
   state.activeField = fieldName;
+  state.activeScenario = null;
+  state.activeCase = null;
+  state.selectedCases = [];
+  state.ui.showBrowser = true;
   emit(EVENTS.FIELD_CHANGED, { field: fieldName });
 }
 
+export function setActiveScenario(scenarioName) {
+  if (state.activeScenario === scenarioName) return;
+  state.activeScenario = scenarioName;
+  state.activeCase = null;
+  state.selectedCases = [];
+  state.ui.showBrowser = true;
+  emit(EVENTS.SCENARIO_CHANGED, { scenario: scenarioName });
+}
+
 export function setActiveCase(caseName) {
-  if (state.activeCase === caseName) return;
   state.activeCase = caseName;
+  state.ui.showBrowser = false;
   emit(EVENTS.CASE_SELECTED, { caseName });
+}
+
+export function setSelectedCases(caseNames) {
+  state.selectedCases = [...caseNames];
+  emit(EVENTS.SELECTION_CHANGED, { selectedCases: state.selectedCases });
+}
+
+export function toggleCaseSelection(caseName) {
+  const idx = state.selectedCases.indexOf(caseName);
+  if (idx === -1) {
+    state.selectedCases.push(caseName);
+  } else {
+    state.selectedCases.splice(idx, 1);
+  }
+  emit(EVENTS.SELECTION_CHANGED, { selectedCases: state.selectedCases });
+}
+
+export function openBrowser() {
+  state.ui.showBrowser = true;
+  state.activeCase = null;
+  state.ui.compareCase = null;
+  state.ui.deltaMode = false;
+  emit(EVENTS.BROWSER_OPENED);
 }
 
 export function setMetric(metric) {
@@ -105,19 +124,6 @@ export function setCompareCase(caseName) {
   state.ui.compareCase = caseName;
   state.ui.deltaMode = !!caseName;
   emit(EVENTS.COMPARE_CHANGED, { caseName });
-}
-
-export function setBaseCase(fieldName, caseName) {
-  state.baseCases[fieldName] = caseName;
-}
-
-export function getBaseCase(fieldName) {
-  return state.baseCases[fieldName || state.activeField] || null;
-}
-
-export function toggleDeltaMode() {
-  state.ui.deltaMode = !state.ui.deltaMode;
-  emit(EVENTS.TOGGLE_DELTA, { deltaMode: state.ui.deltaMode });
 }
 
 export function setShowParameters(val) {
@@ -143,21 +149,39 @@ export function setCrossPlotGroupLevel(level) {
   state.ui.crossPlotGroupLevel = level;
 }
 
+export function setBaseCase(fieldName, caseName) {
+  // No-op for now, reserved for future use
+}
+
+export function getBaseCase(fieldName) {
+  return null;
+}
+
+export function toggleDeltaMode() {
+  state.ui.deltaMode = !state.ui.deltaMode;
+  emit(EVENTS.TOGGLE_DELTA, { deltaMode: state.ui.deltaMode });
+}
+
 // ─── Field CRUD ─────────────────────────────────────────────
 
 export function addField(name) {
   if (state.fields.includes(name)) return false;
   state.fields.push(name);
+  state.scenarios[name] = ['Default'];
   emit(EVENTS.FIELD_CREATED, { field: name });
   return true;
 }
 
 export function renameField(oldName, newName) {
-  if (oldName === newName) return false;
-  if (state.fields.includes(newName)) return false;
+  if (oldName === newName || state.fields.includes(newName)) return false;
   const idx = state.fields.indexOf(oldName);
   if (idx === -1) return false;
   state.fields[idx] = newName;
+  // Move scenarios
+  if (state.scenarios[oldName]) {
+    state.scenarios[newName] = state.scenarios[oldName];
+    delete state.scenarios[oldName];
+  }
   if (state.activeField === oldName) state.activeField = newName;
   emit(EVENTS.FIELD_RENAMED, { oldName, newName });
   return true;
@@ -167,11 +191,50 @@ export function deleteField(name) {
   const idx = state.fields.indexOf(name);
   if (idx === -1) return false;
   state.fields.splice(idx, 1);
+  delete state.scenarios[name];
   if (state.activeField === name) {
     state.activeField = state.fields.length > 0 ? state.fields[0] : null;
+    state.activeScenario = null;
     state.activeCase = null;
+    state.selectedCases = [];
   }
   emit(EVENTS.FIELD_DELETED, { field: name });
+  return true;
+}
+
+// ─── Scenario CRUD ──────────────────────────────────────────
+
+export function addScenario(fieldName, scenarioName) {
+  if (!state.scenarios[fieldName]) state.scenarios[fieldName] = [];
+  if (state.scenarios[fieldName].includes(scenarioName)) return false;
+  state.scenarios[fieldName].push(scenarioName);
+  emit(EVENTS.SCENARIO_CREATED, { field: fieldName, scenario: scenarioName });
+  return true;
+}
+
+export function renameScenario(fieldName, oldName, newName) {
+  const scenarios = state.scenarios[fieldName];
+  if (!scenarios) return false;
+  const idx = scenarios.indexOf(oldName);
+  if (idx === -1 || scenarios.includes(newName)) return false;
+  scenarios[idx] = newName;
+  if (state.activeScenario === oldName) state.activeScenario = newName;
+  emit(EVENTS.SCENARIO_RENAMED, { field: fieldName, oldName, newName });
+  return true;
+}
+
+export function deleteScenario(fieldName, scenarioName) {
+  const scenarios = state.scenarios[fieldName];
+  if (!scenarios) return false;
+  const idx = scenarios.indexOf(scenarioName);
+  if (idx === -1) return false;
+  scenarios.splice(idx, 1);
+  if (state.activeScenario === scenarioName) {
+    state.activeScenario = scenarios.length > 0 ? scenarios[0] : null;
+    state.activeCase = null;
+    state.selectedCases = [];
+  }
+  emit(EVENTS.SCENARIO_DELETED, { field: fieldName, scenario: scenarioName });
   return true;
 }
 
@@ -179,11 +242,7 @@ export function deleteField(name) {
 
 export function setVolumetricData(data) {
   runtime.volumetricData = data;
-  if (data && data.data && data.data.length > 0) {
-    runtime.columns = Object.keys(data.data[0]);
-  } else {
-    runtime.columns = [];
-  }
+  runtime.columns = (data?.data?.length > 0) ? Object.keys(data.data[0]) : [];
   emit(EVENTS.DATA_LOADED, { data });
 }
 
@@ -198,9 +257,7 @@ export function setAvailableCases(cases) {
 }
 
 export function getExpandedZones(caseKey) {
-  if (!runtime.expandedZones[caseKey]) {
-    runtime.expandedZones[caseKey] = {};
-  }
+  if (!runtime.expandedZones[caseKey]) runtime.expandedZones[caseKey] = {};
   return runtime.expandedZones[caseKey];
 }
 
@@ -211,31 +268,31 @@ export function toggleZoneExpanded(caseKey, groupKey) {
 
 // ─── Hydration ──────────────────────────────────────────────
 
-/**
- * Load state from a plain object (e.g. from localStorage).
- */
 export function hydrateState(saved) {
   if (!saved) return;
   if (saved.fields) state.fields = saved.fields;
   if (saved.activeField) state.activeField = saved.activeField;
-  if (saved.activeCase) state.activeCase = saved.activeCase;
+  if (saved.activeScenario) state.activeScenario = saved.activeScenario;
   if (saved.defaultAuthor) state.defaultAuthor = saved.defaultAuthor;
-  if (saved.baseCases) state.baseCases = saved.baseCases;
+  if (saved.scenarios) state.scenarios = saved.scenarios;
   if (saved.ui) Object.assign(state.ui, saved.ui);
+  // Always start with browser open, no case selected
+  state.activeCase = null;
+  state.selectedCases = [];
+  state.ui.showBrowser = true;
+  state.ui.compareCase = null;
+  state.ui.deltaMode = false;
   emit(EVENTS.STATE_LOADED, state);
 }
 
-/**
- * Serialize state for persistence.
- */
 export function serializeState() {
   return {
     schema: state.schema,
     fields: state.fields,
     activeField: state.activeField,
-    activeCase: state.activeCase,
+    activeScenario: state.activeScenario,
     defaultAuthor: state.defaultAuthor,
-    baseCases: { ...state.baseCases },
+    scenarios: { ...state.scenarios },
     ui: { ...state.ui },
   };
 }

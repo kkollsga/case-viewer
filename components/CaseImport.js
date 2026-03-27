@@ -1,8 +1,9 @@
 // components/CaseImport.js — Paste/import modal for adding new cases
+// Updated for Field → Scenario → Case hierarchy.
 
-import { getState, getFields, getActiveField, setActiveField, setActiveCase } from '../core/state.js';
+import { getState, getFields, getActiveField, getActiveScenario, getScenariosForField,
+         setActiveField, setActiveScenario, setActiveCase, addScenario } from '../core/state.js';
 import { parseOutputSheet, detectGroupColumns, FORMAT } from '../core/parser.js';
-import { getScaledUnit } from '../utils/units.js';
 import { saveCase, addCaseToOrder, saveAppState, loadDefaultAuthor, saveDefaultAuthor } from '../core/storage.js';
 import { emit, EVENTS } from '../core/events.js';
 import { formatDateTimeForInput, formatDateTime } from '../utils/format.js';
@@ -34,7 +35,6 @@ function clearForm() {
   $('#new-case-data', modalEl).value = '';
   $('#divide-by-1000-toggle', modalEl).checked = true;
 
-  // Default author
   const author = loadDefaultAuthor();
   const authorInput = $('#new-case-author', modalEl);
   const defaultToggle = $('#default-author-toggle', modalEl);
@@ -48,31 +48,52 @@ function clearForm() {
     authorInput.disabled = false;
   }
 
-  // Timestamp
   const now = new Date();
   $('#timestamp-display', modalEl).textContent = formatDateTime(now);
   $('#custom-timestamp', modalEl).value = formatDateTimeForInput(now);
   $('#timestamp-picker-container', modalEl).classList.add('hidden');
 
-  // Volume groups — start with one empty level
   const container = $('#volume-group-container', modalEl);
   clear(container);
   addGroupLevel(container, []);
 
-  // Clear preview
   const preview = $('#import-preview', modalEl);
   if (preview) clear(preview);
 }
 
 function populateFields() {
-  const selector = $('#new-case-field', modalEl);
-  clear(selector);
+  // Field selector
+  const fieldSel = $('#new-case-field', modalEl);
+  clear(fieldSel);
   for (const field of getFields()) {
-    const opt = el('option', { value: field, textContent: field });
-    selector.appendChild(opt);
+    fieldSel.appendChild(el('option', { value: field, textContent: field }));
   }
   const active = getActiveField();
-  if (active) selector.value = active;
+  if (active) fieldSel.value = active;
+
+  // Scenario selector
+  updateScenarioSelector();
+}
+
+function updateScenarioSelector() {
+  const scenarioSel = $('#new-case-scenario', modalEl);
+  if (!scenarioSel) return;
+  clear(scenarioSel);
+
+  const field = $('#new-case-field', modalEl)?.value;
+  if (!field) return;
+
+  const scenarios = getScenariosForField(field);
+  for (const sc of scenarios) {
+    scenarioSel.appendChild(el('option', { value: sc, textContent: sc }));
+  }
+
+  const active = getActiveScenario();
+  if (active && scenarios.includes(active)) {
+    scenarioSel.value = active;
+  } else if (scenarios.length > 0) {
+    scenarioSel.value = scenarios[0];
+  }
 }
 
 // ─── Volume Groups UI ───────────────────────────────────────
@@ -82,25 +103,17 @@ function addGroupLevel(container, columns, selectedValue = null) {
   const wrapper = el('div', { class: 'group-level flex items-center gap-2' });
 
   const select = document.createElement('select');
-  select.className = 'flex-1 pl-3 pr-10 py-2 text-sm border-gray-300 rounded-md border focus:outline-none focus:ring-blue-500 focus:border-blue-500';
-  select.required = true;
+  select.className = 'flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-indigo-500 focus:border-transparent';
 
-  // Placeholder
-  const placeholder = el('option', { value: '', textContent: `-- Select Level ${levelCount + 1} group --` });
-  select.appendChild(placeholder);
-
+  select.appendChild(el('option', { value: '', textContent: `Level ${levelCount + 1} grouping...` }));
   for (const col of columns) {
-    const opt = el('option', { value: col, textContent: col });
-    select.appendChild(opt);
+    select.appendChild(el('option', { value: col, textContent: col }));
   }
-
-  if (selectedValue && columns.includes(selectedValue)) {
-    select.value = selectedValue;
-  }
+  if (selectedValue && columns.includes(selectedValue)) select.value = selectedValue;
 
   const removeBtn = el('button', {
     type: 'button',
-    class: 'text-red-500 hover:text-red-700 text-sm p-1',
+    class: 'text-gray-400 hover:text-red-500 text-sm p-1 transition-colors',
     innerHTML: '<i class="fas fa-times"></i>',
     onClick: () => wrapper.remove(),
   });
@@ -112,8 +125,7 @@ function addGroupLevel(container, columns, selectedValue = null) {
 
 function getVolumeGroupsFromUI(container) {
   return Array.from(container.querySelectorAll('.group-level select'))
-    .map(s => s.value)
-    .filter(Boolean);
+    .map(s => s.value).filter(Boolean);
 }
 
 // ─── Data detection on paste ────────────────────────────────
@@ -122,16 +134,13 @@ function onDataPaste() {
   const rawData = $('#new-case-data', modalEl).value.trim();
   if (!rawData) return;
 
-  // Quick parse to detect columns
   const result = parseOutputSheet(rawData, { divideBy1000: false });
-
-  // Show error if format rejected
   const preview = $('#import-preview', modalEl);
   if (preview) clear(preview);
 
   if (result.error) {
     if (preview) {
-      preview.innerHTML = `<div class="text-red-600 text-sm p-2 bg-red-50 rounded">${result.error}</div>`;
+      preview.innerHTML = `<div class="text-red-500 text-xs p-2 bg-red-50 rounded-lg">${result.error}</div>`;
     }
     return;
   }
@@ -139,26 +148,24 @@ function onDataPaste() {
   detectedHeaders = result.headers;
   headerUnits = result.units;
 
-  // Show preview
   if (preview && result.data) {
     const previewRows = result.data.slice(0, 3);
-    let html = `<div class="text-sm text-gray-600 mb-1">${result.data.length} rows, ${result.headers.length} columns`;
+    let html = `<div class="text-xs text-gray-500 mb-1">${result.data.length} rows, ${result.headers.length} columns`;
     if (result.format === FORMAT.SINGLE_LINE_TOTALS) {
-      html += ' <span class="text-amber-600">(single line totals)</span>';
+      html += ' <span class="text-amber-500">(totals only)</span>';
     }
-    html += '</div>';
-    html += '<div class="overflow-x-auto max-h-24 text-xs border rounded">';
+    html += '</div><div class="overflow-x-auto max-h-20 text-xs border border-gray-100 rounded-lg">';
     html += '<table class="min-w-full"><thead class="bg-gray-50"><tr>';
     for (const h of result.headers) {
-      if (h) html += `<th class="px-2 py-1 text-left">${h}</th>`;
+      if (h) html += `<th class="px-2 py-1 text-left text-gray-500">${h}</th>`;
     }
     html += '</tr></thead><tbody>';
     for (const row of previewRows) {
-      html += '<tr class="border-t">';
+      html += '<tr class="border-t border-gray-50">';
       for (const h of result.headers) {
         if (h) {
           const val = row[h];
-          html += `<td class="px-2 py-1">${typeof val === 'number' ? val.toFixed(2) : val}</td>`;
+          html += `<td class="px-2 py-0.5 text-gray-600">${typeof val === 'number' ? val.toFixed(2) : val}</td>`;
         }
       }
       html += '</tr>';
@@ -186,27 +193,25 @@ function onDataPaste() {
 
 function submit() {
   const field = $('#new-case-field', modalEl).value;
+  const scenario = $('#new-case-scenario', modalEl)?.value || 'Default';
   const title = $('#new-case-title', modalEl).value.trim();
   const description = $('#new-case-description', modalEl).value.trim();
   const author = $('#new-case-author', modalEl).value.trim();
   const rawData = $('#new-case-data', modalEl).value.trim();
   const divideBy1000 = $('#divide-by-1000-toggle', modalEl).checked;
 
-  if (!field || !title) {
-    alert('Please enter both a field and case title.');
-    return;
-  }
-  if (!rawData) {
-    alert('Please enter volumetric data.');
-    return;
-  }
+  if (!field || !title) { alert('Please enter both a field and case title.'); return; }
+  if (!rawData) { alert('Please enter volumetric data.'); return; }
 
-  // Save default author if toggled
+  // Save default author
   if ($('#default-author-toggle', modalEl).checked && author) {
     saveDefaultAuthor(author);
   }
 
-  // Get timestamp
+  // Ensure scenario exists
+  addScenario(field, scenario);
+
+  // Timestamp
   let timestamp;
   if ($('#timestamp-picker-container', modalEl).classList.contains('hidden')) {
     timestamp = new Date().toISOString();
@@ -214,77 +219,78 @@ function submit() {
     timestamp = new Date($('#custom-timestamp', modalEl).value).toISOString();
   }
 
-  // Parse data
+  // Parse
   const result = parseOutputSheet(rawData, { divideBy1000 });
-  if (result.error) {
-    alert(result.error);
-    return;
-  }
+  if (result.error) { alert(result.error); return; }
 
-  // Get volume groups from UI
   const volumeGroupColumns = getVolumeGroupsFromUI($('#volume-group-container', modalEl));
 
-  // Build case object
   const caseData = {
-    title,
-    description,
-    author,
+    title, description, author, timestamp,
     data: result.data,
     units: result.units,
-    timestamp,
     format: result.format,
     volumeGroups: { columns: volumeGroupColumns },
     valueConversions: {},
   };
 
-  // Save
-  saveCase(field, title, caseData);
-  addCaseToOrder(field, title);
+  // Save with scenario
+  saveCase(field, scenario, title, caseData);
+  addCaseToOrder(field, scenario, title);
 
-  // Update state
   setActiveField(field);
-  setActiveCase(title);
+  setActiveScenario(scenario);
   saveAppState();
 
   hide();
-  emit(EVENTS.CASE_CREATED, { field, caseName: title, caseData });
+  emit(EVENTS.CASE_CREATED, { field, scenario, caseName: title, caseData });
 }
 
 // ─── Event wiring ───────────────────────────────────────────
 
 export function setupEvents() {
-  // Paste detection (debounced)
   let pasteTimeout;
-  $('#new-case-data', modalEl).addEventListener('input', () => {
-    clearTimeout(pasteTimeout);
-    pasteTimeout = setTimeout(onDataPaste, 300);
-  });
+  const dataEl = $('#new-case-data', modalEl);
+  if (dataEl) {
+    dataEl.addEventListener('input', () => {
+      clearTimeout(pasteTimeout);
+      pasteTimeout = setTimeout(onDataPaste, 300);
+    });
+  }
 
-  // Timestamp toggle
-  $('#timestamp-display', modalEl).addEventListener('click', () => {
-    $('#timestamp-picker-container', modalEl).classList.toggle('hidden');
-  });
+  const tsDisplay = $('#timestamp-display', modalEl);
+  if (tsDisplay) {
+    tsDisplay.addEventListener('click', () => {
+      $('#timestamp-picker-container', modalEl).classList.toggle('hidden');
+    });
+  }
 
-  // Default author toggle
-  $('#default-author-toggle', modalEl).addEventListener('change', (e) => {
-    const input = $('#new-case-author', modalEl);
-    if (e.target.checked) {
-      input.disabled = true;
-    } else {
-      input.disabled = false;
-    }
-  });
+  const defaultToggle = $('#default-author-toggle', modalEl);
+  if (defaultToggle) {
+    defaultToggle.addEventListener('change', (e) => {
+      $('#new-case-author', modalEl).disabled = e.target.checked;
+    });
+  }
 
-  // Add group level
-  $('#add-group-level', modalEl).addEventListener('click', () => {
-    const container = $('#volume-group-container', modalEl);
-    const columns = detectedHeaders.length > 0
-      ? detectGroupColumns(detectedHeaders, headerUnits)
-      : [];
-    addGroupLevel(container, columns);
-  });
+  const addGroupBtn = $('#add-group-level', modalEl);
+  if (addGroupBtn) {
+    addGroupBtn.addEventListener('click', () => {
+      const container = $('#volume-group-container', modalEl);
+      const columns = detectedHeaders.length > 0
+        ? detectGroupColumns(detectedHeaders, headerUnits) : [];
+      addGroupLevel(container, columns);
+    });
+  }
 
-  // Buttons
-  $('#cancel-add-case', modalEl).addEventListener('click', hide);
-  $('#confirm-add-case', modalEl).addEventListener('click', submit);
+  // Field change → update scenarios
+  const fieldSel = $('#new-case-field', modalEl);
+  if (fieldSel) {
+    fieldSel.addEventListener('change', updateScenarioSelector);
+  }
+
+  const cancelBtn = $('#cancel-add-case', modalEl);
+  if (cancelBtn) cancelBtn.addEventListener('click', hide);
+
+  const confirmBtn = $('#confirm-add-case', modalEl);
+  if (confirmBtn) confirmBtn.addEventListener('click', submit);
 }
