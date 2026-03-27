@@ -1,9 +1,9 @@
 // components/DriverChart.js — Informal tornado chart: Δ ranked by absolute value
 // Shows which zone/segment is driving the volume change between two cases.
 
-import { getRuntime, getUI, getActiveField, getActiveCase, getActiveScenario } from '../core/state.js';
+import { getRuntime, getUI, getActiveField, getActiveCase, getActiveScenario, store } from '../core/state.js';
 import { getCaseData } from '../core/storage.js';
-import { on, EVENTS } from '../core/events.js';
+// events.js no longer needed — using store.subscribe
 import { formatNumber } from '../utils/format.js';
 import { PALETTES } from '../utils/color.js';
 import { el, clear, $ } from '../utils/dom.js';
@@ -238,8 +238,11 @@ function applyConversions(data, conversions) {
 // ─── Events ─────────────────────────────────────────────────
 
 export function setupEvents() {
-  on(EVENTS.COMPARE_CHANGED, () => render());
-  on(EVENTS.METRIC_CHANGED, () => render());
-  on(EVENTS.DATA_LOADED, () => render());
-  on(EVENTS.DATA_CLEARED, () => { if (containerEl) clear(containerEl); });
+  store.subscribe(
+    s => [s.ui.compareCase, s.ui.metric, s.data.volumetric],
+    ([compareCase, , data]) => {
+      if (data && compareCase) render();
+      else if (containerEl) clear(containerEl);
+    }
+  );
 }

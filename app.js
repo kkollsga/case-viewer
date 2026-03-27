@@ -5,7 +5,7 @@ import { getState, getActiveField, getActiveCase, getActiveScenario,
          setActiveField, setActiveScenario, setActiveCase, setSelectedCases,
          setShowParameters, setHideEmpty, setMetric, setVolumetricData, clearVolumetricData,
          getRuntime, getUI, setAvailableCases, setCompareCase,
-         addField, addScenario, openBrowser, getSelectedCases, getScenariosForField } from './core/state.js';
+         addField, addScenario, openBrowser, getSelectedCases, getScenariosForField, store } from './core/state.js';
 import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames, getCasesForField,
          loadFieldSettings, saveFieldSettings, loadCrossPlotSettings,
          saveCase, addCaseToOrder, saveCaseOrder, saveFields,
@@ -288,43 +288,45 @@ function navigateCase(dir) {
 // ─── Global events ──────────────────────────────────────────
 
 function setupGlobalEvents() {
-  on(EVENTS.FIELD_CHANGED, () => { saveAppState(); if (CaseBrowser?.render) CaseBrowser.render(); });
-  on(EVENTS.SCENARIO_CHANGED, () => { saveAppState(); if (CaseBrowser?.render) CaseBrowser.render(); });
+  // ── Store subscriptions (replaces 11 on(EVENTS.*) handlers) ──
 
-  on(EVENTS.CASE_SELECTED, () => {
-    showDataView();
-    saveAppState();
+  // Case selection → show data view
+  store.subscribe('activeCase', (caseName) => {
+    if (caseName) showDataView();
   });
 
-  on(EVENTS.BROWSER_OPENED, (data) => {
-    showBrowser();
-    saveAppState();
-    // Handle import action from CaseBrowser's import buttons
-    if (data?.action === 'import') {
-      CaseImport.show();
+  // Browser opened (activeCase cleared)
+  store.subscribe(s => s.ui.showBrowser, (showBrowser) => {
+    if (showBrowser && !getActiveCase()) showBrowser_fn();
+  });
+
+  // Compare case → toggle delta/driver views
+  store.subscribe('ui.compareCase', (compareCase) => {
+    const driverSection = $('#driver-chart-section');
+    if (compareCase) {
+      DeltaTable.render() || PivotTable.render();
+      if (driverSection) driverSection.classList.remove('hidden');
+    } else {
+      PivotTable.render();
+      if (driverSection) driverSection.classList.add('hidden');
     }
   });
 
-  on(EVENTS.CASE_UPDATED, () => {
-    if (getActiveCase()) loadCaseData();
-    if (CaseBrowser?.render) CaseBrowser.render();
+  // Metric change → update unit display + persist
+  store.subscribe('ui.metric', () => {
+    updateCurrentUnit();
+    const field = getActiveField();
+    if (field) saveFieldSettings(field, { currentMetric: getUI().metric });
   });
 
-  on(EVENTS.MAPPINGS_CHANGED, () => {
-    // Group mappings changed — reload active case data (re-applies mappings)
-    // and refresh case cards. Don't re-render the full CaseBrowser to avoid
-    // resetting the settings panel.
-    if (getActiveCase()) loadCaseData();
-    if (CaseBrowser?.renderCaseCardsOnly) CaseBrowser.renderCaseCardsOnly();
-  });
+  // ── Old event handlers (for events emitted by components not yet migrated) ──
 
   on(EVENTS.CASE_CREATED, () => {
-    saveAppState();
     if (CaseBrowser?.render) CaseBrowser.render();
   });
 
   on(EVENTS.CASE_UPDATED, () => {
-    loadCaseData();
+    if (getActiveCase()) loadCaseData();
     if (CaseBrowser?.render) CaseBrowser.render();
   });
 
@@ -332,30 +334,24 @@ function setupGlobalEvents() {
     if (CaseBrowser?.render) CaseBrowser.render();
   });
 
-  on(EVENTS.COMPARE_CHANGED, () => {
-    const ui = getUI();
-    const driverSection = $('#driver-chart-section');
-    if (ui.compareCase) {
-      DeltaTable.render() || PivotTable.render();
-      if (driverSection) driverSection.classList.remove('hidden');
-    } else {
-      PivotTable.render();
-      if (driverSection) driverSection.classList.add('hidden');
-    }
-    saveAppState();
+  on(EVENTS.MAPPINGS_CHANGED, () => {
+    if (getActiveCase()) loadCaseData();
+    if (CaseBrowser?.renderCaseCardsOnly) CaseBrowser.renderCaseCardsOnly();
   });
 
-  on(EVENTS.METRIC_CHANGED, () => {
-    updateCurrentUnit();
-    const field = getActiveField();
-    if (field) saveFieldSettings(field, { currentMetric: getUI().metric });
+  on(EVENTS.BROWSER_OPENED, (data) => {
+    if (data?.action === 'import') CaseImport.show();
   });
 
+  // Responsive resize
   window.addEventListener('resize', () => {
-    if (BallChart?.render && getRuntime().volumetricData) BallChart.render();
+    if (BallChart?.render && store.select('data.volumetric')) BallChart.render();
     if (CrossPlot?.render) CrossPlot.render();
   });
 }
+
+// Renamed to avoid conflict with state function
+function showBrowser_fn() { showBrowser(); }
 
 // ─── Data view controls ─────────────────────────────────────
 

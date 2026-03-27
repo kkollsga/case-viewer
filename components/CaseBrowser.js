@@ -6,7 +6,7 @@ import {
   getActiveField, getActiveScenario, getActiveCase, getSelectedCases, getScenariosForField,
   setActiveField, setActiveScenario, setActiveCase, setSelectedCases,
   toggleCaseSelection, openBrowser, addScenario, addField, getFields, getState,
-  renameField, deleteField, renameScenario, deleteScenario,
+  renameField, deleteField, renameScenario, deleteScenario, store,
 } from '../core/state.js';
 import {
   getCasesForScenario, getOrderedCaseNames, saveAppState,
@@ -208,15 +208,11 @@ export function renderCaseCardsOnly() {
 }
 
 export function setupEvents() {
-  on(EVENTS.FIELD_CHANGED, () => render());
-  on(EVENTS.SCENARIO_CHANGED, () => render());
-  on(EVENTS.SCENARIO_CREATED, () => render());
-  on(EVENTS.SELECTION_CHANGED, () => render());
-  on(EVENTS.CASE_CREATED, () => render());
-  on(EVENTS.CASE_UPDATED, () => render());
-  on(EVENTS.CASE_DELETED, () => render());
-  on(EVENTS.BROWSER_OPENED, () => render());
-  on(EVENTS.STATE_LOADED, () => render());
+  // Single subscription replaces 9 separate event listeners
+  store.subscribe(
+    s => [s.activeField, s.activeScenario, s.activeCase, s.selectedCases, s.fields, s.scenarios],
+    () => render()
+  );
 }
 
 // ─── Minimized Bar (case active) ─────────────────────────────

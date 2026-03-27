@@ -1,7 +1,6 @@
 // components/PivotTable.js — Zone/segment hierarchy table (core view)
 
-import { getState, getRuntime, getActiveCase, getUI, getExpandedZones, toggleZoneExpanded } from '../core/state.js';
-import { on, EVENTS } from '../core/events.js';
+import { getState, getRuntime, getActiveCase, getUI, getExpandedZones, toggleZoneExpanded, store } from '../core/state.js';
 import { formatNumber } from '../utils/format.js';
 import { calculateParameters, PARAMETER_COLUMNS, getParameterUnits, formatParameterValue, calculateGroupParameters } from '../utils/parameters.js';
 import { el, clear } from '../utils/dom.js';
@@ -300,24 +299,12 @@ function renderTotalRow(body, data, groupColumns, formattedHeaders, units) {
 // ─── Event subscriptions ────────────────────────────────────
 
 export function setupEvents() {
-  on(EVENTS.DATA_LOADED, () => {
-    // If a compare case is active, don't render — DeltaTable will handle it
-    const ui = getUI();
-    if (ui.compareCase) return;
-    render();
-  });
-  on(EVENTS.DATA_CLEARED, () => {
-    clear(document.getElementById('pivot-headers'));
-    clear(document.getElementById('pivot-body'));
-  });
-  on(EVENTS.TOGGLE_PARAMETERS, () => {
-    const ui = getUI();
-    if (ui.compareCase) return; // Delta table handles its own rendering
-    render();
-  });
-  on(EVENTS.TOGGLE_HIDE_EMPTY, () => {
-    const ui = getUI();
-    if (ui.compareCase) return;
-    render();
-  });
+  store.subscribe(
+    s => [s.data.volumetric, s.ui.showParameters, s.ui.hideEmpty, s.ui.compareCase],
+    ([data, , , compareCase]) => {
+      if (compareCase) return; // DeltaTable handles rendering when comparing
+      if (data) render();
+      else { clear(document.getElementById('pivot-headers')); clear(document.getElementById('pivot-body')); }
+    }
+  );
 }

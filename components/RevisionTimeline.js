@@ -1,9 +1,9 @@
 // components/RevisionTimeline.js — D3 multi-line chart showing metric evolution across cases
 // X axis = case index (ordered), Y axis = selected metric, one line per zone.
 
-import { getRuntime, getUI, getActiveField, getActiveCase } from '../core/state.js';
+import { getRuntime, getUI, getActiveField, getActiveCase, store } from '../core/state.js';
 import { getCasesForField, getOrderedCaseNames } from '../core/storage.js';
-import { on, EVENTS } from '../core/events.js';
+// events.js no longer needed — using store.subscribe
 import { formatNumber, formatDateShort } from '../utils/format.js';
 import { PALETTES } from '../utils/color.js';
 import { el, clear, $ } from '../utils/dom.js';
@@ -440,39 +440,22 @@ export function setupEvents() {
     toggleBtn.addEventListener('click', toggleCollapse);
   }
 
-  // Re-render on relevant events (only if expanded)
-  on(EVENTS.DATA_LOADED, () => {
-    if (expanded) render();
-  });
-  on(EVENTS.METRIC_CHANGED, () => {
-    if (expanded) render();
-  });
-  on(EVENTS.CASE_CREATED, () => {
-    if (expanded) render();
-  });
-  on(EVENTS.CASE_DELETED, () => {
-    if (expanded) render();
-  });
-  on(EVENTS.CASE_UPDATED, () => {
-    if (expanded) render();
-  });
-  on(EVENTS.FIELD_CHANGED, () => {
-    // Reset expand state when switching fields
+  // Re-render on data/metric/field changes (only if expanded)
+  store.subscribe(
+    s => [s.data.volumetric, s.ui.metric, s.activeField],
+    ([data, , field]) => {
+      if (!data) { const c = document.getElementById('timeline-container'); if (c) clear(c); return; }
+      if (expanded) render();
+    }
+  );
+
+  // Collapse on field change
+  store.subscribe('activeField', () => {
     expanded = false;
     const outerContainer = document.getElementById('timeline-outer-container');
     const toggleBtnEl = document.getElementById('toggle-timeline');
-    if (outerContainer) outerContainer.classList.add('hidden');
-    if (toggleBtnEl) {
-      const icon = toggleBtnEl.querySelector('i');
-      if (icon) {
-        icon.classList.remove('fa-chevron-up');
-        icon.classList.add('fa-chevron-down');
-      }
-    }
-  });
-  on(EVENTS.DATA_CLEARED, () => {
-    const container = document.getElementById('timeline-container');
-    if (container) clear(container);
+    if (outerContainer) outerContainer.classList.add('collapsed');
+    if (toggleBtnEl) toggleBtnEl.dataset.expanded = 'false';
   });
 
   // Responsive resize with debounce

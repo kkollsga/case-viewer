@@ -3,12 +3,12 @@
 
 import {
   getRuntime, getUI, getActiveField, getActiveCase,
-  setCrossPlotAxes, setCrossPlotGroupLevel,
+  setCrossPlotAxes, setCrossPlotGroupLevel, store,
 } from '../core/state.js';
 import {
   getCasesForField, saveCrossPlotSettings, loadCrossPlotSettings, saveFieldSettings,
 } from '../core/storage.js';
-import { on, EVENTS } from '../core/events.js';
+// events.js no longer needed — using store.subscribe
 import { formatNumber, formatPercent, formatMetricName } from '../utils/format.js';
 import { getColorForGroup, getColorForCase, PALETTES } from '../utils/color.js';
 
@@ -870,41 +870,24 @@ export function setupEvents() {
   }
 
   // Re-render when field or case data changes
-  on(EVENTS.FIELD_CHANGED, () => {
+  // Field change: collapse and reset
+  store.subscribe('activeField', () => {
     expanded = false;
     const outerContainer = document.getElementById('cross-plot-outer-container');
     const toggleBtnEl = document.getElementById('toggle-cross-plot');
-    if (outerContainer) outerContainer.classList.add('hidden');
-    if (toggleBtnEl) {
-      const icon = toggleBtnEl.querySelector('i');
-      if (icon) {
-        icon.classList.remove('fa-chevron-up');
-        icon.classList.add('fa-chevron-down');
-      }
-    }
-
-    // Reset visibility state
+    if (outerContainer) outerContainer.classList.add('collapsed');
+    if (toggleBtnEl) toggleBtnEl.dataset.expanded = 'false';
     const vis = getVisibility();
-    vis.groups = {};
-    vis.cases = {};
-
+    vis.groups = {}; vis.cases = {};
     restoreSettings();
     populateGroupingSelector();
   });
 
-  on(EVENTS.CASE_CREATED, () => {
-    if (expanded) render();
-  });
-  on(EVENTS.CASE_UPDATED, () => {
-    if (expanded) render();
-  });
-  on(EVENTS.CASE_DELETED, () => {
-    if (expanded) render();
-  });
-  on(EVENTS.DATA_LOADED, () => {
-    populateGroupingSelector();
-    if (expanded) render();
-  });
+  // Data or case changes: re-render if expanded
+  store.subscribe(
+    s => [s.data.volumetric, s.activeField],
+    () => { populateGroupingSelector(); if (expanded) render(); }
+  );
 
   // Responsive resize
   let resizeTimer;

@@ -3,7 +3,7 @@
 // volumetric data, with metric selection, depth control, legend, and
 // per-case persisted settings.
 
-import { getRuntime, getUI, getActiveField, getActiveCase, getActiveScenario } from '../core/state.js';
+import { getRuntime, getUI, getActiveField, getActiveCase, getActiveScenario, store, setMetric } from '../core/state.js';
 import {
   saveCircleSettings, loadCircleSettings,
   saveFieldCircleSettings, loadFieldCircleSettings,
@@ -96,20 +96,19 @@ export function render() {
 // ─── Exported: setupEvents ────────────────────────────────────
 
 export function setupEvents() {
-  on(EVENTS.DATA_LOADED, () => render());
-  on(EVENTS.DATA_CLEARED, () => clearDiagram());
-  on(EVENTS.METRIC_CHANGED, () => {
-    updateCurrentUnit();
-    drawCirclePacking();
-  });
-  on(EVENTS.CASE_SELECTED, () => render());
-  on(EVENTS.FIELD_CHANGED, () => render());
+  store.subscribe(
+    s => [s.data.volumetric, s.ui.metric, s.activeCase, s.activeField],
+    ([data, metric]) => {
+      if (data) { updateCurrentUnit(); render(); }
+      else clearDiagram();
+    }
+  );
 
   // Responsive redraw
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (getRuntime().volumetricData) drawCirclePacking();
+      if (store.select('data.volumetric')) drawCirclePacking();
     }, 250);
   });
 }
@@ -233,12 +232,9 @@ function setupControlListeners() {
   const metricSel = document.getElementById('metric-selector');
   if (metricSel) {
     metricSel.addEventListener('change', (e) => {
-      const ui = getUI();
-      ui.metric = e.target.value;
-      // Persist metric at field level
+      setMetric(e.target.value); // Goes through store → notifies all subscribers
       const field = getActiveField();
       if (field) saveFieldSettings(field, { currentMetric: e.target.value });
-      emit(EVENTS.METRIC_CHANGED, { metric: e.target.value });
     });
   }
 

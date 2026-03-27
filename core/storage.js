@@ -52,9 +52,8 @@ function getScenarioStore(field, scenario) {
 // ─── App state persistence ──────────────────────────────────
 
 export function saveAppState() {
-  const state = serializeState();
-  state._v = STORAGE_VERSION;
-  writeJSON(APP_KEY, state);
+  // No-op: the store auto-persists to localStorage.
+  // Kept for API compatibility during migration.
 }
 
 export function loadAppState() {
