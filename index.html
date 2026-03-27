@@ -17,15 +17,34 @@
 </head>
 <body class="bg-gray-50 min-h-screen">
 
-    <div class="container mx-auto px-6 max-w-6xl">
+    <div class="container mx-auto px-6 max-w-6xl py-6 space-y-2">
 
-    <!-- ===== CASE BROWSER (always visible) ===== -->
-    <div id="case-browser" class="py-8">
-        <!-- CaseBrowser.js renders field tabs, scenario pills, case cards OR minimized bar here -->
-    </div>
+    <!-- ===== CASE SELECTOR (always visible, collapsible) ===== -->
+    <section class="cv-section" data-section="cases">
+        <div id="case-section-header" class="cv-section-header" data-expanded="true">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-chevron-down text-[10px] text-gray-400 transition-transform duration-200 cv-chevron"></i>
+                <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Cases</span>
+            </div>
+            <div id="case-section-summary" class="flex items-center gap-2 text-xs text-gray-500 hidden">
+                <button id="prev-case-btn" class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors" onclick="event.stopPropagation()">
+                    <i class="fas fa-chevron-left text-[9px]"></i>
+                </button>
+                <span id="case-section-label" class="font-medium text-gray-700"></span>
+                <button id="next-case-btn" class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 transition-colors" onclick="event.stopPropagation()">
+                    <i class="fas fa-chevron-right text-[9px]"></i>
+                </button>
+                <span class="text-gray-300 mx-1">|</span>
+                <span id="case-section-context" class="text-gray-400"></span>
+            </div>
+        </div>
+        <div class="cv-section-body" id="case-browser">
+            <!-- CaseBrowser.js renders here -->
+        </div>
+    </section>
 
-    <!-- ===== DATA VIEW (shown below browser when a case is active) ===== -->
-    <div id="data-view" class="hidden pb-8">
+    <!-- ===== DATA VIEW SECTIONS (visible when a case is active) ===== -->
+    <div id="data-view" class="hidden space-y-2">
 
         <!-- Hidden compat elements -->
         <span id="breadcrumb-field" class="hidden"></span>
@@ -35,12 +54,15 @@
         <span id="prev-case-btn" class="hidden"></span>
         <span id="next-case-btn" class="hidden"></span>
 
-        <!-- ── VOLUMETRICS (auto-opens on case select) ── -->
-        <button id="toggle-volumetrics" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
-            <span class="mr-1.5">Volumetrics</span>
-            <i class="fas fa-chevron-up text-[10px]"></i>
-        </button>
-        <div id="volumetrics-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+        <!-- ── VOLUMETRICS ── -->
+        <section class="cv-section" data-section="volumetrics">
+            <div id="toggle-volumetrics" class="cv-section-header" data-expanded="true">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-chevron-down text-[10px] text-gray-400 transition-transform duration-200 cv-chevron"></i>
+                    <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Volumetrics</span>
+                </div>
+            </div>
+            <div class="cv-section-body" id="volumetrics-container">
             <!-- Controls bar: toggles + compare -->
             <div class="flex items-center justify-between mb-3">
                 <div id="compare-selector-container" class="flex items-center gap-2">
@@ -84,23 +106,28 @@
             </div>
         </div>
 
-        <!-- ── DRIVER ANALYSIS (appears when comparing) ── -->
-        <div id="driver-chart-section" class="hidden">
-            <button id="toggle-drivers" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
-                <span class="mr-1.5">Driver Analysis</span>
-                <i class="fas fa-chevron-up text-[10px]"></i>
-            </button>
-            <div id="driver-chart-outer" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+        <!-- ── DRIVER ANALYSIS ── -->
+        <section class="cv-section hidden" data-section="drivers" id="driver-chart-section">
+            <div id="toggle-drivers" class="cv-section-header" data-expanded="true">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-chevron-down text-[10px] text-gray-400 transition-transform duration-200 cv-chevron"></i>
+                    <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Driver Analysis</span>
+                </div>
+            </div>
+            <div class="cv-section-body" id="driver-chart-outer">
                 <div id="driver-chart-container"></div>
             </div>
-        </div>
+        </section>
 
-        <!-- ── BALL CHART (collapsible) ── -->
-        <button id="toggle-ball-chart" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
-            <span class="mr-1.5">Ball Chart</span>
-            <i class="fas fa-chevron-down text-[10px]"></i>
-        </button>
-        <div id="ball-chart-outer" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
+        <!-- ── BALL CHART ── -->
+        <section class="cv-section" data-section="ballchart">
+            <div id="toggle-ball-chart" class="cv-section-header" data-expanded="false">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-chevron-down text-[10px] text-gray-400 transition-transform duration-200 cv-chevron"></i>
+                    <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Ball Chart</span>
+                </div>
+            </div>
+            <div class="cv-section-body collapsed" id="ball-chart-outer">
             <div class="circle-diagram-container">
                 <div class="circle-diagram-header">
                     <div class="flex justify-between items-start">
@@ -166,29 +193,41 @@
             </div>
         </div>
 
-        <!-- ── CROSS PLOT (collapsible) ── -->
-        <button id="toggle-cross-plot" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
-            <span class="mr-1.5">Cross Plot</span>
-            <i class="fas fa-chevron-down text-[10px]"></i>
-        </button>
-        <div id="cross-plot-outer-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
-            <div class="flex justify-end mb-3">
-                <select id="cross-plot-grouping" class="text-xs bg-gray-50 border border-gray-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500"></select>
+        <!-- ── CROSS PLOT ── -->
+        <section class="cv-section" data-section="crossplot">
+            <div id="toggle-cross-plot" class="cv-section-header" data-expanded="false">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-chevron-down text-[10px] text-gray-400 transition-transform duration-200 cv-chevron"></i>
+                    <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Cross Plot</span>
+                </div>
             </div>
-            <div id="cross-plot" class="w-full h-[500px] relative"></div>
-        </div>
+            <div class="cv-section-body collapsed" id="cross-plot-outer-container">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                    <div class="flex justify-end mb-3">
+                        <select id="cross-plot-grouping" class="text-xs bg-gray-50 border border-gray-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500"></select>
+                    </div>
+                    <div id="cross-plot" class="w-full h-[500px] relative"></div>
+                </div>
+            </div>
+        </section>
 
-        <!-- ── REVISION TIMELINE (collapsible) ── -->
-        <button id="toggle-timeline" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
-            <span class="mr-1.5">Revision Timeline</span>
-            <i class="fas fa-chevron-down text-[10px]"></i>
-        </button>
-        <div id="timeline-outer-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
-            <div id="timeline-container"></div>
-        </div>
+        <!-- ── REVISION TIMELINE ── -->
+        <section class="cv-section" data-section="timeline">
+            <div id="toggle-timeline" class="cv-section-header" data-expanded="false">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-chevron-down text-[10px] text-gray-400 transition-transform duration-200 cv-chevron"></i>
+                    <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Revision Timeline</span>
+                </div>
+            </div>
+            <div class="cv-section-body collapsed" id="timeline-outer-container">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                    <div id="timeline-container"></div>
+                </div>
+            </div>
+        </section>
 
         <!-- Export/Import -->
-        <div class="flex items-center gap-4 mb-8 opacity-40 hover:opacity-100 transition-opacity">
+        <div class="flex items-center gap-4 py-4 opacity-40 hover:opacity-100 transition-opacity">
             <button id="export-json-btn" class="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
                 <i class="fas fa-download text-[10px]"></i> Export
             </button>

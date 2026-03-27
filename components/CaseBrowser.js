@@ -56,13 +56,7 @@ export function render() {
   const activeCase = getActiveCase();
   const selected = getSelectedCases();
 
-  // ── MINIMIZED MODE: case is active → compact bar ──
-  if (field && scenario && activeCase) {
-    containerEl.appendChild(renderMinimizedBar(field, scenario, activeCase));
-    return;
-  }
-
-  // ── FULL BROWSER MODE ──
+  // ── Always render full browser (section toggle handles collapse) ──
   const root = el('div', {});
 
   const inner = el('div', {});

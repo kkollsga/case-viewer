@@ -1,5 +1,37 @@
 /* styles.css — Global CSS overrides (mostly Tailwind handles styling) */
 
+/* ==================== COLLAPSIBLE SECTIONS ==================== */
+.cv-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+.cv-section-header:hover { color: #4f46e5; }
+.cv-section-header:hover .cv-chevron { color: #4f46e5; }
+
+.cv-section-header[data-expanded="true"] .cv-chevron {
+  transform: rotate(0deg);
+}
+.cv-section-header[data-expanded="false"] .cv-chevron {
+  transform: rotate(-90deg);
+}
+
+.cv-section-body {
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.2s ease;
+  max-height: 5000px;
+  opacity: 1;
+}
+.cv-section-body.collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ==================== CONTEXT MENU ==================== */
 .context-menu {
   display: none;

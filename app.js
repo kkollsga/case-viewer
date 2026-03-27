@@ -69,39 +69,61 @@ export async function init() {
 // ─── View switching ─────────────────────────────────────────
 
 function showBrowser() {
-  // Single page — browser is always visible, data view hides
-  const dataViewEl = $('#data-view');
-  if (dataViewEl) dataViewEl.classList.add('hidden');
-
   const state = getState();
-  if (!state.activeField && state.fields.length > 0) {
-    setActiveField(state.fields[0]);
-  }
+  if (!state.activeField && state.fields.length > 0) setActiveField(state.fields[0]);
   if (state.activeField && !state.activeScenario) {
     const scenarios = getScenariosForField(state.activeField);
     if (scenarios.length > 0) setActiveScenario(scenarios[0]);
   }
 
+  // Expand case selector
+  expandSection('case-section-header', 'case-browser');
+
+  // Hide data view if no active case
+  if (!getActiveCase()) {
+    const dv = $('#data-view');
+    if (dv) dv.classList.add('hidden');
+  }
+
+  // Hide case summary
+  const summary = $('#case-section-summary');
+  if (summary) summary.classList.add('hidden');
+
   if (CaseBrowser?.render) CaseBrowser.render();
   document.title = 'Case Viewer';
 }
 
+function updateCaseSectionSummary() {
+  const summary = $('#case-section-summary');
+  const label = $('#case-section-label');
+  const context = $('#case-section-context');
+  if (!summary) return;
+  const field = getActiveField();
+  const scenario = getActiveScenario();
+  const caseName = getActiveCase();
+  if (field && scenario && caseName) {
+    if (label) label.textContent = caseName;
+    if (context) context.textContent = `${field} › ${scenario}`;
+    summary.classList.remove('hidden');
+  } else {
+    summary.classList.add('hidden');
+  }
+}
+
 function showDataView() {
-  // Show data view below the browser (browser stays visible in minimized mode)
   const dataViewEl = $('#data-view');
   if (dataViewEl) dataViewEl.classList.remove('hidden');
 
-  // Auto-open volumetrics
-  const volContainer = $('#volumetrics-container');
-  if (volContainer) volContainer.classList.remove('hidden');
-  const volToggle = $('#toggle-volumetrics');
-  if (volToggle) {
-    const icon = volToggle.querySelector('i');
-    if (icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); }
-  }
+  // Collapse the case selector (but don't hide it)
+  collapseSection('case-section-header', 'case-browser');
+
+  // Show case summary in the collapsed header
+  updateCaseSectionSummary();
+
+  // Auto-expand volumetrics
+  expandSection('toggle-volumetrics', 'volumetrics-container');
 
   loadCaseData();
-
   if (CaseBrowser?.render) CaseBrowser.render();
 }
 
@@ -332,7 +354,15 @@ function setupGlobalEvents() {
 
 function setupDataViewControls() {
   // Collapsible section toggles
+  setupCollapsible('case-section-header', 'case-browser');
   setupCollapsible('toggle-volumetrics', 'volumetrics-container');
+
+  // Prev/next case navigation (in collapsed header)
+  const prevBtn = $('#prev-case-btn');
+  const nextBtn = $('#next-case-btn');
+  if (prevBtn) prevBtn.addEventListener('click', (e) => { e.stopPropagation(); navigateCase('prev'); });
+  if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); navigateCase('next'); });
+  setupCollapsible('toggle-drivers', 'driver-chart-outer');
   setupCollapsible('toggle-ball-chart', 'ball-chart-outer', () => { if (BallChart?.render) BallChart.render(); });
 
   // Compare selector
@@ -475,21 +505,34 @@ function require_state() {
 
 // ─── Collapsible section helper ──────────────────────────────
 
+/**
+ * Standard section toggle. Uses data-expanded attribute and .collapsed class.
+ */
 function setupCollapsible(toggleId, containerId, onExpand) {
-  const btn = $(`#${toggleId}`);
-  const container = $(`#${containerId}`);
-  if (!btn || !container) return;
+  const header = $(`#${toggleId}`);
+  const body = $(`#${containerId}`);
+  if (!header || !body) return;
 
-  btn.addEventListener('click', () => {
-    const isHidden = container.classList.contains('hidden');
-    container.classList.toggle('hidden');
-    const icon = btn.querySelector('i');
-    if (icon) {
-      icon.classList.toggle('fa-chevron-down', !isHidden);
-      icon.classList.toggle('fa-chevron-up', isHidden);
-    }
-    if (isHidden && onExpand) onExpand();
+  header.addEventListener('click', () => {
+    const isExpanded = header.dataset.expanded === 'true';
+    header.dataset.expanded = isExpanded ? 'false' : 'true';
+    body.classList.toggle('collapsed', isExpanded);
+    if (!isExpanded && onExpand) onExpand();
   });
+}
+
+function expandSection(toggleId, containerId) {
+  const header = $(`#${toggleId}`);
+  const body = $(`#${containerId}`);
+  if (header) header.dataset.expanded = 'true';
+  if (body) body.classList.remove('collapsed');
+}
+
+function collapseSection(toggleId, containerId) {
+  const header = $(`#${toggleId}`);
+  const body = $(`#${containerId}`);
+  if (header) header.dataset.expanded = 'false';
+  if (body) body.classList.add('collapsed');
 }
 
 // ─── Case duplication ───────────────────────────────────────
