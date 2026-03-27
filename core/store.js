@@ -121,26 +121,34 @@ export function createStore(initialState, reducers = {}, options = {}) {
   // ─── Flush (notify subscribers) ───────────────────────────
 
   function scheduleFlush() {
-    if (batchDepth > 0) return; // Inside explicit batch — wait
-    if (!pendingNotify) {
-      pendingNotify = true;
-      queueMicrotask(flush);
-    }
+    if (batchDepth > 0) return;
+    // Flush synchronously for reliability (batching happens via batch())
+    flush();
   }
 
   function flush() {
     pendingNotify = false;
 
-    for (const [id, sub] of subscriptions) {
-      try {
-        const newValue = sub.selector(state);
-        if (!shallowEqual(newValue, sub.lastValue)) {
-          sub.lastValue = newValue;
-          sub.callback(newValue, sub.lastValue);
+    // Multiple passes: if a callback dispatches (changing state),
+    // we re-check all subscriptions until nothing changes.
+    for (let pass = 0; pass < 10; pass++) {
+      let anyFired = false;
+
+      for (const [id, sub] of subscriptions) {
+        try {
+          const newValue = sub.selector(state);
+          if (!shallowEqual(newValue, sub.lastValue)) {
+            const oldValue = sub.lastValue;
+            sub.lastValue = newValue;
+            sub.callback(newValue, oldValue);
+            anyFired = true;
+          }
+        } catch (e) {
+          console.error('Store subscription error:', e);
         }
-      } catch (e) {
-        console.error('Store subscription error:', e);
       }
+
+      if (!anyFired) break; // Stable — no more changes
     }
 
     schedulePersist();

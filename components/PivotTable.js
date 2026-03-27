@@ -23,6 +23,7 @@ export function render() {
   clear(body);
   if (legendContainer) clear(legendContainer);
 
+  console.log('[PivotTable.render] vData:', !!vData, 'rows:', vData?.data?.length, 'body:', !!body);
   if (!vData || !vData.data || vData.data.length === 0) return;
 
   let data = [...vData.data];
@@ -299,12 +300,22 @@ function renderTotalRow(body, data, groupColumns, formattedHeaders, units) {
 // ─── Event subscriptions ────────────────────────────────────
 
 export function setupEvents() {
+  // Watch data loading
+  store.subscribe('data.volumetricData', (data) => {
+    const ui = getUI();
+    if (ui.compareCase) return;
+    if (data) render();
+    else { clear(document.getElementById('pivot-headers')); clear(document.getElementById('pivot-body')); }
+  });
+
+  // Watch UI toggles
   store.subscribe(
-    s => [s.data.volumetric, s.ui.showParameters, s.ui.hideEmpty, s.ui.compareCase],
-    ([data, , , compareCase]) => {
-      if (compareCase) return; // DeltaTable handles rendering when comparing
-      if (data) render();
-      else { clear(document.getElementById('pivot-headers')); clear(document.getElementById('pivot-body')); }
+    s => [s.ui.showParameters, s.ui.hideEmpty, s.ui.compareCase],
+    () => {
+      const ui = getUI();
+      if (ui.compareCase) return;
+      const runtime = getRuntime();
+      if (runtime.volumetricData) render();
     }
   );
 }

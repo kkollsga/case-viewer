@@ -442,7 +442,7 @@ export function setupEvents() {
 
   // Re-render on data/metric/field changes (only if expanded)
   store.subscribe(
-    s => [s.data.volumetric, s.ui.metric, s.activeField],
+    s => [s.data.volumetricData, s.ui.metric, s.activeField],
     ([data, , field]) => {
       if (!data) { const c = document.getElementById('timeline-container'); if (c) clear(c); return; }
       if (expanded) render();

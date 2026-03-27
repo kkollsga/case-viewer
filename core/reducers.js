@@ -172,14 +172,14 @@ export const reducers = {
     ...state,
     data: {
       ...state.data,
-      volumetric: data,
+      volumetricData: data,
       columns: data?.data?.length > 0 ? Object.keys(data.data[0]) : [],
     },
   }),
 
   CLEAR_VOLUMETRIC_DATA: (state) => ({
     ...state,
-    data: { ...state.data, volumetric: null, columns: [] },
+    data: { ...state.data, volumetricData: null, columns: [] },
   }),
 
   SET_AVAILABLE_CASES: (state, { cases }) => ({

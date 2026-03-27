@@ -97,7 +97,7 @@ export function render() {
 
 export function setupEvents() {
   store.subscribe(
-    s => [s.data.volumetric, s.ui.metric, s.activeCase, s.activeField],
+    s => [s.data.volumetricData, s.ui.metric, s.activeCase, s.activeField],
     ([data, metric]) => {
       if (data) { updateCurrentUnit(); render(); }
       else clearDiagram();
@@ -108,7 +108,7 @@ export function setupEvents() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (store.select('data.volumetric')) drawCirclePacking();
+      if (store.select('data.volumetricData')) drawCirclePacking();
     }, 250);
   });
 }

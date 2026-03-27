@@ -885,7 +885,7 @@ export function setupEvents() {
 
   // Data or case changes: re-render if expanded
   store.subscribe(
-    s => [s.data.volumetric, s.activeField],
+    s => [s.data.volumetricData, s.activeField],
     () => { populateGroupingSelector(); if (expanded) render(); }
   );
 

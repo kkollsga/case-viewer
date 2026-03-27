@@ -111,6 +111,7 @@ function updateCaseSectionSummary() {
 }
 
 function showDataView() {
+  console.log('[showDataView] called, activeCase=', getActiveCase());
   const dataViewEl = $('#data-view');
   if (dataViewEl) dataViewEl.classList.remove('hidden');
 
@@ -150,6 +151,16 @@ function loadCaseData() {
   data = applyGroupMappings(data, field);
 
   setVolumetricData({ ...caseData, data });
+
+  // Explicitly render data views
+  console.log('[loadCaseData] data set, vd=', !!store.select('data.volumetricData'), 'compare=', getUI().compareCase);
+  const ui = getUI();
+  if (!ui.compareCase) {
+    console.log('[loadCaseData] calling PivotTable.render()');
+    PivotTable.render();
+  } else {
+    DeltaTable.render();
+  }
 
   // Load field settings
   const fieldSettings = loadFieldSettings(field);
@@ -290,9 +301,12 @@ function navigateCase(dir) {
 function setupGlobalEvents() {
   // ── Store subscriptions (replaces 11 on(EVENTS.*) handlers) ──
 
-  // Case selection → show data view
+  // Case selection → show data view (both store sub and old event for reliability)
   store.subscribe('activeCase', (caseName) => {
     if (caseName) showDataView();
+  });
+  on(EVENTS.CASE_SELECTED, () => {
+    showDataView();
   });
 
   // Browser opened (activeCase cleared)
@@ -345,7 +359,7 @@ function setupGlobalEvents() {
 
   // Responsive resize
   window.addEventListener('resize', () => {
-    if (BallChart?.render && store.select('data.volumetric')) BallChart.render();
+    if (BallChart?.render && store.select('data.volumetricData')) BallChart.render();
     if (CrossPlot?.render) CrossPlot.render();
   });
 }

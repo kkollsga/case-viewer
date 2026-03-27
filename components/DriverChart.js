@@ -239,7 +239,7 @@ function applyConversions(data, conversions) {
 
 export function setupEvents() {
   store.subscribe(
-    s => [s.ui.compareCase, s.ui.metric, s.data.volumetric],
+    s => [s.ui.compareCase, s.ui.metric, s.data.volumetricData],
     ([compareCase, , data]) => {
       if (data && compareCase) render();
       else if (containerEl) clear(containerEl);

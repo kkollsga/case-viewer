@@ -35,10 +35,11 @@ const initialState = {
 
   // Runtime (not persisted)
   data: {
-    volumetric: null,
+    volumetricData: null,
     columns: [],
     availableCases: [],
     expandedZones: {},
+    crossPlotVisibility: { groups: {}, cases: {} },
   },
 };
 
@@ -70,7 +71,7 @@ store.subscribe('activeCase', (val) => {
   else emit(EVENTS.BROWSER_OPENED);
 });
 store.subscribe('selectedCases', () => { if (bridgeActive) emit(EVENTS.SELECTION_CHANGED, { selectedCases: store.getState().selectedCases }); });
-store.subscribe(s => s.data.volumetric, (val) => {
+store.subscribe(s => s.data.volumetricData, (val) => {
   if (!bridgeActive) return;
   if (val) emit(EVENTS.DATA_LOADED, { data: val });
   else emit(EVENTS.DATA_CLEARED);
