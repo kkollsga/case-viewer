@@ -203,19 +203,38 @@ function renderStackRow(field, column, stack, index) {
     value: stack.name,
   });
 
-  const editBtn = el('button', {
-    class: 'w-4 h-4 flex items-center justify-center text-gray-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0',
-    innerHTML: '<i class="fas fa-pen text-[8px]"></i>',
-    onClick: (e) => {
-      e.stopPropagation();
-      nameLabel.classList.add('hidden');
-      editBtn.classList.add('hidden');
-      nameInput.classList.remove('hidden');
-      nameInput.value = stack.name;
-      nameInput.focus();
-      nameInput.select();
-    },
+  // Ok / Cancel buttons for edit mode
+  const okBtn = el('button', {
+    class: 'w-5 h-5 flex items-center justify-center rounded-full bg-green-500 text-white text-[9px] hover:bg-green-600 transition-colors hidden',
+    innerHTML: '<i class="fas fa-check"></i>',
   });
+
+  const cancelEditBtn = el('button', {
+    class: 'w-5 h-5 flex items-center justify-center rounded-full text-red-400 hover:text-red-600 text-[9px] transition-colors hidden',
+    innerHTML: '<i class="fas fa-times"></i>',
+  });
+
+  // Hidden left-side edit button (kept for showEditMode/hideEditMode refs but not displayed)
+  const editBtn = el('span', { class: 'hidden' });
+
+  const showEditMode = () => {
+    nameLabel.classList.add('hidden');
+    editBtn.classList.add('hidden');
+    nameInput.classList.remove('hidden');
+    okBtn.classList.remove('hidden');
+    cancelEditBtn.classList.remove('hidden');
+    nameInput.value = stack.name;
+    nameInput.focus();
+    nameInput.select();
+  };
+
+  const hideEditMode = () => {
+    nameInput.classList.add('hidden');
+    okBtn.classList.add('hidden');
+    cancelEditBtn.classList.add('hidden');
+    nameLabel.classList.remove('hidden');
+    editBtn.classList.remove('hidden');
+  };
 
   const commitEdit = () => {
     const newName = nameInput.value.trim();
@@ -225,18 +244,18 @@ function renderStackRow(field, column, stack, index) {
       row.dataset.stackName = newName;
       saveGroupMappings(field, currentMappings);
     }
-    nameInput.classList.add('hidden');
-    nameLabel.classList.remove('hidden');
-    editBtn.classList.remove('hidden');
+    hideEditMode();
   };
 
-  nameInput.addEventListener('blur', commitEdit);
+  editBtn.addEventListener('click', (e) => { e.stopPropagation(); showEditMode(); });
+  okBtn.addEventListener('click', (e) => { e.stopPropagation(); commitEdit(); });
+  cancelEditBtn.addEventListener('click', (e) => { e.stopPropagation(); hideEditMode(); });
   nameInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') commitEdit();
-    if (e.key === 'Escape') { nameInput.classList.add('hidden'); nameLabel.classList.remove('hidden'); editBtn.classList.remove('hidden'); }
+    if (e.key === 'Escape') hideEditMode();
   });
 
-  row.append(nameLabel, editBtn, nameInput);
+  row.append(nameLabel, editBtn, nameInput, okBtn, cancelEditBtn);
 
   // Pill zone (horizontal, sortable within)
   const pillZone = el('div', {
@@ -250,9 +269,22 @@ function renderStackRow(field, column, stack, index) {
 
   row.appendChild(pillZone);
 
+  // Right-side action buttons (pen + ×, visible on hover)
+  const actions = el('div', {
+    class: 'flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0',
+  });
+
+  // Pen button → opens name edit
+  const rightEditBtn = el('button', {
+    class: 'w-5 h-5 flex items-center justify-center text-gray-300 hover:text-indigo-500 transition-all',
+    innerHTML: '<i class="fas fa-pen text-[8px]"></i>',
+    title: 'Rename',
+    onClick: (e) => { e.stopPropagation(); showEditMode(); },
+  });
+
   // × button to dissolve stack
   const dissolveBtn = el('button', {
-    class: 'w-5 h-5 flex items-center justify-center text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0',
+    class: 'w-5 h-5 flex items-center justify-center text-gray-300 hover:text-red-400 transition-all',
     innerHTML: '<i class="fas fa-times text-[9px]"></i>',
     title: 'Dissolve stack',
     onClick: () => {
@@ -263,7 +295,9 @@ function renderStackRow(field, column, stack, index) {
       render();
     },
   });
-  row.appendChild(dissolveBtn);
+
+  actions.append(rightEditBtn, dissolveBtn);
+  row.appendChild(actions);
 
   return row;
 }
@@ -271,10 +305,66 @@ function renderStackRow(field, column, stack, index) {
 // ─── Bare pill (unstacked, appears as a single item in the list) ──
 
 function renderBarePill(field, column, value) {
-  const pill = makePill(value);
-  pill.dataset.type = 'bare';
-  pill.dataset.column = column;
-  return pill;
+  // Wrapper for hover actions
+  const wrapper = el('div', {
+    class: 'group/bare inline-flex items-center gap-0.5 relative',
+    dataset: { type: 'bare', column },
+  });
+
+  wrapper.appendChild(makePill(value));
+
+  // Pen icon on hover → creates a named stack from this pill
+  const penBtn = el('button', {
+    class: 'w-4 h-4 flex items-center justify-center text-indigo-400 hover:text-indigo-600 opacity-0 group-hover/bare:opacity-100 transition-all flex-shrink-0',
+    innerHTML: '<i class="fas fa-pen text-[8px]"></i>',
+    title: 'Create named group',
+    onClick: (e) => {
+      e.stopPropagation();
+      // Replace wrapper with an inline edit row
+      const editRow = el('div', {
+        class: 'inline-flex items-center gap-1.5 bg-gray-50 rounded-lg border border-indigo-200 px-2 py-1',
+      });
+
+      const nameInput = el('input', {
+        type: 'text',
+        class: 'text-xs font-semibold text-indigo-700 bg-transparent border-b border-indigo-300 focus:outline-none w-24',
+        value: value,
+      });
+
+      const okBtn = el('button', {
+        class: 'w-5 h-5 flex items-center justify-center rounded-full bg-green-500 text-white text-[9px] hover:bg-green-600 transition-colors',
+        innerHTML: '<i class="fas fa-check"></i>',
+        onClick: () => {
+          const name = nameInput.value.trim() || value;
+          if (!currentMappings[column]) currentMappings[column] = [];
+          currentMappings[column].push({ name, values: [value] });
+          saveGroupMappings(field, currentMappings);
+          render();
+        },
+      });
+
+      const cancelBtn = el('button', {
+        class: 'w-5 h-5 flex items-center justify-center rounded-full text-red-400 hover:text-red-600 text-[9px] transition-colors',
+        innerHTML: '<i class="fas fa-times"></i>',
+        onClick: () => {
+          editRow.replaceWith(wrapper);
+        },
+      });
+
+      editRow.append(makePill(value), nameInput, okBtn, cancelBtn);
+      wrapper.replaceWith(editRow);
+      nameInput.focus();
+      nameInput.select();
+
+      nameInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') okBtn.click();
+        if (ev.key === 'Escape') cancelBtn.click();
+      });
+    },
+  });
+
+  wrapper.appendChild(penBtn);
+  return wrapper;
 }
 
 // ─── Pill element ────────────────────────────────────────────
