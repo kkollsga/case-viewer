@@ -1,5 +1,6 @@
 // components/CaseBrowser.js — Opening screen case selection component
 // Apple-like: clean, minimal, progressive disclosure.
+// Inline import flow with paste area + QC checks (no modal).
 
 import {
   getActiveField, getActiveScenario, getSelectedCases, getScenariosForField,
@@ -9,14 +10,32 @@ import {
 import {
   getCasesForScenario, getOrderedCaseNames, saveAppState,
   hasLegacyData, clearLegacyData,
+  saveCase, addCaseToOrder, loadDefaultAuthor, saveDefaultAuthor,
 } from '../core/storage.js';
+import { parseOutputSheet, FORMAT } from '../core/parser.js';
 import { on, emit, EVENTS } from '../core/events.js';
 import { formatNumber, formatDateShort, formatDateTime } from '../utils/format.js';
 import { PALETTES } from '../utils/color.js';
-import { el, clear, $ } from '../utils/dom.js';
+import { el, clear, createToggle, $ } from '../utils/dom.js';
 
 let containerEl = null;
 let lastClickTime = {};
+
+// ─── Import section state (module-level) ─────────────────────
+let importVisible = false;
+let parseResult = null;
+let importDivideBy1000 = true;
+let importRawText = '';
+// Standard table: single case metadata
+let importCaseName = '';
+let importCaseDescription = '';
+let importTimestamp = null;
+// Single-row: per-case metadata
+let importCases = []; // [{ checked, originalName, name, description, row }]
+// Removed group columns (by index)
+let importRemovedGroups = new Set();
+// Debounce timer
+let pasteDebounceTimer = null;
 
 // ─── Public API ──────────────────────────────────────────────
 
@@ -100,37 +119,59 @@ export function render() {
     const caseNames = getOrderedCaseNames(field, scenario);
     const casesData = getCasesForScenario(field, scenario);
 
-    if (caseNames.length === 0) {
-      inner.appendChild(renderEmptyStateWithButton(
-        'Import your first case',
-        'Paste volumetric data from Petrel to create your first case revision.',
-        'Import Case',
-        () => import('../components/CaseImport.js').then(m => m.show()),
-      ));
-    } else {
+    if (caseNames.length === 0 && !importVisible) {
+      // No cases yet — show the paste area as the main content
+      importVisible = true;
+    }
+
+    if (caseNames.length === 0 && importVisible) {
+      // Empty state label + inline import section
+      inner.appendChild(el('div', { class: 'mt-12' }));
+      inner.appendChild(el('div', {
+        class: 'text-lg font-medium text-gray-500 mb-2',
+        textContent: 'Import your first case',
+      }));
+      inner.appendChild(el('div', {
+        class: 'text-sm text-gray-400 mb-6',
+        textContent: 'Paste volumetric data from Petrel to get started.',
+      }));
+      inner.appendChild(renderImportSection(field, scenario));
+    } else if (caseNames.length > 0) {
       inner.appendChild(el('div', { class: 'mt-8' }));
       inner.appendChild(renderCaseGrid(caseNames, casesData, selected));
+
+      // Import section below case cards (expanded or collapsed)
+      if (importVisible) {
+        inner.appendChild(el('div', { class: 'mt-8' }));
+        inner.appendChild(renderImportSection(field, scenario));
+      }
     }
   }
 
-  // Bottom action bar
+  // Bottom action bar or import button
   if (field && scenario && selected.length > 0) {
     root.appendChild(inner);
-    root.appendChild(renderActionBar(selected));
+    root.appendChild(renderActionBar(selected, field, scenario));
   } else {
-    // Import button (always visible when we have a scenario)
-    if (field && scenario) {
-      const importRow = el('div', {
-        class: 'mt-10 flex justify-end',
-      });
-      importRow.appendChild(el('button', {
-        class: 'inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-colors shadow-sm',
-        onClick: () => import('../components/CaseImport.js').then(m => m.show()),
-      }, [
-        el('span', { textContent: '+' }),
-        el('span', { textContent: 'Import' }),
-      ]));
-      inner.appendChild(importRow);
+    // Import button (visible when we have a scenario, cases exist, and import is collapsed)
+    if (field && scenario && !importVisible) {
+      const caseNames = getOrderedCaseNames(field, scenario);
+      if (caseNames.length > 0) {
+        const importRow = el('div', {
+          class: 'mt-10 flex justify-end',
+        });
+        importRow.appendChild(el('button', {
+          class: 'inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-colors shadow-sm',
+          onClick: () => {
+            importVisible = true;
+            render();
+          },
+        }, [
+          el('span', { textContent: '+' }),
+          el('span', { textContent: 'Import' }),
+        ]));
+        inner.appendChild(importRow);
+      }
     }
     root.appendChild(inner);
   }
@@ -310,6 +351,543 @@ function renderInlineAddButton(label, onSubmit) {
   return wrapper;
 }
 
+// ─── Inline Import Section ───────────────────────────────────
+
+function resetImportState() {
+  importVisible = false;
+  parseResult = null;
+  importDivideBy1000 = true;
+  importRawText = '';
+  importCaseName = '';
+  importCaseDescription = '';
+  importTimestamp = null;
+  importCases = [];
+  importRemovedGroups = new Set();
+  if (pasteDebounceTimer) clearTimeout(pasteDebounceTimer);
+  pasteDebounceTimer = null;
+}
+
+function runParser() {
+  if (!importRawText.trim()) {
+    parseResult = null;
+    return;
+  }
+  parseResult = parseOutputSheet(importRawText, { divideBy1000: importDivideBy1000 });
+
+  if (parseResult.error && !parseResult.qc) {
+    // Fatal parse error — keep parseResult for display but nothing else
+    return;
+  }
+
+  // Populate case metadata from QC
+  const qc = parseResult.qc;
+  const meta = qc?.petrelMeta || {};
+
+  if (parseResult.format === FORMAT.SINGLE_LINE_TOTALS && parseResult.cases) {
+    // Multi-case
+    importCases = parseResult.cases.map((c) => ({
+      checked: true,
+      originalName: c.originalName,
+      name: c.suggestedName || c.originalName,
+      description: c.description || '',
+      row: c.row,
+    }));
+  } else {
+    // Standard table — single case
+    importCaseName = generateCaseName(meta);
+    importCaseDescription = '';
+    importTimestamp = parseTimestamp(meta.exportDate);
+  }
+
+  importRemovedGroups = new Set();
+}
+
+function generateCaseName(meta) {
+  if (meta.case) return meta.case;
+  if (meta.exportDate) {
+    const d = new Date(meta.exportDate);
+    if (!isNaN(d.getTime())) {
+      return 'Case ' + formatDateCompact(d);
+    }
+    return 'Case ' + meta.exportDate;
+  }
+  return 'Case ' + formatDateCompact(new Date());
+}
+
+function parseTimestamp(exportDate) {
+  if (!exportDate) return Date.now();
+  const d = new Date(exportDate);
+  return isNaN(d.getTime()) ? Date.now() : d.getTime();
+}
+
+function formatDateCompact(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatTimestampDisplay(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}`;
+}
+
+function renderImportSection(field, scenario) {
+  const section = el('div', {
+    class: 'bg-white rounded-2xl border border-gray-200 p-6 space-y-5',
+  });
+
+  // ── 1. Paste area ──
+  const textarea = el('textarea', {
+    class: 'w-full px-4 py-3 text-sm font-mono bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors resize-none',
+    placeholder: 'Paste volumetric data from Petrel...',
+    rows: '4',
+  });
+  textarea.value = importRawText;
+
+  textarea.addEventListener('input', (e) => {
+    importRawText = e.target.value;
+    if (pasteDebounceTimer) clearTimeout(pasteDebounceTimer);
+    pasteDebounceTimer = setTimeout(() => {
+      runParser();
+      render();
+    }, 300);
+  });
+
+  section.appendChild(textarea);
+
+  // ── 2. Parse error ──
+  if (parseResult && parseResult.error && !parseResult.qc) {
+    section.appendChild(el('div', {
+      class: 'px-4 py-3 bg-red-50 text-red-700 text-sm rounded-lg',
+      textContent: parseResult.error,
+    }));
+  }
+
+  // ── 3. QC Checks (after successful parse) ──
+  if (parseResult && parseResult.qc) {
+    const qc = parseResult.qc;
+
+    section.appendChild(renderQCChecks(qc));
+
+    // ── 4. Divide by 1000 toggle ──
+    section.appendChild(renderDivideToggle());
+
+    // ── 5. Volume Groups as pills ──
+    if (qc.groupColumns && qc.groupColumns.length > 0) {
+      section.appendChild(renderGroupPills(qc.groupColumns));
+    }
+
+    // ── 6. Case metadata ──
+    if (parseResult.format === FORMAT.SINGLE_LINE_TOTALS && importCases.length > 0) {
+      section.appendChild(renderMultiCaseMetadata());
+    } else {
+      section.appendChild(renderSingleCaseMetadata());
+    }
+
+    // ── 7. Parse errors (non-fatal) ──
+    if (qc.errors && qc.errors.length > 0) {
+      const errBox = el('div', {
+        class: 'px-4 py-3 bg-amber-50 text-amber-700 text-xs rounded-lg space-y-1',
+      });
+      errBox.appendChild(el('div', {
+        class: 'font-medium',
+        textContent: `${qc.errors.length} parse warning${qc.errors.length !== 1 ? 's' : ''}`,
+      }));
+      for (const err of qc.errors.slice(0, 5)) {
+        errBox.appendChild(el('div', { textContent: err }));
+      }
+      if (qc.errors.length > 5) {
+        errBox.appendChild(el('div', {
+          class: 'text-amber-500',
+          textContent: `... and ${qc.errors.length - 5} more`,
+        }));
+      }
+      section.appendChild(errBox);
+    }
+
+    // ── 8. Action buttons ──
+    section.appendChild(renderImportActions(field, scenario));
+  } else if (parseResult === null && importRawText.trim() === '') {
+    // No data yet — just show the paste area, nothing else
+  }
+
+  return section;
+}
+
+// ─── QC Checks Grid ──────────────────────────────────────────
+
+function renderQCChecks(qc) {
+  const grid = el('div', {
+    class: 'grid grid-cols-[auto_1fr_auto] gap-x-4 gap-y-1.5 text-sm items-baseline',
+  });
+
+  const meta = qc.petrelMeta || {};
+
+  // Format
+  addQCRow(grid, 'Format', qc.formatLabel || qc.format, true);
+
+  // Rows / Columns
+  addQCRow(grid, 'Rows', `${qc.rowCount} data row${qc.rowCount !== 1 ? 's' : ''}, ${qc.columnCount} column${qc.columnCount !== 1 ? 's' : ''}`, qc.rowCount > 0);
+
+  // Groups
+  if (qc.groupColumns && qc.groupColumns.length > 0) {
+    addQCRow(grid, 'Groups', qc.groupColumns.join(', '), null);
+  }
+
+  // Volumes
+  if (qc.volumeColumns && qc.volumeColumns.length > 0) {
+    const volStr = qc.volumeColumns.map(v => v.unit ? `${v.name} (${v.unit})` : v.name).join(', ');
+    addQCRow(grid, 'Volumes', volStr, null);
+  }
+
+  // Petrel metadata
+  addQCRow(grid, 'Project', meta.project || null, null);
+  addQCRow(grid, 'Grid', meta.grid || null, null);
+
+  // Cases (for single-row)
+  if (qc.caseCount && qc.caseCount > 1) {
+    addQCRow(grid, 'Cases', `${qc.caseCount} detected`, true);
+  }
+
+  return grid;
+}
+
+function addQCRow(grid, label, value, showCheck) {
+  // Label
+  grid.appendChild(el('span', {
+    class: 'text-xs font-medium text-gray-500 whitespace-nowrap',
+    textContent: label,
+  }));
+
+  // Value
+  if (value === null || value === undefined) {
+    grid.appendChild(el('span', {
+      class: 'text-xs text-gray-300 italic',
+      textContent: 'Not detected',
+    }));
+  } else {
+    grid.appendChild(el('span', {
+      class: 'text-xs text-gray-700',
+      textContent: value,
+    }));
+  }
+
+  // Checkmark
+  if (showCheck === true) {
+    grid.appendChild(el('span', {
+      class: 'text-green-500 text-sm',
+      textContent: '\u2713',
+    }));
+  } else {
+    grid.appendChild(el('span', { textContent: '' }));
+  }
+}
+
+// ─── Divide by 1000 Toggle ───────────────────────────────────
+
+function renderDivideToggle() {
+  const row = el('div', {
+    class: 'flex items-center gap-3',
+  });
+
+  const toggle = createToggle('import-divide1000', 'Divide by 1000', importDivideBy1000, (checked) => {
+    importDivideBy1000 = checked;
+    runParser();
+    render();
+  });
+
+  row.appendChild(toggle);
+
+  return row;
+}
+
+// ─── Volume Group Pills ─────────────────────────────────────
+
+function renderGroupPills(groupColumns) {
+  const container = el('div', { class: 'space-y-1.5' });
+
+  container.appendChild(el('div', {
+    class: 'text-xs font-medium text-gray-500',
+    textContent: 'Volume groups',
+  }));
+
+  const row = el('div', {
+    class: 'flex items-center gap-2 flex-wrap',
+  });
+
+  groupColumns.forEach((col, idx) => {
+    const isRemoved = importRemovedGroups.has(idx);
+
+    const pill = el('div', {
+      class: isRemoved
+        ? 'inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-full bg-gray-100 text-gray-400 line-through'
+        : 'inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-full bg-indigo-50 text-indigo-700 font-medium',
+    });
+
+    pill.appendChild(el('span', { textContent: col }));
+
+    // Remove / restore button
+    const actionBtn = el('button', {
+      class: isRemoved
+        ? 'w-4 h-4 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 text-xs leading-none'
+        : 'w-4 h-4 flex items-center justify-center rounded-full text-indigo-400 hover:text-indigo-600 text-xs leading-none',
+      textContent: isRemoved ? '+' : '\u00d7',
+      title: isRemoved ? `Restore ${col}` : `Remove ${col}`,
+      onClick: () => {
+        if (isRemoved) {
+          importRemovedGroups.delete(idx);
+        } else {
+          importRemovedGroups.add(idx);
+        }
+        render();
+      },
+    });
+    pill.appendChild(actionBtn);
+
+    row.appendChild(pill);
+  });
+
+  container.appendChild(row);
+  return container;
+}
+
+// ─── Single Case Metadata ───────────────────────────────────
+
+function renderSingleCaseMetadata() {
+  const container = el('div', {
+    class: 'space-y-3',
+  });
+
+  container.appendChild(el('div', {
+    class: 'text-xs font-medium text-gray-500',
+    textContent: 'Case details',
+  }));
+
+  const row = el('div', {
+    class: 'flex items-start gap-4',
+  });
+
+  // Timestamp on the left
+  const tsLabel = el('div', {
+    class: 'text-xs text-gray-400 whitespace-nowrap pt-2',
+    textContent: formatTimestampDisplay(importTimestamp),
+  });
+  row.appendChild(tsLabel);
+
+  // Name + description inputs on the right
+  const fields = el('div', {
+    class: 'flex-1 space-y-2',
+  });
+
+  const nameInput = el('input', {
+    type: 'text',
+    class: 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200',
+    placeholder: 'Case name',
+  });
+  nameInput.value = importCaseName;
+  nameInput.addEventListener('input', (e) => {
+    importCaseName = e.target.value;
+  });
+  fields.appendChild(nameInput);
+
+  const descInput = el('input', {
+    type: 'text',
+    class: 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200',
+    placeholder: 'Optional description',
+  });
+  descInput.value = importCaseDescription;
+  descInput.addEventListener('input', (e) => {
+    importCaseDescription = e.target.value;
+  });
+  fields.appendChild(descInput);
+
+  row.appendChild(fields);
+  container.appendChild(row);
+
+  return container;
+}
+
+// ─── Multi-Case Metadata (single-row format) ────────────────
+
+function renderMultiCaseMetadata() {
+  const container = el('div', {
+    class: 'space-y-3',
+  });
+
+  const checkedCount = importCases.filter(c => c.checked).length;
+  container.appendChild(el('div', {
+    class: 'text-xs font-medium text-gray-500',
+    textContent: `Detected ${importCases.length} case${importCases.length !== 1 ? 's' : ''}:`,
+  }));
+
+  // Compact table
+  const table = el('div', {
+    class: 'space-y-1',
+  });
+
+  importCases.forEach((c, idx) => {
+    const row = el('div', {
+      class: 'flex items-center gap-3 py-1',
+    });
+
+    // Checkbox
+    const cb = el('input', {
+      type: 'checkbox',
+      class: 'w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer',
+    });
+    cb.checked = c.checked;
+    cb.addEventListener('change', (e) => {
+      importCases[idx].checked = e.target.checked;
+      render();
+    });
+    row.appendChild(cb);
+
+    // Original name (label)
+    row.appendChild(el('span', {
+      class: 'text-xs text-gray-400 w-24 truncate flex-shrink-0',
+      textContent: c.originalName,
+      title: c.originalName,
+    }));
+
+    // Editable name
+    const nameInput = el('input', {
+      type: 'text',
+      class: 'flex-1 min-w-0 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-indigo-400',
+      placeholder: 'Suggested name',
+    });
+    nameInput.value = c.name;
+    nameInput.addEventListener('input', (e) => {
+      importCases[idx].name = e.target.value;
+    });
+    row.appendChild(nameInput);
+
+    // Editable description
+    const descInput = el('input', {
+      type: 'text',
+      class: 'flex-1 min-w-0 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-indigo-400',
+      placeholder: 'Description',
+    });
+    descInput.value = c.description;
+    descInput.addEventListener('input', (e) => {
+      importCases[idx].description = e.target.value;
+    });
+    row.appendChild(descInput);
+
+    table.appendChild(row);
+  });
+
+  container.appendChild(table);
+
+  return container;
+}
+
+// ─── Import Action Buttons ───────────────────────────────────
+
+function renderImportActions(field, scenario) {
+  const row = el('div', {
+    class: 'flex items-center justify-between pt-2',
+  });
+
+  // Cancel
+  const cancelBtn = el('button', {
+    class: 'px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors',
+    textContent: 'Cancel',
+    onClick: () => {
+      resetImportState();
+      render();
+    },
+  });
+  row.appendChild(cancelBtn);
+
+  // Save button
+  const isMulti = parseResult.format === FORMAT.SINGLE_LINE_TOTALS && importCases.length > 0;
+  const checkedCount = isMulti ? importCases.filter(c => c.checked).length : 1;
+  const saveLabel = isMulti
+    ? `Save ${checkedCount} case${checkedCount !== 1 ? 's' : ''} to ${scenario}`
+    : `Save to ${scenario}`;
+
+  const canSave = parseResult && parseResult.data && parseResult.data.length > 0 &&
+    (isMulti ? checkedCount > 0 : importCaseName.trim() !== '');
+
+  const saveBtn = el('button', {
+    class: canSave
+      ? 'px-5 py-2 text-sm font-medium text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-colors shadow-sm'
+      : 'px-5 py-2 text-sm font-medium text-white bg-gray-300 rounded-full cursor-not-allowed',
+    textContent: saveLabel,
+    onClick: canSave ? () => handleSave(field, scenario) : null,
+  });
+  if (!canSave) saveBtn.setAttribute('disabled', 'true');
+  row.appendChild(saveBtn);
+
+  return row;
+}
+
+// ─── Save Handler ────────────────────────────────────────────
+
+function handleSave(field, scenario) {
+  if (!parseResult || !parseResult.data) return;
+
+  const activeGroupColumns = getActiveGroupColumns();
+
+  if (parseResult.format === FORMAT.SINGLE_LINE_TOTALS && importCases.length > 0) {
+    // Multi-case save
+    const toSave = importCases.filter(c => c.checked);
+    for (const c of toSave) {
+      const caseName = c.name.trim() || c.originalName;
+      const caseData = {
+        title: caseName,
+        description: c.description || '',
+        timestamp: Date.now(),
+        data: [c.row],
+        headers: parseResult.headers,
+        units: parseResult.units,
+        rawUnits: parseResult.rawUnits,
+        format: parseResult.format,
+        volumeGroups: {
+          columns: activeGroupColumns,
+        },
+      };
+      saveCase(field, scenario, caseName, caseData);
+      addCaseToOrder(field, scenario, caseName);
+    }
+  } else {
+    // Standard table — single case
+    const caseName = importCaseName.trim() || generateCaseName(parseResult.qc?.petrelMeta || {});
+    const caseData = {
+      title: caseName,
+      description: importCaseDescription || '',
+      timestamp: importTimestamp || Date.now(),
+      data: parseResult.data,
+      headers: parseResult.headers,
+      units: parseResult.units,
+      rawUnits: parseResult.rawUnits,
+      format: parseResult.format,
+      volumeGroups: {
+        columns: activeGroupColumns,
+      },
+    };
+    saveCase(field, scenario, caseName, caseData);
+    addCaseToOrder(field, scenario, caseName);
+  }
+
+  // Reset import state and re-render
+  resetImportState();
+  emit(EVENTS.CASE_CREATED);
+}
+
+function getActiveGroupColumns() {
+  if (!parseResult || !parseResult.qc) return [];
+  const allGroups = parseResult.qc.groupColumns || [];
+  return allGroups.filter((_, idx) => !importRemovedGroups.has(idx));
+}
+
 // ─── Case Card Grid ──────────────────────────────────────────
 
 function renderCaseGrid(caseNames, casesData, selected) {
@@ -379,16 +957,14 @@ function renderCaseCard(caseName, caseData, isSelected) {
   checkbox.classList.add('absolute', 'bottom-4', 'right-4');
   card.appendChild(checkbox);
 
-  // Click → toggle selection
+  // Click -> toggle selection
   card.addEventListener('click', (e) => {
     if (e.detail === 1) {
-      // Single click — defer slightly to allow double-click detection
       const now = Date.now();
       const last = lastClickTime[caseName] || 0;
       lastClickTime[caseName] = now;
 
       if (now - last < 350) {
-        // Double-click detected
         setSelectedCases([caseName]);
         setActiveCase(caseName);
         saveAppState();
@@ -396,7 +972,6 @@ function renderCaseCard(caseName, caseData, isSelected) {
       }
 
       setTimeout(() => {
-        // If another click happened (double-click), skip
         if (lastClickTime[caseName] !== now) return;
         toggleCaseSelection(caseName);
         saveAppState();
@@ -594,7 +1169,7 @@ function renderCheckbox(checked) {
 
 // ─── Action Bar ──────────────────────────────────────────────
 
-function renderActionBar(selected) {
+function renderActionBar(selected, field, scenario) {
   const bar = el('div', {
     class: 'sticky bottom-0 bg-white/90 backdrop-blur-lg border-t border-gray-200 py-4 px-6',
   });
@@ -620,7 +1195,6 @@ function renderActionBar(selected) {
       if (selected.length === 1) {
         setActiveCase(selected[0]);
       } else {
-        // View first, rest are compare candidates
         setActiveCase(selected[0]);
       }
       saveAppState();
@@ -631,7 +1205,10 @@ function renderActionBar(selected) {
   // Import button
   const importBtn = el('button', {
     class: 'inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-indigo-600 border border-indigo-200 rounded-full hover:bg-indigo-50 transition-colors',
-    onClick: () => import('../components/CaseImport.js').then(m => m.show()),
+    onClick: () => {
+      importVisible = true;
+      render();
+    },
   }, [
     el('span', { textContent: '+' }),
     el('span', { textContent: 'Import' }),
@@ -711,34 +1288,6 @@ function renderEmptyStateWithInput(title, subtitle, onSubmit) {
 
   form.append(input, btn);
   container.appendChild(form);
-
-  return container;
-}
-
-function renderEmptyStateWithButton(title, subtitle, buttonText, onClick) {
-  const container = el('div', {
-    class: 'mt-20 text-center',
-  });
-
-  container.appendChild(el('div', {
-    class: 'text-lg font-medium text-gray-500',
-    textContent: title,
-  }));
-
-  if (subtitle) {
-    container.appendChild(el('div', {
-      class: 'mt-2 text-sm text-gray-400 max-w-md mx-auto',
-      textContent: subtitle,
-    }));
-  }
-
-  container.appendChild(el('div', { class: 'mt-6' }, [
-    el('button', {
-      class: 'inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-colors shadow-sm',
-      textContent: buttonText,
-      onClick,
-    }),
-  ]));
 
   return container;
 }

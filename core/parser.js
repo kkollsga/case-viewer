@@ -1,27 +1,28 @@
 // core/parser.js — Petrel Output Sheet parsing
 // Handles: standard table format, single line totals, format detection
+// Returns rich QC info for inline validation display.
 
 import { standardizeUnit, getScaledUnit } from '../utils/units.js';
 
-// Known numeric volume columns (used to distinguish grouping vs data columns)
 const STANDARD_NUMERIC_COLUMNS = [
   'Bulk volume', 'Net volume', 'Pore volume',
   'HCPV oil', 'HCPV gas', 'STOIIP', 'GIIP',
 ];
 
-/**
- * Input format types.
- */
 export const FORMAT = {
-  STANDARD_TABLE: 'standard_table',    // One row per zone/segment
-  SINGLE_LINE_TOTALS: 'single_totals', // One row, field totals only
-  SINGLE_LINE_GROUPED: 'single_grouped', // Hierarchy in column names — unsupported
+  STANDARD_TABLE: 'standard_table',
+  SINGLE_LINE_TOTALS: 'single_totals',
+  SINGLE_LINE_GROUPED: 'single_grouped',
 };
 
-/**
- * Parse header line: extract clean labels, units, and column mapping.
- * Handles: "STOIIP [1e6 Sm3]" → { label: "STOIIP", unit: "MCM" }
- */
+const FORMAT_LABELS = {
+  [FORMAT.STANDARD_TABLE]: 'Standard table (pivot)',
+  [FORMAT.SINGLE_LINE_TOTALS]: 'Single row (totals per case)',
+  [FORMAT.SINGLE_LINE_GROUPED]: 'Single row with grouping (unsupported)',
+};
+
+// ─── Header parsing ─────────────────────────────────────────
+
 export function parseHeaders(headerLine) {
   const rawHeaders = headerLine.split('\t');
   const headers = [];
@@ -29,10 +30,7 @@ export function parseHeaders(headerLine) {
   const columnMap = {};
 
   for (const header of rawHeaders) {
-    if (!header || !header.trim()) {
-      headers.push('');
-      continue;
-    }
+    if (!header || !header.trim()) { headers.push(''); continue; }
 
     const match = header.match(/^(.+?)\s*\[\s*(.*?)\s*\]$/);
     if (match) {
@@ -52,40 +50,69 @@ export function parseHeaders(headerLine) {
   return { headers, units, columnMap };
 }
 
+// ─── Metadata extraction from pre-data lines ────────────────
+
 /**
- * Detect the input format from headers and first data row.
+ * Scan lines before the data table for Petrel metadata.
+ * Looks for key: value patterns like "Project: MyProject", "Grid: MainGrid"
  */
+function extractMetadata(allLines) {
+  const meta = {};
+  const metaPatterns = [
+    { key: 'project', pattern: /^(?:project|project name)\s*[:=]\s*(.+)/i },
+    { key: 'grid', pattern: /^(?:grid|grid name|model)\s*[:=]\s*(.+)/i },
+    { key: 'exportDate', pattern: /^(?:export date|date|exported)\s*[:=]\s*(.+)/i },
+    { key: 'case', pattern: /^(?:case|case name|realization)\s*[:=]\s*(.+)/i },
+  ];
+
+  // Only check first 10 lines (metadata is always at the top)
+  const limit = Math.min(allLines.length, 10);
+  for (let i = 0; i < limit; i++) {
+    const line = allLines[i].trim();
+    if (!line) continue;
+    // Skip if it looks like a data line (has many tabs)
+    if (line.split('\t').length > 3) break;
+
+    for (const { key, pattern } of metaPatterns) {
+      const m = line.match(pattern);
+      if (m) { meta[key] = m[1].trim(); break; }
+    }
+  }
+
+  return meta;
+}
+
+/**
+ * Find the header line index — the first line with multiple tab-separated fields.
+ */
+function findHeaderLineIndex(lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const cols = lines[i].split('\t');
+    if (cols.length >= 3) return i;
+  }
+  return 0;
+}
+
+// ─── Format detection ───────────────────────────────────────
+
 export function detectFormat(headers, firstDataRow) {
   if (!firstDataRow || firstDataRow.length === 0) {
     return { format: FORMAT.STANDARD_TABLE, error: null };
   }
 
-  // Count non-numeric cells in the first data row
   let nonNumericCount = 0;
-  const nonNumericIndices = [];
-
   for (let i = 0; i < firstDataRow.length; i++) {
     const val = firstDataRow[i].trim();
-    // Check if value is numeric (handle both comma and dot decimals)
     const normalised = val.replace(',', '.');
-    if (val === '' || isNaN(parseFloat(normalised))) {
-      nonNumericCount++;
-      nonNumericIndices.push(i);
-    }
+    if (val === '' || isNaN(parseFloat(normalised))) nonNumericCount++;
   }
 
-  // Multiple non-numeric cells → standard table format (Zone, Segment, etc.)
-  if (nonNumericCount > 1) {
-    return { format: FORMAT.STANDARD_TABLE, error: null };
-  }
+  if (nonNumericCount > 1) return { format: FORMAT.STANDARD_TABLE, error: null };
 
-  // Exactly 1 non-numeric cell — check if columns encode hierarchy
   if (nonNumericCount <= 1) {
-    // Check for parenthesised group names: "STOIIP (North)" or "STOIIP (North/Main)"
     const hasGroupedColumns = headers.some(h =>
       /^.+\s*\(.+\)/.test(h) && !/^\s*\[/.test(h)
     );
-
     if (hasGroupedColumns) {
       return {
         format: FORMAT.SINGLE_LINE_GROUPED,
@@ -94,99 +121,111 @@ export function detectFormat(headers, firstDataRow) {
                '(uncheck "Single line format" in the Report tab).',
       };
     }
-
-    // Single line totals — valid
     return { format: FORMAT.SINGLE_LINE_TOTALS, error: null };
   }
 
   return { format: FORMAT.STANDARD_TABLE, error: null };
 }
 
-/**
- * Identify which columns are grouping keys (non-numeric, low cardinality).
- */
+// ─── Column classification ──────────────────────────────────
+
 export function detectGroupColumns(headers, units) {
   return headers.filter(h => {
     if (!h || h.trim() === '') return false;
     if (STANDARD_NUMERIC_COLUMNS.includes(h)) return false;
-    if (units[h] && units[h] !== '') return false; // Has unit → numeric
+    if (units[h] && units[h] !== '') return false;
     if (h.startsWith('__')) return false;
     return true;
   });
 }
 
+function classifyColumns(headers, units) {
+  const groups = [];
+  const volumes = [];
+
+  for (const h of headers) {
+    if (!h || h.trim() === '') continue;
+    if (STANDARD_NUMERIC_COLUMNS.includes(h) || (units[h] && units[h] !== '')) {
+      volumes.push({ name: h, unit: units[h] || '' });
+    } else if (!h.startsWith('__')) {
+      groups.push(h);
+    }
+  }
+
+  return { groups, volumes };
+}
+
+// ─── Main parse function ────────────────────────────────────
+
 /**
- * Full parse: take raw pasted text and return structured data.
+ * Full parse with rich QC output.
  *
  * @param {string} rawText - Tab-separated text from Petrel
  * @param {Object} options - { divideBy1000: boolean }
- * @returns {Object} { data, headers, units, format, groupColumns, error }
+ * @returns {Object} Rich result with data, QC info, and per-case breakdown for single-row
  */
 export function parseOutputSheet(rawText, options = {}) {
   const { divideBy1000 = true } = options;
 
-  // Strip BOM
   let text = rawText;
-  if (text.charCodeAt(0) === 0xFEFF) {
-    text = text.slice(1);
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
+  const allLines = text.split('\n');
+  const nonEmptyLines = allLines.filter(l => l.trim() !== '');
+
+  if (nonEmptyLines.length === 0) {
+    return { error: 'No data found. Paste tab-separated data from Petrel.' };
   }
 
-  // Split into lines, filter blanks
-  const lines = text.split('\n').filter(line => line.trim() !== '');
-  if (lines.length === 0) {
-    return { error: 'No data found. Please paste tab-separated data from Petrel.' };
-  }
+  // Extract metadata from pre-data lines
+  const petrelMeta = extractMetadata(allLines);
 
-  // Parse headers
-  const headerLine = lines[0];
+  // Find the actual header line
+  const headerIdx = findHeaderLineIndex(nonEmptyLines);
+  const headerLine = nonEmptyLines[headerIdx];
   const headerInfo = parseHeaders(headerLine);
   let headers = [...headerInfo.headers];
   const rawUnits = { ...headerInfo.units };
 
-  // Need at least one data row
-  if (lines.length < 2) {
-    return { error: 'No data rows found. The input contains only a header line.' };
+  const dataLines = nonEmptyLines.slice(headerIdx + 1);
+  if (dataLines.length === 0) {
+    return { error: 'No data rows found after header line.' };
   }
 
-  // Check first data row for column count mismatch
-  const firstRowCells = lines[1].split('\t');
-
-  // If data has one more column than headers, add "Zones" as first column
+  // Column count fix
+  const firstRowCells = dataLines[0].split('\t');
   if (firstRowCells.length === headers.length + 1) {
     headers.unshift('Zones');
     rawUnits['Zones'] = '';
   }
 
-  // Detect format
+  // Format detection
   const formatResult = detectFormat(headers, firstRowCells);
   if (formatResult.error) {
-    return { error: formatResult.error, format: formatResult.format };
+    return { error: formatResult.error, format: formatResult.format, formatLabel: FORMAT_LABELS[formatResult.format] };
   }
 
-  // Process units (apply divide-by-1000 scaling)
+  // Process units
   const units = {};
   for (const [label, rawUnit] of Object.entries(rawUnits)) {
     units[label] = divideBy1000 && rawUnit ? getScaledUnit(rawUnit) : rawUnit;
   }
 
-  // Detect which columns are grouping keys
+  // Classify columns
   const groupColumns = detectGroupColumns(headers, rawUnits);
+  const { groups, volumes } = classifyColumns(headers, rawUnits);
 
   // Parse data rows
   const data = [];
   const errors = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const cells = lines[i].split('\t');
+  for (let i = 0; i < dataLines.length; i++) {
+    const cells = dataLines[i].split('\t');
     const row = {};
 
-    // Handle column count mismatch
     const expectedCols = headers.length;
-    const actualCells = cells.length;
-
-    // Allow off-by-one (already handled by "Zones" prepend) and exact match
-    if (actualCells !== expectedCols && actualCells !== expectedCols - 1) {
-      errors.push(`Row ${i}: expected ${expectedCols} columns, got ${actualCells}`);
+    if (cells.length !== expectedCols && cells.length !== expectedCols - 1) {
+      errors.push(`Row ${i + 1}: expected ${expectedCols} columns, got ${cells.length}`);
       continue;
     }
 
@@ -195,13 +234,9 @@ export function parseOutputSheet(rawText, options = {}) {
       if (!header) continue;
 
       const cellValue = (j < cells.length) ? cells[j] : '';
-
-      // Is this a numeric column? (has a unit or is a known numeric column)
-      const isNumeric = (rawUnits[header] && rawUnits[header] !== '') ||
-                        STANDARD_NUMERIC_COLUMNS.includes(header);
+      const isNumeric = (rawUnits[header] && rawUnits[header] !== '') || STANDARD_NUMERIC_COLUMNS.includes(header);
 
       if (isNumeric) {
-        // Parse numeric, handle comma decimals
         const normalised = cellValue.replace(',', '.');
         let num = parseFloat(normalised);
         if (isNaN(num)) num = 0;
@@ -216,19 +251,46 @@ export function parseOutputSheet(rawText, options = {}) {
   }
 
   if (data.length === 0) {
-    const msg = errors.length > 0
-      ? `No valid data rows. Errors:\n${errors.join('\n')}`
-      : 'No data rows could be parsed.';
-    return { error: msg };
+    return { error: errors.length > 0 ? `No valid rows:\n${errors.join('\n')}` : 'No data rows parsed.' };
+  }
+
+  // ── Build QC summary ──
+  const qc = {
+    format: formatResult.format,
+    formatLabel: FORMAT_LABELS[formatResult.format],
+    rowCount: data.length,
+    columnCount: headers.filter(h => h).length,
+    groupColumns: groups,
+    volumeColumns: volumes,
+    petrelMeta,
+    errors: errors.length > 0 ? errors : null,
+  };
+
+  // ── For single-row format, split into per-case entries ──
+  let cases = null;
+  if (formatResult.format === FORMAT.SINGLE_LINE_TOTALS) {
+    // First non-numeric column is the case identifier
+    const caseCol = groupColumns[0] || null;
+    cases = data.map((row, idx) => {
+      const caseName = caseCol ? row[caseCol] : `Case ${idx + 1}`;
+      return {
+        originalName: caseName,
+        suggestedName: caseName,
+        description: '',
+        row,
+      };
+    });
+    qc.caseCount = cases.length;
+  } else {
+    // Standard table = one case
+    qc.caseCount = 1;
   }
 
   return {
-    data,
-    headers,
-    units,
+    data, headers, units, rawUnits,
     format: formatResult.format,
-    groupColumns,
-    errors: errors.length > 0 ? errors : null,
+    groupColumns, cases,
+    qc, errors: errors.length > 0 ? errors : null,
     columnMap: headerInfo.columnMap,
   };
 }
