@@ -66,12 +66,10 @@ export async function init() {
 // ─── View switching ─────────────────────────────────────────
 
 function showBrowser() {
-  const browserEl = $('#case-browser');
+  // Single page — browser is always visible, data view hides
   const dataViewEl = $('#data-view');
-  if (browserEl) browserEl.classList.remove('hidden');
   if (dataViewEl) dataViewEl.classList.add('hidden');
 
-  // Render browser with last-active field/scenario
   const state = getState();
   if (!state.activeField && state.fields.length > 0) {
     setActiveField(state.fields[0]);
@@ -86,12 +84,22 @@ function showBrowser() {
 }
 
 function showDataView() {
-  const browserEl = $('#case-browser');
+  // Show data view below the browser (browser stays visible in minimized mode)
   const dataViewEl = $('#data-view');
-  if (browserEl) browserEl.classList.add('hidden');
   if (dataViewEl) dataViewEl.classList.remove('hidden');
 
+  // Auto-open volumetrics
+  const volContainer = $('#volumetrics-container');
+  if (volContainer) volContainer.classList.remove('hidden');
+  const volToggle = $('#toggle-volumetrics');
+  if (volToggle) {
+    const icon = volToggle.querySelector('i');
+    if (icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); }
+  }
+
   loadCaseData();
+
+  if (CaseBrowser?.render) CaseBrowser.render();
 }
 
 // ─── Data loading ───────────────────────────────────────────
@@ -313,15 +321,10 @@ function setupGlobalEvents() {
 // ─── Data view controls ─────────────────────────────────────
 
 function setupDataViewControls() {
-  // Back button
-  const backBtn = $('#back-to-browser');
-  if (backBtn) backBtn.addEventListener('click', () => openBrowser());
-
-  // Breadcrumb clicks
-  const bf = $('#breadcrumb-field');
-  const bs = $('#breadcrumb-scenario');
-  if (bf) bf.addEventListener('click', () => openBrowser());
-  if (bs) bs.addEventListener('click', () => openBrowser());
+  // Collapsible section toggles
+  setupCollapsible('toggle-volumetrics', 'volumetrics-container');
+  setupCollapsible('toggle-ball-chart', 'ball-chart-outer', () => { if (BallChart?.render) BallChart.render(); });
+  // cross-plot and timeline toggles are handled by their own components
 
   // Navigation
   const prev = $('#prev-case-btn');
@@ -465,6 +468,25 @@ function require_state() {
     if (!state.scenarios[f]) state.scenarios[f] = [];
     if (!state.scenarios[f].includes(s)) state.scenarios[f].push(s);
   }};
+}
+
+// ─── Collapsible section helper ──────────────────────────────
+
+function setupCollapsible(toggleId, containerId, onExpand) {
+  const btn = $(`#${toggleId}`);
+  const container = $(`#${containerId}`);
+  if (!btn || !container) return;
+
+  btn.addEventListener('click', () => {
+    const isHidden = container.classList.contains('hidden');
+    container.classList.toggle('hidden');
+    const icon = btn.querySelector('i');
+    if (icon) {
+      icon.classList.toggle('fa-chevron-down', !isHidden);
+      icon.classList.toggle('fa-chevron-up', isHidden);
+    }
+    if (isHidden && onExpand) onExpand();
+  });
 }
 
 // ─── Case duplication ───────────────────────────────────────

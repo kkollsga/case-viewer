@@ -18,217 +18,198 @@
 </head>
 <body class="bg-gray-50 min-h-screen">
 
-    <!-- ===== CASE BROWSER (opening screen) ===== -->
-    <div id="case-browser" class="container mx-auto px-6 py-8 max-w-6xl">
-        <!-- CaseBrowser.js renders everything here -->
+    <div class="container mx-auto px-6 max-w-6xl">
+
+    <!-- ===== CASE BROWSER (always visible) ===== -->
+    <div id="case-browser" class="py-8">
+        <!-- CaseBrowser.js renders field tabs, scenario pills, case cards OR minimized bar here -->
     </div>
 
-    <!-- ===== DATA VIEW (shown when a case is selected) ===== -->
-    <div id="data-view" class="hidden">
+    <!-- ===== DATA VIEW (shown below browser when a case is active) ===== -->
+    <div id="data-view" class="hidden pb-8">
 
-        <!-- Minimal header bar -->
-        <div class="sticky top-0 z-30 bg-white/80 backdrop-blur-sm border-b border-gray-200/50">
-            <div class="container mx-auto px-6 py-3 max-w-6xl flex items-center justify-between">
-                <!-- Left: Back button + breadcrumb -->
-                <div class="flex items-center gap-3">
-                    <button id="back-to-browser" class="text-gray-400 hover:text-gray-700 transition-colors">
-                        <i class="fas fa-arrow-left"></i>
-                    </button>
-                    <div class="text-sm text-gray-500">
-                        <span id="breadcrumb-field" class="hover:text-indigo-600 cursor-pointer"></span>
-                        <span class="mx-1 text-gray-300">/</span>
-                        <span id="breadcrumb-scenario" class="hover:text-indigo-600 cursor-pointer"></span>
-                        <span class="mx-1 text-gray-300">/</span>
-                        <span id="breadcrumb-case" class="font-medium text-gray-800"></span>
-                    </div>
+        <!-- Case bar: navigation + compare (rendered inline, not sticky) -->
+        <div class="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
+            <div class="flex items-center gap-2">
+                <button id="prev-case-btn" class="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all">
+                    <i class="fas fa-chevron-left text-xs"></i>
+                </button>
+                <span id="case-title" class="text-sm font-semibold text-gray-800"></span>
+                <button id="next-case-btn" class="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all">
+                    <i class="fas fa-chevron-right text-xs"></i>
+                </button>
+            </div>
+
+            <!-- Metadata -->
+            <div id="case-metadata-container" class="flex items-center gap-4 text-xs text-gray-400">
+                <div id="case-author-timestamp" class="flex items-center gap-3 cursor-pointer hover:text-gray-600 transition-colors">
+                    <span class="flex items-center gap-1"><i class="fas fa-user text-[10px]"></i><span class="author-name">—</span></span>
+                    <span class="flex items-center gap-1"><i class="fas fa-calendar-alt text-[10px]"></i><span class="timestamp-value">—</span></span>
                 </div>
+                <div id="case-description" class="text-gray-400 italic truncate max-w-xs"></div>
+            </div>
 
-                <!-- Center: Case navigation -->
-                <div class="flex items-center gap-2">
-                    <button id="prev-case-btn" class="text-gray-400 hover:text-gray-700 p-1 transition-colors">
-                        <i class="fas fa-chevron-left text-xs"></i>
-                    </button>
-                    <span id="case-title" class="text-sm font-medium text-gray-700"></span>
-                    <button id="next-case-btn" class="text-gray-400 hover:text-gray-700 p-1 transition-colors">
-                        <i class="fas fa-chevron-right text-xs"></i>
-                    </button>
+            <!-- Compare -->
+            <div id="compare-selector-container" class="flex items-center gap-2">
+                <label class="text-xs text-gray-400">Compare</label>
+                <select id="compare-case-selector" class="text-xs border-0 bg-gray-100 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500">
+                    <option value="">None</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Hidden breadcrumbs for compatibility -->
+        <span id="breadcrumb-field" class="hidden"></span>
+        <span id="breadcrumb-scenario" class="hidden"></span>
+        <span id="breadcrumb-case" class="hidden"></span>
+
+        <!-- ── VOLUMETRICS (auto-opens on case select) ── -->
+        <button id="toggle-volumetrics" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
+            <span class="mr-1.5">Volumetrics</span>
+            <i class="fas fa-chevron-up text-[10px]"></i>
+        </button>
+        <div id="volumetrics-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+            <div class="flex justify-end items-center gap-3 mb-3">
+                <label class="inline-flex items-center cursor-pointer text-xs text-gray-500 hover:text-gray-700">
+                    <input type="checkbox" id="hide-empty-toggle" class="sr-only peer">
+                    <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                    <span class="ml-1.5">Hide empty</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer text-xs text-gray-500 hover:text-gray-700">
+                    <input type="checkbox" id="show-parameters-toggle" class="sr-only peer">
+                    <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                    <span class="ml-1.5">Parameters</span>
+                </label>
+            </div>
+            <div class="overflow-x-auto">
+                <div class="pivot-table-container">
+                    <table id="pivot-table" class="min-w-full divide-y divide-gray-200 table-auto">
+                        <thead class="bg-gray-50/50" id="pivot-headers"></thead>
+                        <tbody class="divide-y divide-gray-100" id="pivot-body"></tbody>
+                    </table>
                 </div>
-
-                <!-- Right: Compare selector -->
-                <div class="flex items-center gap-3">
-                    <div id="compare-selector-container" class="flex items-center gap-2">
-                        <label class="text-xs text-gray-400">Compare</label>
-                        <select id="compare-case-selector" class="text-xs border-0 bg-gray-100 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500">
-                            <option value="">None</option>
-                        </select>
-                    </div>
+                <div style="display:flex;justify-content:flex-end">
+                    <div id="pivot-legend" class="pivot-legend"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Main content area -->
-        <div class="container mx-auto px-6 py-6 max-w-6xl">
-
-            <!-- Case metadata -->
-            <div id="case-metadata-container" class="mb-6 flex items-center gap-6 text-sm text-gray-500">
-                <div id="case-author-timestamp" class="flex items-center gap-4 cursor-pointer hover:text-gray-700 transition-colors">
-                    <span class="flex items-center gap-1.5">
-                        <i class="fas fa-user text-xs text-gray-400"></i>
-                        <span class="author-name">&mdash;</span>
-                    </span>
-                    <span class="flex items-center gap-1.5">
-                        <i class="fas fa-calendar-alt text-xs text-gray-400"></i>
-                        <span class="timestamp-value">&mdash;</span>
-                    </span>
-                </div>
-                <div id="case-description" class="text-gray-400 italic truncate"></div>
-            </div>
-
-            <!-- Pivot table section -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-base font-semibold text-gray-800">Volumetrics</h2>
-                    <div class="flex items-center gap-3">
-                        <label class="inline-flex items-center cursor-pointer text-xs text-gray-500 hover:text-gray-700">
-                            <input type="checkbox" id="hide-empty-toggle" class="sr-only peer">
-                            <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
-                            <span class="ml-1.5">Hide empty</span>
-                        </label>
-                        <label class="inline-flex items-center cursor-pointer text-xs text-gray-500 hover:text-gray-700">
-                            <input type="checkbox" id="show-parameters-toggle" class="sr-only peer">
-                            <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
-                            <span class="ml-1.5">Parameters</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="overflow-x-auto">
-                    <div class="pivot-table-container">
-                        <table id="pivot-table" class="min-w-full divide-y divide-gray-200 table-auto">
-                            <thead class="bg-gray-50/50" id="pivot-headers"></thead>
-                            <tbody class="divide-y divide-gray-100" id="pivot-body"></tbody>
-                        </table>
-                    </div>
-                    <div style="display:flex;justify-content:flex-end">
-                        <div id="pivot-legend" class="pivot-legend"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Driver chart (hidden until compare active) -->
-            <div id="driver-chart-section" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
-                <div class="flex justify-between items-center mb-3">
-                    <h2 class="text-base font-semibold text-gray-800">Driver Analysis</h2>
-                    <span class="text-xs text-gray-400">Informal tornado</span>
-                </div>
+        <!-- ── DRIVER ANALYSIS (appears when comparing) ── -->
+        <div id="driver-chart-section" class="hidden">
+            <button id="toggle-drivers" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
+                <span class="mr-1.5">Driver Analysis</span>
+                <i class="fas fa-chevron-up text-[10px]"></i>
+            </button>
+            <div id="driver-chart-outer" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
                 <div id="driver-chart-container"></div>
             </div>
+        </div>
 
-            <!-- Ball chart section -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-                <div class="circle-diagram-container">
-                    <div class="circle-diagram-header">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <h2 id="ball-chart-title" class="text-base font-semibold text-gray-800">Ball Chart</h2>
-                                <p id="ball-chart-subtitle" class="text-xs text-gray-400"></p>
+        <!-- ── BALL CHART (collapsible) ── -->
+        <button id="toggle-ball-chart" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
+            <span class="mr-1.5">Ball Chart</span>
+            <i class="fas fa-chevron-down text-[10px]"></i>
+        </button>
+        <div id="ball-chart-outer" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
+            <div class="circle-diagram-container">
+                <div class="circle-diagram-header">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h2 id="ball-chart-title" class="text-sm font-semibold text-gray-700"></h2>
+                            <p id="ball-chart-subtitle" class="text-xs text-gray-400"></p>
+                        </div>
+                        <div class="bg-white/90 backdrop-blur-sm border border-gray-200/50 rounded-lg p-3 shadow-sm space-y-2 min-w-[180px]" style="pointer-events:auto">
+                            <div class="text-xs text-gray-400 text-right uppercase tracking-wider cursor-pointer flex items-center justify-end" id="settings-header">
+                                <span>Metric</span>
+                                <i class="fas fa-chevron-down ml-1 text-[8px] transition-transform duration-200" id="settings-arrow"></i>
                             </div>
-                            <!-- Metric + settings: compact, right-aligned -->
-                            <div class="bg-white/90 backdrop-blur-sm border border-gray-200/50 rounded-lg p-3 shadow-sm space-y-2 min-w-[180px]" style="pointer-events:auto">
-                                <div class="text-xs text-gray-400 text-right uppercase tracking-wider cursor-pointer flex items-center justify-end" id="settings-header">
-                                    <span>Metric</span>
-                                    <i class="fas fa-chevron-down ml-1 text-[8px] transition-transform duration-200" id="settings-arrow"></i>
-                                </div>
-                                <select id="metric-selector" class="block w-full text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 focus:ring-1 focus:ring-indigo-500 focus:border-transparent">
-                                    <option value="bulkVolume">Bulk volume</option>
-                                    <option value="netVolume">Net volume</option>
-                                    <option value="poreVolume">Pore volume</option>
-                                    <option value="hcpvOil">HCPV oil</option>
-                                    <option value="hcpvGas">HCPV gas</option>
-                                    <option value="stoiip" selected>STOIIP</option>
-                                    <option value="giip">GIIP</option>
-                                </select>
-                                <div id="current-unit" class="text-xs text-gray-500 px-1"></div>
-
-                                <div id="extended-settings" class="space-y-2 hidden">
-                                    <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
-                                        <input type="checkbox" id="show-values-toggle" class="sr-only peer">
-                                        <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
-                                        <span class="ml-1.5">Values</span>
-                                    </label>
-                                    <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
-                                        <input type="checkbox" id="enable-zoom-toggle" class="sr-only peer">
-                                        <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
-                                        <span class="ml-1.5">Zoom</span>
-                                    </label>
-                                    <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
-                                        <input type="checkbox" id="show-legend-toggle" class="sr-only peer">
-                                        <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
-                                        <span class="ml-1.5">Legend</span>
-                                    </label>
-                                    <div>
-                                        <label class="text-xs text-gray-500">Depth</label>
-                                        <div class="flex items-center gap-2">
-                                            <input type="range" id="max-depth-slider" min="1" max="5" value="5" class="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                                            <span id="max-depth-value" class="text-xs text-gray-500 w-4 text-center">5</span>
-                                        </div>
+                            <select id="metric-selector" class="block w-full text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 focus:ring-1 focus:ring-indigo-500 focus:border-transparent">
+                                <option value="Bulk volume">Bulk volume</option>
+                                <option value="Net volume">Net volume</option>
+                                <option value="Pore volume">Pore volume</option>
+                                <option value="HCPV oil">HCPV oil</option>
+                                <option value="HCPV gas">HCPV gas</option>
+                                <option value="STOIIP" selected>STOIIP</option>
+                                <option value="GIIP">GIIP</option>
+                            </select>
+                            <div id="current-unit" class="text-xs text-gray-500 px-1"></div>
+                            <div id="extended-settings" class="space-y-2 hidden">
+                                <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
+                                    <input type="checkbox" id="show-values-toggle" class="sr-only peer">
+                                    <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                                    <span class="ml-1.5">Values</span>
+                                </label>
+                                <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
+                                    <input type="checkbox" id="enable-zoom-toggle" class="sr-only peer">
+                                    <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                                    <span class="ml-1.5">Zoom</span>
+                                </label>
+                                <label class="inline-flex items-center cursor-pointer text-xs text-gray-500">
+                                    <input type="checkbox" id="show-legend-toggle" class="sr-only peer">
+                                    <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
+                                    <span class="ml-1.5">Legend</span>
+                                </label>
+                                <div>
+                                    <label class="text-xs text-gray-500">Depth</label>
+                                    <div class="flex items-center gap-2">
+                                        <input type="range" id="max-depth-slider" min="1" max="5" value="5" class="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                        <span id="max-depth-value" class="text-xs text-gray-500 w-4 text-center">5</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Main diagram container -->
-                    <div id="circle-diagram" class="w-full h-full">
-                        <!-- Legend panel -->
-                        <div class="circle-legend" id="circle-legend">
-                            <div class="text-xs text-gray-400 mb-1.5 text-right uppercase tracking-wider legend-title-text">Legend</div>
-                            <div class="mb-3 pb-3 border-b border-gray-100 flex items-center gap-2">
-                                <div class="text-xs text-gray-500 min-w-fit" id="legend-layer-label">Layer 1</div>
-                                <div class="slider-container flex-1">
-                                    <input type="range" class="layer-slider w-full" id="legend-layer-slider" min="1" max="5" value="1" step="1">
-                                </div>
-                                <div class="text-xs text-gray-400 min-w-fit">5</div>
+                </div>
+                <div id="circle-diagram" class="w-full h-full">
+                    <div class="circle-legend" id="circle-legend">
+                        <div class="text-xs text-gray-400 mb-1.5 text-right uppercase tracking-wider legend-title-text">Legend</div>
+                        <div class="mb-3 pb-3 border-b border-gray-100 flex items-center gap-2">
+                            <div class="text-xs text-gray-500 min-w-fit" id="legend-layer-label">Layer 1</div>
+                            <div class="slider-container flex-1">
+                                <input type="range" class="layer-slider w-full" id="legend-layer-slider" min="1" max="5" value="1" step="1">
                             </div>
-                            <div class="legend-items" id="legend-items"></div>
+                            <div class="text-xs text-gray-400 min-w-fit">5</div>
                         </div>
+                        <div class="legend-items" id="legend-items"></div>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- Cross-plot (collapsible) -->
-            <button id="toggle-cross-plot" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
-                <span class="mr-1.5">Cross Plot</span>
-                <i class="fas fa-chevron-down text-[10px]"></i>
+        <!-- ── CROSS PLOT (collapsible) ── -->
+        <button id="toggle-cross-plot" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
+            <span class="mr-1.5">Cross Plot</span>
+            <i class="fas fa-chevron-down text-[10px]"></i>
+        </button>
+        <div id="cross-plot-outer-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
+            <div class="flex justify-end mb-3">
+                <select id="cross-plot-grouping" class="text-xs bg-gray-50 border border-gray-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500"></select>
+            </div>
+            <div id="cross-plot" class="w-full h-[500px] relative"></div>
+        </div>
+
+        <!-- ── REVISION TIMELINE (collapsible) ── -->
+        <button id="toggle-timeline" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
+            <span class="mr-1.5">Revision Timeline</span>
+            <i class="fas fa-chevron-down text-[10px]"></i>
+        </button>
+        <div id="timeline-outer-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
+            <div id="timeline-container"></div>
+        </div>
+
+        <!-- Export/Import -->
+        <div class="flex items-center gap-4 mb-8 opacity-40 hover:opacity-100 transition-opacity">
+            <button id="export-json-btn" class="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                <i class="fas fa-download text-[10px]"></i> Export
             </button>
-            <div id="cross-plot-outer-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
-                <div class="flex justify-end mb-3">
-                    <select id="cross-plot-grouping" class="text-xs bg-gray-50 border border-gray-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500"></select>
-                </div>
-                <div id="cross-plot" class="w-full h-[500px] relative"></div>
-            </div>
-
-            <!-- Timeline (collapsible) -->
-            <button id="toggle-timeline" class="text-xs text-gray-400 hover:text-indigo-600 uppercase tracking-wider flex items-center mb-3 transition-colors">
-                <span class="mr-1.5">Revision Timeline</span>
-                <i class="fas fa-chevron-down text-[10px]"></i>
+            <button id="import-json-btn" class="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                <i class="fas fa-upload text-[10px]"></i> Import
             </button>
-            <div id="timeline-outer-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
-                <div id="timeline-container"></div>
-            </div>
-
-            <!-- Export/Import (subtle, bottom) -->
-            <div class="flex items-center gap-4 mb-8 opacity-50 hover:opacity-100 transition-opacity">
-                <button id="export-json-btn" class="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
-                    <i class="fas fa-download text-[10px]"></i> Export
-                </button>
-                <button id="import-json-btn" class="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
-                    <i class="fas fa-upload text-[10px]"></i> Import
-                </button>
-                <input id="import-json-input" type="file" accept=".json" class="hidden">
-            </div>
+            <input id="import-json-input" type="file" accept=".json" class="hidden">
         </div>
     </div>
+
+    </div><!-- end container -->
 
     <!-- ===== MODALS ===== -->
     <div id="modal-overlay" class="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center hidden z-50">

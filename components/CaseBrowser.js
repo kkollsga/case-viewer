@@ -3,7 +3,7 @@
 // Inline import flow with paste area + QC checks (no modal).
 
 import {
-  getActiveField, getActiveScenario, getSelectedCases, getScenariosForField,
+  getActiveField, getActiveScenario, getActiveCase, getSelectedCases, getScenariosForField,
   setActiveField, setActiveScenario, setActiveCase, setSelectedCases,
   toggleCaseSelection, openBrowser, addScenario, addField, getFields, getState,
   renameField, deleteField, renameScenario, deleteScenario,
@@ -51,17 +51,19 @@ export function render() {
 
   const field = getActiveField();
   const scenario = getActiveScenario();
+  const activeCase = getActiveCase();
   const selected = getSelectedCases();
 
-  // Root wrapper
-  const root = el('div', {
-    class: 'min-h-screen bg-gray-50/80',
-  });
+  // ── MINIMIZED MODE: case is active → compact bar ──
+  if (field && scenario && activeCase) {
+    containerEl.appendChild(renderMinimizedBar(field, scenario, activeCase));
+    return;
+  }
 
-  // Inner content with max width and padding
-  const inner = el('div', {
-    class: 'max-w-6xl mx-auto px-6 py-10',
-  });
+  // ── FULL BROWSER MODE ──
+  const root = el('div', {});
+
+  const inner = el('div', {});
 
   // Legacy data banner
   if (hasLegacyData()) {
@@ -190,6 +192,35 @@ export function setupEvents() {
   on(EVENTS.CASE_DELETED, () => render());
   on(EVENTS.BROWSER_OPENED, () => render());
   on(EVENTS.STATE_LOADED, () => render());
+}
+
+// ─── Minimized Bar (case active) ─────────────────────────────
+
+function renderMinimizedBar(field, scenario, activeCase) {
+  const bar = el('div', {
+    class: 'flex items-center gap-3 py-2',
+  });
+
+  // Field → Scenario (clickable to go back to browser)
+  const breadcrumb = el('div', {
+    class: 'flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer hover:text-indigo-500 transition-colors',
+    onClick: () => openBrowser(),
+  });
+  breadcrumb.appendChild(el('span', { textContent: field }));
+  breadcrumb.appendChild(el('span', { textContent: '→', class: 'text-gray-300' }));
+  breadcrumb.appendChild(el('span', { textContent: scenario }));
+  bar.appendChild(breadcrumb);
+
+  // Separator
+  bar.appendChild(el('span', { class: 'text-gray-200', textContent: '|' }));
+
+  // Active case name (bold)
+  bar.appendChild(el('span', {
+    class: 'text-sm font-semibold text-gray-800',
+    textContent: activeCase,
+  }));
+
+  return bar;
 }
 
 // ─── Legacy Banner ───────────────────────────────────────────
@@ -1201,32 +1232,8 @@ function renderCaseCard(caseName, caseData, isSelected) {
   checkbox.classList.add('absolute', 'bottom-4', 'right-4');
   card.appendChild(checkbox);
 
-  // Click -> toggle selection
-  card.addEventListener('click', (e) => {
-    if (e.detail === 1) {
-      const now = Date.now();
-      const last = lastClickTime[caseName] || 0;
-      lastClickTime[caseName] = now;
-
-      if (now - last < 350) {
-        setSelectedCases([caseName]);
-        setActiveCase(caseName);
-        saveAppState();
-        return;
-      }
-
-      setTimeout(() => {
-        if (lastClickTime[caseName] !== now) return;
-        toggleCaseSelection(caseName);
-        saveAppState();
-      }, 250);
-    }
-  });
-
-  // Prevent text selection on double-click
-  card.addEventListener('dblclick', (e) => {
-    e.preventDefault();
-    setSelectedCases([caseName]);
+  // Click → activate case (opens data view)
+  card.addEventListener('click', () => {
     setActiveCase(caseName);
     saveAppState();
   });
