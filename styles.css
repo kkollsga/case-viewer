@@ -335,18 +335,6 @@
   font-weight: 600;
 }
 
-.sortable-ghost {
-  opacity: 1 !important;
-  background-color: #3b82f6 !important;
-  height: 2px !important;
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  overflow: hidden;
-}
-.sortable-ghost > * { display: none !important; }
 
 #add-case-btn {
   position: sticky;

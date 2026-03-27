@@ -88,11 +88,31 @@ export function render() {
   w.appendChild(secs);
   containerEl.appendChild(w);
 
-  // Group-level reorder via Sortable
-  setTimeout(()=>{if(typeof Sortable==='undefined')return;
-    Sortable.create(secs,{animation:150,handle:'.gs-handle',ghostClass:'opacity-30',
-      onEnd:()=>{currentMappings.__groupOrder=Array.from(secs.children).map(s=>s.dataset.column);persist(field);}});
-  },50);
+  // Group-level reorder via native drag on handles
+  for (const sec of secs.children) {
+    const handle = sec.querySelector('.gs-handle');
+    if (!handle) continue;
+    handle.setAttribute('draggable', 'true');
+    handle.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', sec.dataset.column);
+      e.dataTransfer.effectAllowed = 'move';
+      sec.style.opacity = '0.3';
+    });
+    handle.addEventListener('dragend', () => { sec.style.opacity = ''; });
+    sec.addEventListener('dragover', (e) => { e.preventDefault(); sec.style.borderTop = '2px solid #4338ca'; });
+    sec.addEventListener('dragleave', () => { sec.style.borderTop = ''; });
+    sec.addEventListener('drop', (e) => {
+      e.preventDefault(); sec.style.borderTop = '';
+      const from = e.dataTransfer.getData('text/plain');
+      const to = sec.dataset.column;
+      if (from === to) return;
+      const arr = currentMappings.__groupOrder || Object.keys(allUniqueValues);
+      const fi = arr.indexOf(from), ti = arr.indexOf(to);
+      if (fi !== -1) { arr.splice(fi, 1); arr.splice(ti, 0, from); }
+      currentMappings.__groupOrder = arr;
+      persist(field); render();
+    });
+  }
 }
 
 // ─── Section ────────────────────────────────────────────────
@@ -244,7 +264,7 @@ function renderPill(field, column, value) {
 function renderStack(field, column, stack, index) {
   const color = stack.color||dc(index), tc = cc(color);
   const outer = el('div',{class:'relative group/s',dataset:{gs:'stack',stackName:stack.name},draggable:'true'});
-  const row = el('div',{class:'inline-flex items-center gap-1 rounded-full pl-3 pr-1.5 py-0.5',style:{backgroundColor:color}});
+  const row = el('div',{class:'inline-flex items-center gap-1.5 rounded-full pl-3 pr-2 py-1',style:{backgroundColor:color}});
 
   // Color picker
   const cp=el('input',{type:'color',class:'absolute w-0 h-0 opacity-0',value:color});
@@ -272,7 +292,7 @@ function renderStack(field, column, stack, index) {
   // Inner pills (draggable individually)
   const pz=el('div',{class:'gs-inner inline-flex flex-wrap gap-1 items-center',dataset:{stackName:stack.name,column}});
   for(const v of stack.values){
-    const ip = el('span',{class:'inline-flex items-center px-2 py-0.5 text-[11px] rounded-full bg-white/90 text-gray-700 whitespace-nowrap cursor-grab select-none hover:bg-white transition-colors',textContent:v,dataset:{value:v},draggable:'true'});
+    const ip = el('span',{class:'inline-flex items-center px-2.5 py-0.5 text-xs rounded-full bg-white/80 text-gray-700 whitespace-nowrap cursor-grab select-none hover:bg-white transition-colors border border-white/50',textContent:v,dataset:{value:v},draggable:'true'});
     ip.addEventListener('dragstart',(e)=>{
       e.stopPropagation(); // Don't drag the whole stack
       dragData = { column, value: v, element: ip, fromStack: stack.name };
