@@ -9,7 +9,7 @@ import { getState, getActiveField, getActiveCase, getActiveScenario,
 import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames, getCasesForField,
          loadFieldSettings, saveFieldSettings, loadCrossPlotSettings,
          saveCase, addCaseToOrder, saveCaseOrder, saveFields,
-         hasLegacyData, clearLegacyData } from './core/storage.js';
+         hasLegacyData, clearLegacyData, applyGroupMappings } from './core/storage.js';
 import { on, emit, EVENTS } from './core/events.js';
 import { formatDateTime, formatCompact } from './utils/format.js';
 import { $ } from './utils/dom.js';
@@ -117,11 +117,12 @@ function loadCaseData() {
   const caseData = getCaseData(field, caseName, scenario);
   if (!caseData) { clearVolumetricData(); return; }
 
-  // Apply value conversions
+  // Apply value conversions then field-level group mappings
   let data = caseData.data;
   if (caseData.valueConversions) {
     data = applyConversions(data, caseData.valueConversions);
   }
+  data = applyGroupMappings(data, field);
 
   setVolumetricData({ ...caseData, data });
 

@@ -244,6 +244,80 @@ export function loadLegendLayer(field) {
   return val ? parseInt(val, 10) : 1;
 }
 
+// ─── Field group mappings (standardization) ─────────────────
+
+export function saveGroupMappings(field, mappings) {
+  writeJSON(`cv3_groupMappings_${field}`, mappings);
+}
+
+export function loadGroupMappings(field) {
+  return readJSON(`cv3_groupMappings_${field}`, {});
+}
+
+/**
+ * Apply field-level group mappings to a data array.
+ * Maps original group values to standardized stack names.
+ */
+export function applyGroupMappings(data, field) {
+  const mappings = loadGroupMappings(field);
+  if (!mappings || Object.keys(mappings).length === 0) return data;
+
+  // Build reverse lookup: { columnName: { originalValue: stackName } }
+  const lookup = {};
+  for (const [column, stacks] of Object.entries(mappings)) {
+    lookup[column] = {};
+    for (const stack of stacks) {
+      for (const val of stack.values) {
+        lookup[column][val] = stack.name;
+      }
+    }
+  }
+
+  // Apply to data (clone to avoid mutating original)
+  const mapped = data.map(row => {
+    const newRow = { ...row };
+    for (const [column, map] of Object.entries(lookup)) {
+      if (newRow[column] !== undefined && map[newRow[column]] !== undefined) {
+        newRow[column] = map[newRow[column]];
+      }
+    }
+    return newRow;
+  });
+
+  return mapped;
+}
+
+/**
+ * Scan all cases in a field (across all scenarios) for unique group values per column.
+ */
+export function collectUniqueGroupValues(field) {
+  const state = getState();
+  const scenarios = state.scenarios[field] || [];
+  const result = {}; // { columnName: Set<value> }
+
+  for (const sc of scenarios) {
+    const cases = getCasesForScenario(field, sc);
+    for (const caseData of Object.values(cases)) {
+      if (!caseData?.data || !caseData.volumeGroups?.columns) continue;
+      for (const col of caseData.volumeGroups.columns) {
+        if (!result[col]) result[col] = new Set();
+        for (const row of caseData.data) {
+          if (row[col] !== undefined && row[col] !== '') {
+            result[col].add(String(row[col]));
+          }
+        }
+      }
+    }
+  }
+
+  // Convert Sets to sorted arrays
+  const out = {};
+  for (const [col, vals] of Object.entries(result)) {
+    out[col] = [...vals].sort();
+  }
+  return out;
+}
+
 // ─── Default author ─────────────────────────────────────────
 
 export function saveDefaultAuthor(author) {

@@ -15,6 +15,7 @@ import {
   deleteFieldData, renameFieldData, deleteScenarioData, renameScenarioData,
 } from '../core/storage.js';
 import { parseOutputSheet, FORMAT } from '../core/parser.js';
+import * as FieldSettings from './FieldSettings.js';
 import { on, emit, EVENTS } from '../core/events.js';
 import { formatNumber, formatDateShort, formatDateTime } from '../utils/format.js';
 import { PALETTES } from '../utils/color.js';
@@ -81,6 +82,15 @@ export function render() {
 
   // Field tabs
   inner.appendChild(renderFieldTabs(field));
+
+  // Field settings panel (group standardization — toggled by clicking active field)
+  if (field) {
+    const settingsPanel = el('div', { class: 'mt-3', id: 'field-settings-panel' });
+    inner.appendChild(settingsPanel);
+    if (FieldSettings.isVisible()) {
+      FieldSettings.toggle(settingsPanel);
+    }
+  }
 
   // Scenario pills (only if field is selected)
   if (field) {
@@ -286,7 +296,17 @@ function renderFieldTabs(activeField) {
       name: field,
       isActive,
       size: 'lg',
-      onSelect: () => { setActiveField(field); saveAppState(); },
+      onSelect: () => {
+        if (isActive) {
+          // Clicking active field toggles settings panel
+          const panel = document.getElementById('field-settings-panel');
+          if (panel) FieldSettings.toggle(panel);
+        } else {
+          FieldSettings.hide();
+          setActiveField(field);
+          saveAppState();
+        }
+      },
       onRename: (newName) => {
         if (renameField(field, newName)) {
           renameFieldData(field, newName);
