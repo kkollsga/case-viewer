@@ -1,209 +1,190 @@
-// core/state.js — Central application state
-// Single source of truth. Hierarchy: Field → Scenario → Case.
+// core/state.js — Central application state.
+// Delegates to core/store.js internally. Keeps the old API for backward compatibility.
+// Bridge: subscribes to store slices and emits old events during migration.
 
+import { createStore } from './store.js';
+import { reducers } from './reducers.js';
 import { emit, EVENTS } from './events.js';
+
+// ─── Store setup ────────────────────────────────────────────
 
 const SCHEMA_VERSION = 3;
 
-function createDefaultState() {
-  return {
-    schema: SCHEMA_VERSION,
-    fields: [],
-    activeField: null,
-    activeScenario: null,
-    activeCase: null,        // primary case for viewing
-    selectedCases: [],       // multi-select for comparison
-    defaultAuthor: '',
+const initialState = {
+  schema: SCHEMA_VERSION,
+  fields: [],
+  scenarios: {},
+  activeField: null,
+  activeScenario: null,
+  activeCase: null,
+  selectedCases: [],
+  defaultAuthor: '',
 
-    // Per-field scenarios: { fieldName: ['Default', 'High Case', ...] }
-    scenarios: {},
+  ui: {
+    metric: 'STOIIP',
+    showParameters: false,
+    hideEmpty: true,
+    view: 'pivot',
+    compareCase: null,
+    deltaMode: false,
+    showBrowser: true,
+    crossPlotX: 'bulkVolume',
+    crossPlotY: 'stoiip',
+    crossPlotGroupLevel: 1,
+  },
 
-    ui: {
-      metric: 'STOIIP',
-      showParameters: false,
-      hideEmpty: true,
-      view: 'pivot',
-      compareCase: null,
-      deltaMode: false,
-      showBrowser: true,     // show case browser on load
-      crossPlotX: 'bulkVolume',
-      crossPlotY: 'stoiip',
-      crossPlotGroupLevel: 1,
-    },
-  };
-}
-
-const state = createDefaultState();
-
-// In-memory runtime state (not persisted)
-const runtime = {
-  volumetricData: null,
-  columns: [],
-  availableCases: [],
-  expandedZones: {},
-  crossPlotVisibility: { groups: {}, cases: {} },
+  // Runtime (not persisted)
+  data: {
+    volumetric: null,
+    columns: [],
+    availableCases: [],
+    expandedZones: {},
+  },
 };
 
-// ─── Accessors ──────────────────────────────────────────────
+export const store = createStore(initialState, reducers, {
+  persistKey: 'caseviewer_app',
+  persistDebounceMs: 300,
+  persistFilter: (state) => ({
+    _v: 1,
+    schema: state.schema,
+    fields: state.fields,
+    scenarios: state.scenarios,
+    activeField: state.activeField,
+    activeScenario: state.activeScenario,
+    defaultAuthor: state.defaultAuthor,
+    ui: state.ui,
+  }),
+});
 
-export function getState() { return state; }
-export function getRuntime() { return runtime; }
-export function getActiveField() { return state.activeField; }
-export function getActiveScenario() { return state.activeScenario; }
-export function getActiveCase() { return state.activeCase; }
-export function getSelectedCases() { return state.selectedCases; }
-export function getUI() { return state.ui; }
-export function getFields() { return state.fields; }
+// ─── Bridge: emit old events when store changes ─────────────
+// Components still using on(EVENTS.*) will continue to work.
+
+let bridgeActive = true;
+
+store.subscribe('activeField', (val) => { if (bridgeActive) emit(EVENTS.FIELD_CHANGED, { field: val }); });
+store.subscribe('activeScenario', (val) => { if (bridgeActive) emit(EVENTS.SCENARIO_CHANGED, { scenario: val }); });
+store.subscribe('activeCase', (val) => {
+  if (!bridgeActive) return;
+  if (val) emit(EVENTS.CASE_SELECTED, { caseName: val });
+  else emit(EVENTS.BROWSER_OPENED);
+});
+store.subscribe('selectedCases', () => { if (bridgeActive) emit(EVENTS.SELECTION_CHANGED, { selectedCases: store.getState().selectedCases }); });
+store.subscribe(s => s.data.volumetric, (val) => {
+  if (!bridgeActive) return;
+  if (val) emit(EVENTS.DATA_LOADED, { data: val });
+  else emit(EVENTS.DATA_CLEARED);
+});
+store.subscribe('ui.metric', () => { if (bridgeActive) emit(EVENTS.METRIC_CHANGED, { metric: store.select('ui.metric') }); });
+store.subscribe('ui.view', () => { if (bridgeActive) emit(EVENTS.VIEW_CHANGED, { view: store.select('ui.view') }); });
+store.subscribe('ui.compareCase', () => { if (bridgeActive) emit(EVENTS.COMPARE_CHANGED, { caseName: store.select('ui.compareCase') }); });
+store.subscribe('ui.showParameters', () => { if (bridgeActive) emit(EVENTS.TOGGLE_PARAMETERS, { showParameters: store.select('ui.showParameters') }); });
+store.subscribe('ui.hideEmpty', () => { if (bridgeActive) emit(EVENTS.TOGGLE_HIDE_EMPTY, { hideEmpty: store.select('ui.hideEmpty') }); });
+store.subscribe('ui.deltaMode', () => { if (bridgeActive) emit(EVENTS.TOGGLE_DELTA, { deltaMode: store.select('ui.deltaMode') }); });
+
+// ─── Accessors (read from store) ────────────────────────────
+
+export function getState() { return store.getState(); }
+export function getRuntime() { return store.getState().data; }
+export function getActiveField() { return store.select('activeField'); }
+export function getActiveScenario() { return store.select('activeScenario'); }
+export function getActiveCase() { return store.select('activeCase'); }
+export function getSelectedCases() { return store.select('selectedCases'); }
+export function getUI() { return store.select('ui'); }
+export function getFields() { return store.select('fields'); }
 
 export function getScenariosForField(fieldName) {
-  const f = fieldName || state.activeField;
-  return state.scenarios[f] || [];
+  const f = fieldName || store.select('activeField');
+  return store.getState().scenarios[f] || [];
 }
 
-// ─── Mutators ───────────────────────────────────────────────
+// ─── Mutators (dispatch to store) ───────────────────────────
 
 export function setActiveField(fieldName) {
-  if (state.activeField === fieldName) return;
-  state.activeField = fieldName;
-  state.activeScenario = null;
-  state.activeCase = null;
-  state.selectedCases = [];
-  state.ui.showBrowser = true;
-  emit(EVENTS.FIELD_CHANGED, { field: fieldName });
+  if (store.select('activeField') === fieldName) return;
+  store.dispatch('SET_ACTIVE_FIELD', { field: fieldName });
 }
 
 export function setActiveScenario(scenarioName) {
-  if (state.activeScenario === scenarioName) return;
-  state.activeScenario = scenarioName;
-  state.activeCase = null;
-  state.selectedCases = [];
-  state.ui.showBrowser = true;
-  emit(EVENTS.SCENARIO_CHANGED, { scenario: scenarioName });
+  if (store.select('activeScenario') === scenarioName) return;
+  store.dispatch('SET_ACTIVE_SCENARIO', { scenario: scenarioName });
 }
 
 export function setActiveCase(caseName) {
-  state.activeCase = caseName;
-  state.ui.showBrowser = false;
-  emit(EVENTS.CASE_SELECTED, { caseName });
+  store.dispatch('SET_ACTIVE_CASE', { caseName });
 }
 
 export function setSelectedCases(caseNames) {
-  state.selectedCases = [...caseNames];
-  emit(EVENTS.SELECTION_CHANGED, { selectedCases: state.selectedCases });
+  store.dispatch('SET_SELECTED_CASES', { caseNames });
 }
 
 export function toggleCaseSelection(caseName) {
-  const idx = state.selectedCases.indexOf(caseName);
-  if (idx === -1) {
-    state.selectedCases.push(caseName);
-  } else {
-    state.selectedCases.splice(idx, 1);
-  }
-  emit(EVENTS.SELECTION_CHANGED, { selectedCases: state.selectedCases });
+  store.dispatch('TOGGLE_CASE_SELECTION', { caseName });
 }
 
 export function openBrowser() {
-  state.ui.showBrowser = true;
-  state.activeCase = null;
-  state.ui.compareCase = null;
-  state.ui.deltaMode = false;
-  emit(EVENTS.BROWSER_OPENED);
+  store.dispatch('OPEN_BROWSER');
 }
 
 export function setMetric(metric) {
-  state.ui.metric = metric;
-  emit(EVENTS.METRIC_CHANGED, { metric });
+  store.dispatch('SET_METRIC', { metric });
 }
 
 export function setView(view) {
-  state.ui.view = view;
-  emit(EVENTS.VIEW_CHANGED, { view });
+  store.dispatch('SET_VIEW', { view });
 }
 
 export function setCompareCase(caseName) {
-  state.ui.compareCase = caseName;
-  state.ui.deltaMode = !!caseName;
-  emit(EVENTS.COMPARE_CHANGED, { caseName });
+  store.dispatch('SET_COMPARE_CASE', { caseName });
 }
 
 export function setShowParameters(val) {
-  state.ui.showParameters = val;
-  emit(EVENTS.TOGGLE_PARAMETERS, { showParameters: val });
+  store.dispatch('SET_SHOW_PARAMETERS', { value: val });
 }
 
 export function setHideEmpty(val) {
-  state.ui.hideEmpty = val;
-  emit(EVENTS.TOGGLE_HIDE_EMPTY, { hideEmpty: val });
+  store.dispatch('SET_HIDE_EMPTY', { value: val });
 }
 
 export function setDefaultAuthor(author) {
-  state.defaultAuthor = author;
+  store.dispatch('SET_DEFAULT_AUTHOR', { author });
 }
 
 export function setCrossPlotAxes(x, y) {
-  if (x !== undefined) state.ui.crossPlotX = x;
-  if (y !== undefined) state.ui.crossPlotY = y;
+  store.dispatch('SET_CROSS_PLOT_AXES', { x, y });
 }
 
 export function setCrossPlotGroupLevel(level) {
-  state.ui.crossPlotGroupLevel = level;
+  store.dispatch('SET_CROSS_PLOT_GROUP_LEVEL', { level });
 }
 
-export function setBaseCase(fieldName, caseName) {
-  // No-op for now, reserved for future use
-}
-
-export function getBaseCase(fieldName) {
-  return null;
-}
+export function setBaseCase() {} // No-op, reserved
+export function getBaseCase() { return null; }
 
 export function toggleDeltaMode() {
-  state.ui.deltaMode = !state.ui.deltaMode;
-  emit(EVENTS.TOGGLE_DELTA, { deltaMode: state.ui.deltaMode });
+  store.dispatch('TOGGLE_DELTA_MODE');
 }
 
 // ─── Field CRUD ─────────────────────────────────────────────
 
 export function addField(name) {
-  if (state.fields.includes(name)) return false;
-  state.fields.push(name);
-  state.scenarios[name] = [];
-  state.activeField = name;
-  state.activeScenario = null;
-  state.activeCase = null;
-  state.selectedCases = [];
-  state.ui.showBrowser = true;
+  if (store.getState().fields.includes(name)) return false;
+  store.dispatch('ADD_FIELD', { name });
   emit(EVENTS.FIELD_CREATED, { field: name });
-  emit(EVENTS.FIELD_CHANGED, { field: name });
   return true;
 }
 
 export function renameField(oldName, newName) {
-  if (oldName === newName || state.fields.includes(newName)) return false;
-  const idx = state.fields.indexOf(oldName);
-  if (idx === -1) return false;
-  state.fields[idx] = newName;
-  // Move scenarios
-  if (state.scenarios[oldName]) {
-    state.scenarios[newName] = state.scenarios[oldName];
-    delete state.scenarios[oldName];
-  }
-  if (state.activeField === oldName) state.activeField = newName;
+  if (oldName === newName || store.getState().fields.includes(newName)) return false;
+  if (!store.getState().fields.includes(oldName)) return false;
+  store.dispatch('RENAME_FIELD', { oldName, newName });
   emit(EVENTS.FIELD_RENAMED, { oldName, newName });
   return true;
 }
 
 export function deleteField(name) {
-  const idx = state.fields.indexOf(name);
-  if (idx === -1) return false;
-  state.fields.splice(idx, 1);
-  delete state.scenarios[name];
-  if (state.activeField === name) {
-    state.activeField = state.fields.length > 0 ? state.fields[0] : null;
-    state.activeScenario = null;
-    state.activeCase = null;
-    state.selectedCases = [];
-  }
+  if (!store.getState().fields.includes(name)) return false;
+  store.dispatch('DELETE_FIELD', { name });
   emit(EVENTS.FIELD_DELETED, { field: name });
   return true;
 }
@@ -211,35 +192,21 @@ export function deleteField(name) {
 // ─── Scenario CRUD ──────────────────────────────────────────
 
 export function addScenario(fieldName, scenarioName) {
-  if (!state.scenarios[fieldName]) state.scenarios[fieldName] = [];
-  if (state.scenarios[fieldName].includes(scenarioName)) return false;
-  state.scenarios[fieldName].push(scenarioName);
+  const existing = store.getState().scenarios[fieldName] || [];
+  if (existing.includes(scenarioName)) return false;
+  store.dispatch('ADD_SCENARIO', { field: fieldName, scenario: scenarioName });
   emit(EVENTS.SCENARIO_CREATED, { field: fieldName, scenario: scenarioName });
   return true;
 }
 
 export function renameScenario(fieldName, oldName, newName) {
-  const scenarios = state.scenarios[fieldName];
-  if (!scenarios) return false;
-  const idx = scenarios.indexOf(oldName);
-  if (idx === -1 || scenarios.includes(newName)) return false;
-  scenarios[idx] = newName;
-  if (state.activeScenario === oldName) state.activeScenario = newName;
+  store.dispatch('RENAME_SCENARIO', { field: fieldName, oldName, newName });
   emit(EVENTS.SCENARIO_RENAMED, { field: fieldName, oldName, newName });
   return true;
 }
 
 export function deleteScenario(fieldName, scenarioName) {
-  const scenarios = state.scenarios[fieldName];
-  if (!scenarios) return false;
-  const idx = scenarios.indexOf(scenarioName);
-  if (idx === -1) return false;
-  scenarios.splice(idx, 1);
-  if (state.activeScenario === scenarioName) {
-    state.activeScenario = scenarios.length > 0 ? scenarios[0] : null;
-    state.activeCase = null;
-    state.selectedCases = [];
-  }
+  store.dispatch('DELETE_SCENARIO', { field: fieldName, scenario: scenarioName });
   emit(EVENTS.SCENARIO_DELETED, { field: fieldName, scenario: scenarioName });
   return true;
 }
@@ -247,59 +214,46 @@ export function deleteScenario(fieldName, scenarioName) {
 // ─── Runtime data ───────────────────────────────────────────
 
 export function setVolumetricData(data) {
-  runtime.volumetricData = data;
-  runtime.columns = (data?.data?.length > 0) ? Object.keys(data.data[0]) : [];
-  emit(EVENTS.DATA_LOADED, { data });
+  store.dispatch('SET_VOLUMETRIC_DATA', { data });
 }
 
 export function clearVolumetricData() {
-  runtime.volumetricData = null;
-  runtime.columns = [];
-  emit(EVENTS.DATA_CLEARED);
+  store.dispatch('CLEAR_VOLUMETRIC_DATA');
 }
 
 export function setAvailableCases(cases) {
-  runtime.availableCases = cases;
+  store.dispatch('SET_AVAILABLE_CASES', { cases });
 }
 
 export function getExpandedZones(caseKey) {
-  if (!runtime.expandedZones[caseKey]) runtime.expandedZones[caseKey] = {};
-  return runtime.expandedZones[caseKey];
+  const ez = store.getState().data.expandedZones;
+  return ez[caseKey] || {};
 }
 
 export function toggleZoneExpanded(caseKey, groupKey) {
-  const zones = getExpandedZones(caseKey);
-  zones[groupKey] = !zones[groupKey];
+  store.dispatch('TOGGLE_ZONE_EXPANDED', { caseKey, groupKey });
 }
 
 // ─── Hydration ──────────────────────────────────────────────
 
 export function hydrateState(saved) {
   if (!saved) return;
-  if (saved.fields) state.fields = saved.fields;
-  if (saved.activeField) state.activeField = saved.activeField;
-  if (saved.activeScenario) state.activeScenario = saved.activeScenario;
-  if (saved.defaultAuthor) state.defaultAuthor = saved.defaultAuthor;
-  if (saved.scenarios) state.scenarios = saved.scenarios;
-  if (saved.ui) Object.assign(state.ui, saved.ui);
-  // Always start with browser open, no case selected
-  state.activeCase = null;
-  state.selectedCases = [];
-  state.ui.showBrowser = true;
-  state.ui.compareCase = null;
-  state.ui.deltaMode = false;
-  emit(EVENTS.STATE_LOADED, state);
+  bridgeActive = false; // Don't emit old events during hydration
+  store.dispatch('HYDRATE_STATE', saved);
+  bridgeActive = true;
+  emit(EVENTS.STATE_LOADED, store.getState());
 }
 
 export function serializeState() {
+  const s = store.getState();
   return {
-    schema: state.schema,
-    fields: state.fields,
-    activeField: state.activeField,
-    activeScenario: state.activeScenario,
-    defaultAuthor: state.defaultAuthor,
-    scenarios: { ...state.scenarios },
-    ui: { ...state.ui },
+    schema: s.schema,
+    fields: s.fields,
+    activeField: s.activeField,
+    activeScenario: s.activeScenario,
+    defaultAuthor: s.defaultAuthor,
+    scenarios: { ...s.scenarios },
+    ui: { ...s.ui },
   };
 }
 
