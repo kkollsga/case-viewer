@@ -324,13 +324,6 @@ function setupDataViewControls() {
   // Collapsible section toggles
   setupCollapsible('toggle-volumetrics', 'volumetrics-container');
   setupCollapsible('toggle-ball-chart', 'ball-chart-outer', () => { if (BallChart?.render) BallChart.render(); });
-  // cross-plot and timeline toggles are handled by their own components
-
-  // Navigation
-  const prev = $('#prev-case-btn');
-  const next = $('#next-case-btn');
-  if (prev) prev.addEventListener('click', () => navigateCase('prev'));
-  if (next) next.addEventListener('click', () => navigateCase('next'));
 
   // Compare selector
   const compareSel = $('#compare-case-selector');

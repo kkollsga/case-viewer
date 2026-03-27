@@ -198,7 +198,7 @@ export function setupEvents() {
 
 function renderMinimizedBar(field, scenario, activeCase) {
   const bar = el('div', {
-    class: 'flex items-center gap-3 py-2',
+    class: 'flex items-center gap-3',
   });
 
   // Field → Scenario (clickable to go back to browser)
@@ -207,20 +207,48 @@ function renderMinimizedBar(field, scenario, activeCase) {
     onClick: () => openBrowser(),
   });
   breadcrumb.appendChild(el('span', { textContent: field }));
-  breadcrumb.appendChild(el('span', { textContent: '→', class: 'text-gray-300' }));
+  breadcrumb.appendChild(el('span', { textContent: '›', class: 'text-gray-300 mx-0.5' }));
   breadcrumb.appendChild(el('span', { textContent: scenario }));
   bar.appendChild(breadcrumb);
 
   // Separator
-  bar.appendChild(el('span', { class: 'text-gray-200', textContent: '|' }));
+  bar.appendChild(el('span', { class: 'text-gray-200 text-sm', textContent: '|' }));
 
-  // Active case name (bold)
+  // Prev button
+  bar.appendChild(el('button', {
+    class: 'w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-all',
+    innerHTML: '<i class="fas fa-chevron-left text-[10px]"></i>',
+    onClick: () => navigateCase('prev'),
+  }));
+
+  // Active case name
   bar.appendChild(el('span', {
     class: 'text-sm font-semibold text-gray-800',
     textContent: activeCase,
   }));
 
+  // Next button
+  bar.appendChild(el('button', {
+    class: 'w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-all',
+    innerHTML: '<i class="fas fa-chevron-right text-[10px]"></i>',
+    onClick: () => navigateCase('next'),
+  }));
+
   return bar;
+}
+
+function navigateCase(direction) {
+  const field = getActiveField();
+  const scenario = getActiveScenario();
+  if (!field || !scenario) return;
+  const names = getOrderedCaseNames(field, scenario);
+  const activeCase = getActiveCase();
+  const idx = names.indexOf(activeCase);
+  const newIdx = direction === 'prev' ? idx - 1 : idx + 1;
+  if (newIdx < 0 || newIdx >= names.length) return;
+  setActiveCase(names[newIdx]);
+  saveAppState();
+  render();
 }
 
 // ─── Legacy Banner ───────────────────────────────────────────
