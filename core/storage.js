@@ -1,5 +1,7 @@
 // core/storage.js — localStorage read/write with versioned schema
-// Supports Field → Scenario → Case hierarchy.
+// ONE localStorage key per field. Structure:
+// cv3_field_{name} = { scenarios: { name: { cases: {}, caseOrder: [] } }, settings: {}, groupMappings: {} }
+// cv3_app = { schema, activeField, activeScenario, defaultAuthor, fields: [names], scenarios: {field:[names]} }
 
 import {
   getState, getActiveField, getActiveCase, getActiveScenario,
@@ -7,83 +9,154 @@ import {
 } from './state.js';
 import { SCHEMA_VERSION } from './state.js';
 
-// ─── Key helpers ────────────────────────────────────────────
-
-const KEYS = {
-  state: 'caseviewer_v3_state',
-  cases: (field, scenario) => `cv3_cases_${field}_${scenario}`,
-  caseOrder: (field, scenario) => `cv3_order_${field}_${scenario}`,
-  fieldSettings: (field) => `cv3_fieldSettings_${field}`,
-  crossPlotSettings: (field) => `cv3_crossPlot_${field}`,
-  circleSettings: (field, caseName) => `cv3_circle_${field}_${caseName}`,
-  fieldCircleSettings: (field) => `cv3_fieldCircle_${field}`,
-  legendLayer: (field) => `cv3_legend_${field}`,
-  defaultAuthor: 'cv3_defaultAuthor',
-};
-
 // ─── JSON helpers ───────────────────────────────────────────
 
 function readJSON(key, fallback = null) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch { return fallback; }
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+  catch { return fallback; }
 }
 
 function writeJSON(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+// ─── Field data access (single key per field) ───────────────
+
+const FIELD_KEY = (field) => `cv3_field_${field}`;
+const APP_KEY = 'cv3_app';
+
+function getFieldStore(field) {
+  return readJSON(FIELD_KEY(field), {
+    scenarios: {},
+    settings: {},
+    groupMappings: {},
+  });
+}
+
+function saveFieldStore(field, store) {
+  writeJSON(FIELD_KEY(field), store);
+}
+
+function getScenarioStore(field, scenario) {
+  const fs = getFieldStore(field);
+  if (!fs.scenarios[scenario]) fs.scenarios[scenario] = { cases: {}, caseOrder: [] };
+  return fs.scenarios[scenario];
+}
+
 // ─── App state persistence ──────────────────────────────────
 
 export function saveAppState() {
-  writeJSON(KEYS.state, serializeState());
+  writeJSON(APP_KEY, serializeState());
 }
 
 export function loadAppState() {
-  const saved = readJSON(KEYS.state);
+  const saved = readJSON(APP_KEY);
   if (saved) {
-    if (saved.schema && saved.schema < SCHEMA_VERSION) migrateState(saved);
+    if (saved.schema && saved.schema < SCHEMA_VERSION) migrateAppState(saved);
     hydrateState(saved);
   }
-  const author = localStorage.getItem(KEYS.defaultAuthor);
+  const author = readJSON('cv3_defaultAuthor', null);
   if (author) setDefaultAuthor(author);
+
+  // Migrate from old multi-key format if needed
+  migrateFromMultiKey();
 }
 
-function migrateState(saved) {
+function migrateAppState(saved) {
   saved.schema = SCHEMA_VERSION;
   if (!saved.scenarios) saved.scenarios = {};
-  if (!saved.activeScenario) saved.activeScenario = null;
 }
 
-// ─── Legacy data detection ──────────────────────────────────
+// ─── Legacy data detection + migration from v3 multi-key ────
 
-/**
- * Check if old v2 data exists in localStorage.
- */
+function migrateFromMultiKey() {
+  // Check if old cv3_cases_ keys exist and migrate to single-key format
+  const toRemove = [];
+  const fieldCases = {};
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+
+    // Old format: cv3_cases_{field}_{scenario}
+    const casesMatch = key.match(/^cv3_cases_(.+?)_(.+)$/);
+    if (casesMatch) {
+      const [, field, scenario] = casesMatch;
+      const cases = readJSON(key, {});
+      if (!fieldCases[field]) fieldCases[field] = {};
+      if (!fieldCases[field][scenario]) fieldCases[field][scenario] = { cases: {}, caseOrder: [] };
+      fieldCases[field][scenario].cases = cases;
+      toRemove.push(key);
+    }
+
+    const orderMatch = key.match(/^cv3_order_(.+?)_(.+)$/);
+    if (orderMatch) {
+      const [, field, scenario] = orderMatch;
+      if (!fieldCases[field]) fieldCases[field] = {};
+      if (!fieldCases[field][scenario]) fieldCases[field][scenario] = { cases: {}, caseOrder: [] };
+      fieldCases[field][scenario].caseOrder = readJSON(key, []);
+      toRemove.push(key);
+    }
+  }
+
+  // Migrate field-level settings
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    const settingsMatch = key.match(/^cv3_fieldSettings_(.+)$/);
+    if (settingsMatch) {
+      const field = settingsMatch[1];
+      const fs = getFieldStore(field);
+      fs.settings = { ...fs.settings, ...readJSON(key, {}) };
+      saveFieldStore(field, fs);
+      toRemove.push(key);
+    }
+    const crossMatch = key.match(/^cv3_crossPlot_(.+)$/);
+    if (crossMatch) {
+      const field = crossMatch[1];
+      const fs = getFieldStore(field);
+      fs.settings.crossPlot = readJSON(key, {});
+      saveFieldStore(field, fs);
+      toRemove.push(key);
+    }
+    const mappingsMatch = key.match(/^cv3_groupMappings_(.+)$/);
+    if (mappingsMatch) {
+      const field = mappingsMatch[1];
+      const fs = getFieldStore(field);
+      fs.groupMappings = readJSON(key, {});
+      saveFieldStore(field, fs);
+      toRemove.push(key);
+    }
+  }
+
+  // Write migrated case data into single-key stores
+  for (const [field, scenarios] of Object.entries(fieldCases)) {
+    const fs = getFieldStore(field);
+    for (const [scenario, data] of Object.entries(scenarios)) {
+      fs.scenarios[scenario] = data;
+    }
+    saveFieldStore(field, fs);
+  }
+
+  // Clean up old keys
+  for (const key of toRemove) localStorage.removeItem(key);
+}
+
 export function hasLegacyData() {
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key.startsWith('volumetricCases_') || key === 'caseviewer_v2_state') {
-      return true;
-    }
+    if (key.startsWith('volumetricCases_') || key === 'caseviewer_v2_state') return true;
   }
   return false;
 }
 
-/**
- * Delete all old v2 localStorage data.
- */
 export function clearLegacyData() {
   const toRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key.startsWith('volumetricCases_') || key.startsWith('volumetricCasesOrder_') ||
-        key.startsWith('volumetricFields') || key.startsWith('volumetricSessionState') ||
-        key.startsWith('fieldSettings_') || key.startsWith('crossPlotSettings_') ||
-        key.startsWith('circleSettings_') || key.startsWith('fieldCircleSettings_') ||
-        key.startsWith('legendLayer_') || key === 'caseviewer_v2_state' ||
-        key === 'defaultAuthor' || key === 'caseviewer_v2_settings') {
+    if (key.startsWith('volumetricCases') || key.startsWith('volumetricFields') ||
+        key.startsWith('volumetricSession') || key.startsWith('fieldSettings_') ||
+        key.startsWith('crossPlotSettings_') || key.startsWith('circleSettings_') ||
+        key.startsWith('fieldCircleSettings_') || key.startsWith('legendLayer_') ||
+        key === 'caseviewer_v2_state' || key === 'defaultAuthor' || key === 'caseviewer_v2_settings') {
       toRemove.push(key);
     }
   }
@@ -91,13 +164,13 @@ export function clearLegacyData() {
   return toRemove.length;
 }
 
-// ─── Case data persistence ──────────────────────────────────
+// ─── Case data ──────────────────────────────────────────────
 
 export function getCasesForScenario(field, scenario) {
-  return readJSON(KEYS.cases(field, scenario), {});
+  const sc = getScenarioStore(field, scenario);
+  return sc.cases || {};
 }
 
-// Alias for compatibility
 export function getCasesForField(field) {
   const scenario = getActiveScenario();
   return scenario ? getCasesForScenario(field, scenario) : {};
@@ -111,61 +184,57 @@ export function getCaseData(field, caseName, scenario) {
 }
 
 export function saveCase(field, scenario, caseName, caseData) {
-  const cases = getCasesForScenario(field, scenario);
-  cases[caseName] = caseData;
-  writeJSON(KEYS.cases(field, scenario), cases);
+  const fs = getFieldStore(field);
+  if (!fs.scenarios[scenario]) fs.scenarios[scenario] = { cases: {}, caseOrder: [] };
+  fs.scenarios[scenario].cases[caseName] = caseData;
+  saveFieldStore(field, fs);
 }
 
 export function deleteCase(field, scenario, caseName) {
-  const cases = getCasesForScenario(field, scenario);
-  if (!cases[caseName]) return false;
-  delete cases[caseName];
-  writeJSON(KEYS.cases(field, scenario), cases);
-  removeCaseFromOrder(field, scenario, caseName);
+  const fs = getFieldStore(field);
+  const sc = fs.scenarios[scenario];
+  if (!sc || !sc.cases[caseName]) return false;
+  delete sc.cases[caseName];
+  sc.caseOrder = (sc.caseOrder || []).filter(n => n !== caseName);
+  // Clean up circle settings
+  if (fs.settings.circleSettings) delete fs.settings.circleSettings[caseName];
+  saveFieldStore(field, fs);
   return true;
 }
 
 export function renameCase(field, scenario, oldName, newName) {
   if (oldName === newName) return true;
-  const cases = getCasesForScenario(field, scenario);
-  if (cases[newName] || !cases[oldName]) return false;
-  cases[newName] = { ...cases[oldName], title: newName };
-  delete cases[oldName];
-  writeJSON(KEYS.cases(field, scenario), cases);
-  updateCaseOrderOnRename(field, scenario, oldName, newName);
+  const fs = getFieldStore(field);
+  const sc = fs.scenarios[scenario];
+  if (!sc || sc.cases[newName] || !sc.cases[oldName]) return false;
+  sc.cases[newName] = { ...sc.cases[oldName], title: newName };
+  delete sc.cases[oldName];
+  sc.caseOrder = (sc.caseOrder || []).map(n => n === oldName ? newName : n);
+  saveFieldStore(field, fs);
   return true;
 }
 
 // ─── Case order ─────────────────────────────────────────────
 
 export function getCaseOrder(field, scenario) {
-  return readJSON(KEYS.caseOrder(field, scenario), null);
+  const sc = getScenarioStore(field, scenario);
+  return sc.caseOrder || [];
 }
 
 export function saveCaseOrder(field, scenario, order) {
-  writeJSON(KEYS.caseOrder(field, scenario), order);
+  const fs = getFieldStore(field);
+  if (!fs.scenarios[scenario]) fs.scenarios[scenario] = { cases: {}, caseOrder: [] };
+  fs.scenarios[scenario].caseOrder = order;
+  saveFieldStore(field, fs);
 }
 
 export function addCaseToOrder(field, scenario, caseName) {
-  let order = getCaseOrder(field, scenario) || [];
-  if (!order.includes(caseName)) {
-    order.push(caseName);
-    saveCaseOrder(field, scenario, order);
-  }
-}
-
-function removeCaseFromOrder(field, scenario, caseName) {
-  const order = getCaseOrder(field, scenario);
-  if (!order) return;
-  const idx = order.indexOf(caseName);
-  if (idx !== -1) { order.splice(idx, 1); saveCaseOrder(field, scenario, order); }
-}
-
-function updateCaseOrderOnRename(field, scenario, oldName, newName) {
-  const order = getCaseOrder(field, scenario);
-  if (!order) return;
-  const idx = order.indexOf(oldName);
-  if (idx !== -1) { order[idx] = newName; saveCaseOrder(field, scenario, order); }
+  const fs = getFieldStore(field);
+  if (!fs.scenarios[scenario]) fs.scenarios[scenario] = { cases: {}, caseOrder: [] };
+  const order = fs.scenarios[scenario].caseOrder || [];
+  if (!order.includes(caseName)) order.push(caseName);
+  fs.scenarios[scenario].caseOrder = order;
+  saveFieldStore(field, fs);
 }
 
 export function getOrderedCaseNames(field, scenario) {
@@ -174,7 +243,7 @@ export function getOrderedCaseNames(field, scenario) {
   const cases = getCasesForScenario(field, sc);
   const allNames = Object.keys(cases);
   const savedOrder = getCaseOrder(field, sc);
-  if (!savedOrder) return allNames;
+  if (!savedOrder || savedOrder.length === 0) return allNames;
   const ordered = savedOrder.filter(n => allNames.includes(n));
   const extras = allNames.filter(n => !ordered.includes(n));
   return [...ordered, ...extras];
@@ -183,98 +252,101 @@ export function getOrderedCaseNames(field, scenario) {
 // ─── Scenario data lifecycle ────────────────────────────────
 
 export function deleteScenarioData(field, scenario) {
-  localStorage.removeItem(KEYS.cases(field, scenario));
-  localStorage.removeItem(KEYS.caseOrder(field, scenario));
+  const fs = getFieldStore(field);
+  delete fs.scenarios[scenario];
+  saveFieldStore(field, fs);
 }
 
 export function renameScenarioData(field, oldName, newName) {
-  const pairs = [
-    [KEYS.cases(field, oldName), KEYS.cases(field, newName)],
-    [KEYS.caseOrder(field, oldName), KEYS.caseOrder(field, newName)],
-  ];
-  for (const [oldKey, newKey] of pairs) {
-    const val = localStorage.getItem(oldKey);
-    if (val !== null) { localStorage.setItem(newKey, val); localStorage.removeItem(oldKey); }
+  const fs = getFieldStore(field);
+  if (fs.scenarios[oldName]) {
+    fs.scenarios[newName] = fs.scenarios[oldName];
+    delete fs.scenarios[oldName];
+    saveFieldStore(field, fs);
   }
 }
 
 // ─── Field settings ─────────────────────────────────────────
 
 export function saveFieldSettings(field, settings) {
-  const existing = readJSON(KEYS.fieldSettings(field), {});
-  writeJSON(KEYS.fieldSettings(field), { ...existing, ...settings });
+  const fs = getFieldStore(field);
+  fs.settings = { ...fs.settings, ...settings };
+  saveFieldStore(field, fs);
 }
 
 export function loadFieldSettings(field) {
-  return readJSON(KEYS.fieldSettings(field), {});
+  return getFieldStore(field).settings || {};
 }
 
 export function saveCrossPlotSettings(field, settings) {
-  writeJSON(KEYS.crossPlotSettings(field), settings);
+  const fs = getFieldStore(field);
+  fs.settings.crossPlot = settings;
+  saveFieldStore(field, fs);
 }
 
 export function loadCrossPlotSettings(field) {
-  return readJSON(KEYS.crossPlotSettings(field), {});
+  return getFieldStore(field).settings?.crossPlot || {};
 }
 
 // ─── Circle settings ────────────────────────────────────────
 
 export function saveCircleSettings(field, caseName, settings) {
-  writeJSON(KEYS.circleSettings(field, caseName), settings);
+  const fs = getFieldStore(field);
+  if (!fs.settings.circleSettings) fs.settings.circleSettings = {};
+  fs.settings.circleSettings[caseName] = settings;
+  saveFieldStore(field, fs);
 }
 
 export function loadCircleSettings(field, caseName) {
-  return readJSON(KEYS.circleSettings(field, caseName), null);
+  return getFieldStore(field).settings?.circleSettings?.[caseName] || null;
 }
 
 export function saveFieldCircleSettings(field, settings) {
-  writeJSON(KEYS.fieldCircleSettings(field), settings);
+  const fs = getFieldStore(field);
+  fs.settings.fieldCircle = settings;
+  saveFieldStore(field, fs);
 }
 
 export function loadFieldCircleSettings(field) {
-  return readJSON(KEYS.fieldCircleSettings(field), {});
+  return getFieldStore(field).settings?.fieldCircle || {};
 }
 
 export function saveLegendLayer(field, layer) {
-  localStorage.setItem(KEYS.legendLayer(field), String(layer));
+  const fs = getFieldStore(field);
+  fs.settings.legendLayer = layer;
+  saveFieldStore(field, fs);
 }
 
 export function loadLegendLayer(field) {
-  const val = localStorage.getItem(KEYS.legendLayer(field));
-  return val ? parseInt(val, 10) : 1;
+  return getFieldStore(field).settings?.legendLayer || 1;
 }
 
-// ─── Field group mappings (standardization) ─────────────────
+// ─── Group mappings ─────────────────────────────────────────
 
 export function saveGroupMappings(field, mappings) {
-  writeJSON(`cv3_groupMappings_${field}`, mappings);
+  const fs = getFieldStore(field);
+  fs.groupMappings = mappings;
+  saveFieldStore(field, fs);
 }
 
 export function loadGroupMappings(field) {
-  return readJSON(`cv3_groupMappings_${field}`, {});
+  return getFieldStore(field).groupMappings || {};
 }
 
-/**
- * Apply field-level group mappings to a data array.
- * Maps original group values to standardized stack names.
- */
 export function applyGroupMappings(data, field) {
   const mappings = loadGroupMappings(field);
   if (!mappings || Object.keys(mappings).length === 0) return data;
 
-  // Build reverse lookup: { columnName: { originalValue: stackName } }
   const lookup = {};
   for (const [column, stacks] of Object.entries(mappings)) {
+    if (column === '__groupOrder') continue;
     lookup[column] = {};
     for (const stack of stacks) {
-      for (const val of stack.values) {
-        lookup[column][val] = stack.name;
-      }
+      for (const val of stack.values) lookup[column][val] = stack.name;
     }
   }
 
-  // Apply to data (clone to avoid mutating original)
-  const mapped = data.map(row => {
+  return data.map(row => {
     const newRow = { ...row };
     for (const [column, map] of Object.entries(lookup)) {
       if (newRow[column] !== undefined && map[newRow[column]] !== undefined) {
@@ -283,17 +355,12 @@ export function applyGroupMappings(data, field) {
     }
     return newRow;
   });
-
-  return mapped;
 }
 
-/**
- * Scan all cases in a field (across all scenarios) for unique group values per column.
- */
 export function collectUniqueGroupValues(field) {
   const state = getState();
   const scenarios = state.scenarios[field] || [];
-  const result = {}; // { columnName: Set<value> }
+  const result = {};
 
   for (const sc of scenarios) {
     const cases = getCasesForScenario(field, sc);
@@ -302,77 +369,41 @@ export function collectUniqueGroupValues(field) {
       for (const col of caseData.volumeGroups.columns) {
         if (!result[col]) result[col] = new Set();
         for (const row of caseData.data) {
-          if (row[col] !== undefined && row[col] !== '') {
-            result[col].add(String(row[col]));
-          }
+          if (row[col] !== undefined && row[col] !== '') result[col].add(String(row[col]));
         }
       }
     }
   }
 
-  // Convert Sets to sorted arrays
   const out = {};
-  for (const [col, vals] of Object.entries(result)) {
-    out[col] = [...vals].sort();
-  }
+  for (const [col, vals] of Object.entries(result)) out[col] = [...vals].sort();
   return out;
 }
 
 // ─── Default author ─────────────────────────────────────────
 
 export function saveDefaultAuthor(author) {
-  localStorage.setItem(KEYS.defaultAuthor, author);
+  localStorage.setItem('cv3_defaultAuthor', author);
 }
 
 export function loadDefaultAuthor() {
-  return localStorage.getItem(KEYS.defaultAuthor) || '';
+  return localStorage.getItem('cv3_defaultAuthor') || '';
 }
 
 // ─── Field data lifecycle ───────────────────────────────────
 
 export function saveFields(fields) {
-  // Fields are saved as part of app state
   saveAppState();
 }
 
 export function deleteFieldData(field) {
-  const state = getState();
-  const scenarios = state.scenarios[field] || [];
-  for (const sc of scenarios) {
-    deleteScenarioData(field, sc);
-  }
-  localStorage.removeItem(KEYS.fieldSettings(field));
-  localStorage.removeItem(KEYS.crossPlotSettings(field));
-  localStorage.removeItem(KEYS.fieldCircleSettings(field));
-  localStorage.removeItem(KEYS.legendLayer(field));
+  localStorage.removeItem(FIELD_KEY(field));
 }
 
 export function renameFieldData(oldName, newName) {
-  const state = getState();
-  const scenarios = state.scenarios[newName] || [];
-  for (const sc of scenarios) {
-    renameScenarioData(oldName, sc, sc); // scenarios stay same name, field changes
-    // Actually we need to rename the field part of the key
-    const oldCasesKey = `cv3_cases_${oldName}_${sc}`;
-    const newCasesKey = `cv3_cases_${newName}_${sc}`;
-    const val = localStorage.getItem(oldCasesKey);
-    if (val) { localStorage.setItem(newCasesKey, val); localStorage.removeItem(oldCasesKey); }
-
-    const oldOrderKey = `cv3_order_${oldName}_${sc}`;
-    const newOrderKey = `cv3_order_${newName}_${sc}`;
-    const val2 = localStorage.getItem(oldOrderKey);
-    if (val2) { localStorage.setItem(newOrderKey, val2); localStorage.removeItem(oldOrderKey); }
-  }
-
-  // Field-level settings
-  const fieldKeys = [
-    [KEYS.fieldSettings(oldName), KEYS.fieldSettings(newName)],
-    [KEYS.crossPlotSettings(oldName), KEYS.crossPlotSettings(newName)],
-    [KEYS.fieldCircleSettings(oldName), KEYS.fieldCircleSettings(newName)],
-    [KEYS.legendLayer(oldName), KEYS.legendLayer(newName)],
-  ];
-  for (const [ok, nk] of fieldKeys) {
-    const v = localStorage.getItem(ok);
-    if (v !== null) { localStorage.setItem(nk, v); localStorage.removeItem(ok); }
+  const data = localStorage.getItem(FIELD_KEY(oldName));
+  if (data) {
+    localStorage.setItem(FIELD_KEY(newName), data);
+    localStorage.removeItem(FIELD_KEY(oldName));
   }
 }
