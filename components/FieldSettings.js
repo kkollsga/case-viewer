@@ -11,15 +11,22 @@ import { makeDraggable } from '../utils/draggable.js';
 let containerEl = null, visible = false, currentMappings = {}, allUniqueValues = {};
 
 export function init() {}
-export function toggle(t) { containerEl = t; visible = !visible; if (visible) render(); else if (containerEl) clear(containerEl); }
+export function toggle(t) {
+  containerEl = t; visible = !visible;
+  if (visible) { render(); }
+  else { if (containerEl) clear(containerEl); propagateChanges(); }
+}
 export function isVisible() { return visible; }
-export function hide() { visible = false; if (containerEl) clear(containerEl); }
+export function hide() { visible = false; if (containerEl) clear(containerEl); propagateChanges(); }
 export function setupEvents() {}
 
 function persist(f) {
   saveGroupMappings(f, currentMappings);
-  // Propagate changes throughout the app (case cards, pivot, charts)
-  emit(EVENTS.CASE_UPDATED, { field: f });
+}
+
+// Call this when settings panel closes to propagate changes
+function propagateChanges() {
+  emit(EVENTS.CASE_UPDATED, { field: getActiveField() });
 }
 function cc(h) { if(!h||h.length<7)return'#374151'; const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16); return(0.299*r+0.587*g+0.114*b)/255>0.55?'#374151':'#fff'; }
 function dc(i) { return PALETTES.vibrant[i % PALETTES.vibrant.length]; }
@@ -83,9 +90,21 @@ function renderSection(field, column) {
         }
         persist(field); render();
       },
-      onInnerDragOut: (value, fromStackName) => {
-        // Remove the pill from its stack
+      onInnerDragOut: (value, fromStackName, drop) => {
+        // Remove the pill from its source stack
         removeVal(column, value);
+        // If dropped onto another stack, add it there
+        if (drop && drop.mode === 'ontop' && drop.target.dataset.gs === 'stack') {
+          const st = (currentMappings[column]||[]).find(s => s.name === drop.target.dataset.stackName);
+          if (st && !st.values.includes(value)) st.values.push(value);
+        }
+        // If dropped onto a bare pill, create new stack
+        if (drop && drop.mode === 'ontop' && drop.target.dataset.gs === 'pill') {
+          const tv = drop.target.dataset.value;
+          removeVal(column, tv);
+          if (!currentMappings[column]) currentMappings[column] = [];
+          currentMappings[column].push({ name: tv, values: [tv, value] });
+        }
         persist(field); render();
       },
       onReorder: (drag, target, position) => {

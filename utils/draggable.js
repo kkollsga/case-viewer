@@ -167,19 +167,13 @@ export function makeDraggable(container, options) {
     clearAll();
     container.releasePointerCapture(e.pointerId);
 
-    if (!drop) return;
-
     if (wasInner && onInnerDragOut) {
-      // Inner pill dragged — could be onto another item or to top level
-      if (drop.mode === 'ontop' && onStack) {
-        onInnerDragOut(val, fromStack);
-        // The value was removed from its stack, now stack it onto target
-        // We need to signal this differently — just call onStack with synthetic info
-      }
-      // For simplicity: inner drag always removes from stack, re-renders
-      onInnerDragOut(val, fromStack);
+      // Inner pill dragged — remove from source stack, optionally drop onto target
+      onInnerDragOut(val, fromStack, drop);
       return;
     }
+
+    if (!drop) return;
 
     if (drop.mode === 'ontop' && onStack) {
       onStack(dEl, drop.target);
