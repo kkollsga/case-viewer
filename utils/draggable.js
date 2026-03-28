@@ -78,7 +78,7 @@ export function makeDraggable(container, options) {
 
       if (isOver) {
         const stackable = canStack ? canStack(dragEl, item) : true;
-        if (stackable && relX > 0.2 && relX < 0.8) return { target: item, mode: 'ontop' };
+        if (stackable && relX > 0.35 && relX < 0.65) return { target: item, mode: 'ontop' };
         return { target: item, mode: relX <= 0.5 ? 'before' : 'after' };
       }
     }

@@ -134,14 +134,33 @@ function renderSection(field, column) {
         persist(field); render();
       },
       onReorder: (drag, target, position) => {
-        // Capture the new visual order from the DOM
+        // Build current order from DOM
         const order = [];
         for (const child of items.children) {
           if (child.dataset.gs === 'stack') order.push({ type: 'stack', name: child.dataset.stackName });
           else if (child.dataset.gs === 'pill') order.push({ type: 'pill', value: child.dataset.value });
         }
-        // Persist the order
-        if (!currentMappings[`__order_${column}`]) currentMappings[`__order_${column}`] = [];
+
+        // Find drag and target in the order
+        const dragEntry = drag.dataset.gs === 'stack'
+          ? { type: 'stack', name: drag.dataset.stackName }
+          : { type: 'pill', value: drag.dataset.value };
+        const dragKey = dragEntry.type === 'stack' ? dragEntry.name : dragEntry.value;
+        const targetKey = target.dataset.gs === 'stack' ? target.dataset.stackName : target.dataset.value;
+
+        // Remove drag from its current position
+        const dragIdx = order.findIndex(e => (e.type === 'stack' ? e.name : e.value) === dragKey);
+        if (dragIdx !== -1) order.splice(dragIdx, 1);
+
+        // Find target position and insert
+        const targetIdx = order.findIndex(e => (e.type === 'stack' ? e.name : e.value) === targetKey);
+        if (targetIdx !== -1) {
+          const insertIdx = position === 'before' ? targetIdx : targetIdx + 1;
+          order.splice(insertIdx, 0, dragEntry);
+        } else {
+          order.push(dragEntry);
+        }
+
         currentMappings[`__order_${column}`] = order;
         persist(field); render();
       },
