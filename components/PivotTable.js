@@ -99,7 +99,7 @@ export function render() {
 
   // ── Nested data ──
   const nestedData = createMultiLevelGroups(data, groupColumns);
-  renderGroups(body, nestedData, 0, groupColumns, displayColumns, formattedHeaders, units, data, mappings);
+  renderGroups(body, nestedData, 0, groupColumns, displayColumns, formattedHeaders, units, data, mappings, null);
 
   // ── Total row ──
   renderTotalRow(body, data, groupColumns, formattedHeaders, units);
@@ -142,7 +142,7 @@ function createMultiLevelGroups(data, groupColumns) {
   return result;
 }
 
-function renderGroups(container, nestedData, level, groupColumns, displayColumns, formattedHeaders, units, allData, mappings) {
+function renderGroups(container, nestedData, level, groupColumns, displayColumns, formattedHeaders, units, allData, mappings, parentHue) {
   if (!nestedData || typeof nestedData !== 'object') return;
 
   const ui = getUI();
@@ -220,21 +220,23 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       }
     }
 
-    // Apply stack/pill color from group mappings
+    // Apply stack/pill color — own color or inherited from parent, fainter per level
+    let hue = null;
     if (mappings) {
       const col = groupColumns[level];
       const stacks = mappings[col] || [];
       const st = stacks.find(s => s.name === groupValue);
       const pillColors = mappings[`__colors_${col}`] || {};
-      const hue = st?.color || pillColors[groupValue] || null;
-      if (hue) {
-        const bg = faintColor(hue, 0.92);
-        const bgHover = faintColor(hue, 0.84);
-        groupRow.style.borderLeftColor = hue;
-        groupRow.style.backgroundColor = bg;
-        groupRow.addEventListener('mouseenter', () => { groupRow.style.backgroundColor = bgHover; });
-        groupRow.addEventListener('mouseleave', () => { groupRow.style.backgroundColor = bg; });
-      }
+      hue = st?.color || pillColors[groupValue] || parentHue || null;
+    }
+    if (hue) {
+      const faintAmount = Math.min(0.82 + level * 0.05, 0.96);
+      const bg = faintColor(hue, faintAmount);
+      const bgHover = faintColor(hue, faintAmount - 0.06);
+      groupRow.style.borderLeftColor = hue;
+      groupRow.style.backgroundColor = bg;
+      groupRow.addEventListener('mouseenter', () => { groupRow.style.backgroundColor = bgHover; });
+      groupRow.addEventListener('mouseleave', () => { groupRow.style.backgroundColor = bg; });
     }
 
     container.appendChild(groupRow);
@@ -249,7 +251,7 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
 
     // Expanded content (no subtotal rows — the group row already shows the sum)
     if (isExpanded && hasSubgroups && groupData.subgroups) {
-      renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData, mappings);
+      renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData, mappings, hue || parentHue);
     }
 
     if (isExpanded && !hasSubgroups) {

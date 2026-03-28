@@ -267,7 +267,7 @@ function renderPill(field, column, value) {
   const tb = el('div',{
     class:'fs-tb absolute top-full right-0 mt-0.5 flex items-center bg-white border border-gray-200 rounded shadow-sm opacity-0 transition-opacity z-10 overflow-hidden',
   });
-  tb.appendChild(el('button',{class:'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 text-[7px]',innerHTML:'<i class="fas fa-palette"></i>',
+  tb.appendChild(el('button',{class:'px-1.5 py-0.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 text-[7px]',innerHTML:'<i class="fas fa-palette"></i>',
     onClick:(e)=>{e.stopPropagation();renderColorMenu(w,(c)=>{
       if(!currentMappings[`__colors_${column}`])currentMappings[`__colors_${column}`]={};
       currentMappings[`__colors_${column}`][value]=c;persist(field);render();});}}));
@@ -325,7 +325,7 @@ function renderStack(field, column, stack, index) {
     class:'fs-tb absolute top-full right-0 mt-0.5 flex items-center bg-white border border-gray-200 rounded shadow-sm opacity-0 hover:opacity-100 transition-opacity z-10 overflow-hidden',
   });
   tb.append(
-    el('button',{class:'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 text-[7px]',innerHTML:'<i class="fas fa-palette"></i>',
+    el('button',{class:'px-1.5 py-0.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 text-[7px]',innerHTML:'<i class="fas fa-palette"></i>',
       onClick:(e)=>{e.stopPropagation();renderColorMenu(outer,(c)=>{stack.color=c;persist(field);render();});}}),
     el('button',{class:'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 text-[7px]',innerHTML:'<i class="fas fa-pen"></i>',onClick:(e)=>{e.stopPropagation();showEdit();}}),
     el('button',{class:'px-1.5 py-0.5 text-gray-300 hover:text-red-500 hover:bg-red-50 text-[8px]',innerHTML:'<i class="fas fa-times"></i>',
