@@ -112,7 +112,7 @@
 
 /* ==================== PIVOT TABLE ==================== */
 .pivot-table-container {
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
   border-radius: 0.5rem;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
@@ -122,6 +122,8 @@
 .pivot-table-container table {
   margin-bottom: 0;
   table-layout: auto;
+  border-collapse: collapse;
+  width: 100%;
 }
 
 .pivot-table-container th,
@@ -129,54 +131,162 @@
   white-space: nowrap;
 }
 
-.pivot-row-toggle { cursor: pointer; }
-
-.pivot-row-toggle:hover {
-  background-color: #f0f9ff !important;
-  transition: background-color 0.15s ease;
+/* ── Header ── */
+.pivot-header-label {
+  text-align: left;
+  vertical-align: bottom;
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+  border-bottom: 1px solid #d1d5db;
 }
 
-.pivot-detail-row:hover {
-  background-color: #e0f2fe !important;
-  transition: background-color 0.15s ease;
+.pivot-header-value {
+  text-align: right;
+  vertical-align: bottom;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 1px solid #d1d5db;
 }
 
+.pivot-header-unit {
+  font-size: 10px;
+  font-weight: 400;
+  color: #9ca3af;
+  line-height: 1.2;
+}
+
+/* ── Data rows ── */
+.pivot-row {
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.pivot-row.expandable {
+  cursor: pointer;
+}
+
+.pivot-row:hover {
+  background-color: #f8fafc;
+}
+
+/* Level 0: top-level group — strongest bg */
+.pivot-level-0 {
+  background-color: #dbeafe;
+  border-left: 3px solid #3b82f6;
+}
+
+.pivot-level-0:hover {
+  background-color: #cddcf6 !important;
+}
+
+.pivot-level-0 .pivot-label {
+  font-weight: 600;
+  color: #1e3a5f;
+}
+
+.pivot-level-0 .pivot-cell-value {
+  font-weight: 600;
+  color: #1e3a5f;
+}
+
+/* Level 1: mid-level group — lighter bg */
+.pivot-level-1 {
+  background-color: #eff4fb;
+  border-left: 3px solid #93c5fd;
+}
+
+.pivot-level-1:hover {
+  background-color: #e4ecf7 !important;
+}
+
+.pivot-level-1 .pivot-label {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.pivot-level-1 .pivot-cell-value {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+/* Level 2+: leaf items — no bg */
+.pivot-level-2 .pivot-label {
+  color: #6b7280;
+}
+
+.pivot-level-2 .pivot-cell-value {
+  color: #6b7280;
+}
+
+/* ── Label cell ── */
+.pivot-label {
+  padding: 5px 8px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.pivot-label-inner {
+  display: flex;
+  align-items: center;
+}
+
+.pivot-chevron {
+  font-size: 9px;
+  color: #9ca3af;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.pivot-bullet {
+  color: #9ca3af;
+  font-size: 8px;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── Value cells ── */
+.pivot-cell-value {
+  text-align: right;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #374151;
+}
+
+/* ── Total row ── */
 .pivot-total-row {
   background-color: #f3f4f6;
   border-top: 2px solid #d1d5db;
 }
 
-.pivot-total-row td {
+.pivot-total-row .pivot-label {
+  font-weight: 600;
   color: #111827;
-  font-weight: 500;
+}
+
+.pivot-total-row .pivot-cell-value {
+  font-weight: 600;
+  color: #111827;
 }
 
 .pivot-total-row:hover {
-  background-color: #dbeafe !important;
-  transition: background-color 0.15s ease;
+  background-color: #e5e7eb;
 }
 
-#pivot-body tr:not(.pivot-total-row) td {
-  color: #4b5563;
-}
-
-#pivot-body tr {
-  transition: all 0.15s ease;
-}
-
-.pivot-row-toggle:hover,
-.pivot-detail-row:hover,
-.pivot-total-row:hover {
-  box-shadow: inset 0 1px 0 0 rgba(59, 130, 246, 0.1),
-              inset 0 -1px 0 0 rgba(59, 130, 246, 0.1);
-}
-
+/* ── Legend ── */
 .pivot-legend {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   padding: 0.375rem 0.75rem;
-  text-align: right;
   color: #6b7280;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   background-color: white;
   border: 1px solid #e5e7eb;
   border-top: none;
@@ -185,8 +295,22 @@
   margin-left: auto;
 }
 
-.pivot-legend-item { display: inline-block; margin-left: 1rem; }
-.pivot-legend-label { font-weight: 500; color: #374151; }
+.pivot-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pivot-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.pivot-legend-swatch.level-0 { background: #3b82f6; }
+.pivot-legend-swatch.level-1 { background: #94a3b8; }
+.pivot-legend-swatch.level-2 { background: #cbd5e1; }
 
 /* ==================== CIRCLE VISUALIZATION ==================== */
 .circle-diagram-container {

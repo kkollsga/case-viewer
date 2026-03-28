@@ -78,18 +78,19 @@ export function render() {
   // ── Header row ──
   const headerRow = el('tr');
 
-  // Toggle column
-  headerRow.appendChild(el('th', { class: 'w-6 px-2 py-1' }));
+  // Single label column
+  headerRow.appendChild(el('th', {
+    class: 'pivot-header-label',
+    textContent: groupColumns[0] || '',
+  }));
 
-  // Group column headers (auto-width)
-  for (let i = 0; i < groupColumns.length; i++) {
-    headerRow.appendChild(el('th', { class: 'px-2 py-1' }));
-  }
-
-  // Numeric headers — generous padding for breathing room
+  // Value headers (horizontal, right-aligned)
   for (const col of formattedHeaders) {
-    const th = el('th', { class: 'px-4 py-2 text-right font-semibold text-gray-600', style: { fontSize: '11px', minWidth: '90px' } });
-    th.innerHTML = `<div>${col.label}</div>${col.unit ? `<div class="text-[10px] text-gray-400 leading-tight">${col.unit}</div>` : ''}`;
+    const th = el('th', { class: 'pivot-header-value' });
+    th.appendChild(el('div', { textContent: col.label }));
+    if (col.unit) {
+      th.appendChild(el('div', { class: 'pivot-header-unit', textContent: col.unit }));
+    }
     headerRow.appendChild(th);
   }
   headerContainer.appendChild(headerRow);
@@ -103,12 +104,10 @@ export function render() {
 
   // ── Legend ──
   if (legendContainer && groupColumns.length > 0) {
-    const legendText = el('span', { textContent: 'Grouping: ' });
-    legendContainer.appendChild(legendText);
     groupColumns.forEach((col, i) => {
       const item = el('span', { class: 'pivot-legend-item' });
-      item.appendChild(el('span', { class: 'pivot-legend-label', textContent: `Level ${i + 1}` }));
-      item.appendChild(el('span', { textContent: ` = ${col}` }));
+      item.appendChild(el('span', { class: `pivot-legend-swatch level-${Math.min(i, 2)}` }));
+      item.appendChild(el('span', { textContent: col }));
       legendContainer.appendChild(item);
     });
   }
@@ -182,27 +181,22 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
     const isExpanded = expandedZones[groupKey];
     const hasSubgroups = groupColumns.length > level + 1;
 
-    // ── Group summary row ──
+    // ── Group row ──
     const groupRow = el('tr', {
-      class: `pivot-row-toggle hover:bg-gray-50 ${isExpanded ? 'font-medium text-gray-800' : 'text-gray-700'}`,
+      class: `pivot-row pivot-level-${Math.min(level, 2)}${hasSubgroups ? ' expandable' : ''}`,
       dataset: { group: groupKey },
-      style: { fontSize: '13px' },
     });
 
-    // Toggle cell
-    const toggleCell = el('td', { class: 'w-6 px-2 py-1' });
+    // Label cell — single column with indentation
+    const labelCell = el('td', { class: 'pivot-label' });
+    const indent = level * 20;
+    let prefix = '';
     if (hasSubgroups) {
-      toggleCell.innerHTML = `<i class="fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'} text-gray-500"></i>`;
+      prefix = `<i class="fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'} pivot-chevron"></i>`;
+    } else if (level > 0) {
+      prefix = '<span class="pivot-bullet">\u2022</span>';
     }
-    groupRow.appendChild(toggleCell);
-
-    // Label cell
-    const labelCell = el('td', {
-      class: 'px-2 py-1 text-gray-800 font-medium ',
-      colSpan: Math.max(1, groupColumns.length),
-    });
-    const indent = level * 16;
-    labelCell.innerHTML = `<div style="padding-left: ${indent}px">${groupValue}</div>`;
+    labelCell.innerHTML = `<div class="pivot-label-inner" style="padding-left:${indent}px">${prefix}<span>${groupValue}</span></div>`;
     groupRow.appendChild(labelCell);
 
     // Value cells
@@ -210,7 +204,7 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       const params = calculateGroupParameters(groupItems, groupColumns, units);
       for (const col of formattedHeaders) {
         groupRow.appendChild(el('td', {
-          class: 'px-4 py-1.5 text-right text-gray-700',
+          class: 'pivot-cell-value',
           textContent: formatParameterValue(col.key, params[col.key] || 0),
         }));
       }
@@ -218,7 +212,7 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       for (const col of formattedHeaders) {
         const sum = groupItems.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
         groupRow.appendChild(el('td', {
-          class: 'px-4 py-1.5 text-right text-gray-700',
+          class: 'pivot-cell-value',
           textContent: formatNumber(sum),
         }));
       }
@@ -234,60 +228,15 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       });
     }
 
-    // Expanded content
+    // Expanded content (no subtotal rows — the group row already shows the sum)
     if (isExpanded && hasSubgroups && groupData.subgroups) {
       renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData);
-
-      // Subtotal row at bottom of expanded group
-      renderSubtotalRow(container, groupItems, level, groupColumns, formattedHeaders, units, groupValue);
     }
 
     if (isExpanded && !hasSubgroups) {
       renderDetailRows(container, groupItems, level, groupColumns, formattedHeaders, units);
-
-      // Subtotal row at bottom of detail rows
-      renderSubtotalRow(container, groupItems, level, groupColumns, formattedHeaders, units, groupValue);
     }
   }
-}
-
-function renderSubtotalRow(container, items, level, groupColumns, formattedHeaders, units, groupName) {
-  const ui = getUI();
-  const subtotalRow = el('tr', { style: { fontSize: '11px' } });
-
-  // Spacer
-  subtotalRow.appendChild(el('td', { class: 'w-6' }));
-
-  // Label — "sum" floated right so it sits next to the number columns
-  const labelCell = el('td', {
-    class: 'py-1 text-gray-300 italic',
-    colSpan: Math.max(1, groupColumns.length),
-  });
-  labelCell.innerHTML = `<div class="text-right pr-2">sum</div>`;
-  subtotalRow.appendChild(labelCell);
-
-  // Value cells — top border for visual separation
-  const cellClass = 'px-4 py-1 text-right text-gray-400 border-t border-gray-200';
-
-  if (ui.showParameters) {
-    const params = calculateGroupParameters(items, groupColumns, units);
-    for (const col of formattedHeaders) {
-      subtotalRow.appendChild(el('td', {
-        class: cellClass,
-        textContent: formatParameterValue(col.key, params[col.key] || 0),
-      }));
-    }
-  } else {
-    for (const col of formattedHeaders) {
-      const sum = items.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
-      subtotalRow.appendChild(el('td', {
-        class: cellClass,
-        textContent: formatNumber(sum),
-      }));
-    }
-  }
-
-  container.appendChild(subtotalRow);
 }
 
 function renderDetailRows(container, items, level, groupColumns, formattedHeaders, units) {
@@ -299,36 +248,25 @@ function renderDetailRows(container, items, level, groupColumns, formattedHeader
   }
 
   detailItems.forEach((row, idx) => {
-    const detailRow = el('tr', {
-      class: 'pivot-detail-row',
-      style: { fontSize: '12px' },
-    });
+    const detailRow = el('tr', { class: 'pivot-row pivot-level-2' });
 
-    // Spacer
-    detailRow.appendChild(el('td', { class: 'w-6' }));
-
-    // Label — show the next grouping level value if available
-    const labelCell = el('td', {
-      class: 'px-2 py-1 text-gray-500 ',
-      colSpan: Math.max(1, groupColumns.length),
-    });
-    const indent = (level + 1) * 16;
-    labelCell.innerHTML = `<div style="padding-left: ${indent}px">Row ${idx + 1}</div>`;
+    const labelCell = el('td', { class: 'pivot-label' });
+    const indent = (level + 1) * 20;
+    labelCell.innerHTML = `<div class="pivot-label-inner" style="padding-left:${indent}px"><span>Row ${idx + 1}</span></div>`;
     detailRow.appendChild(labelCell);
 
-    // Values
     if (ui.showParameters) {
       const params = calculateParameters(row, units);
       for (const col of formattedHeaders) {
         detailRow.appendChild(el('td', {
-          class: 'px-4 py-1.5 text-right text-gray-700',
+          class: 'pivot-cell-value',
           textContent: formatParameterValue(col.key, params[col.key] || 0),
         }));
       }
     } else {
       for (const col of formattedHeaders) {
         detailRow.appendChild(el('td', {
-          class: 'px-4 py-1.5 text-right text-gray-700',
+          class: 'pivot-cell-value',
           textContent: formatNumber(parseFloat(row[col.key]) || 0),
         }));
       }
@@ -340,22 +278,17 @@ function renderDetailRows(container, items, level, groupColumns, formattedHeader
 
 function renderTotalRow(body, data, groupColumns, formattedHeaders, units) {
   const ui = getUI();
-  const totalRow = el('tr', { class: 'pivot-total-row', style: { fontSize: '13px' } });
+  const totalRow = el('tr', { class: 'pivot-total-row' });
 
-  totalRow.appendChild(el('td', { class: 'w-6 px-2 py-1' }));
-
-  const labelCell = el('td', {
-    class: 'px-2 py-1 text-left font-medium ',
-    colSpan: Math.max(1, groupColumns.length),
-    textContent: 'Total',
-  });
+  const labelCell = el('td', { class: 'pivot-label' });
+  labelCell.innerHTML = '<div class="pivot-label-inner">Total</div>';
   totalRow.appendChild(labelCell);
 
   if (ui.showParameters) {
     const params = calculateGroupParameters(data, groupColumns, units);
     for (const col of formattedHeaders) {
       totalRow.appendChild(el('td', {
-        class: 'px-4 py-1.5 text-right',
+        class: 'pivot-cell-value',
         textContent: formatParameterValue(col.key, params[col.key] || 0),
       }));
     }
@@ -363,7 +296,7 @@ function renderTotalRow(body, data, groupColumns, formattedHeaders, units) {
     for (const col of formattedHeaders) {
       const sum = data.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
       totalRow.appendChild(el('td', {
-        class: 'px-4 py-1.5 text-right',
+        class: 'pivot-cell-value',
         textContent: formatNumber(sum),
       }));
     }
