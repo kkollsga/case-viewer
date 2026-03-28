@@ -49,25 +49,27 @@ export function render() {
   const ac = Object.keys(allUniqueValues);
   const order = currentMappings.__groupOrder || ac;
   const cols = [...order.filter(c=>ac.includes(c)), ...ac.filter(c=>!order.includes(c))];
-  for (const c of cols) w.appendChild(renderSection(field, c));
+  const sectionsWrap = el('div',{class:'space-y-3'});
+  for (const c of cols) {
+    const sec = renderSection(field, c);
+    sec.dataset.sectionCol = c;
+    sectionsWrap.appendChild(sec);
+  }
+  w.appendChild(sectionsWrap);
   containerEl.appendChild(w);
+
+  // Vertical drag-and-drop for section reordering
+  setupSectionDrag(sectionsWrap, field);
 }
 
 // ─── Section ────────────────────────────────────────────────
 function renderSection(field, column) {
   const vals = allUniqueValues[column]||[];
-  const sec = el('div',{class:'mt-4'});
-  const header = el('div',{class:'flex items-center gap-2 py-1'});
+  const sec = el('div',{class:'gs-section rounded-lg border border-gray-200 p-3'});
+  const header = el('div',{class:'flex items-center gap-2 py-0.5 cursor-grab select-none',dataset:{sectionHandle:''}});
+  header.appendChild(el('i',{class:'fas fa-grip-vertical text-[10px] text-gray-300'}));
   header.appendChild(el('span',{class:'text-xs font-medium text-gray-500 uppercase tracking-wider',textContent:column}));
   header.appendChild(el('span',{class:'text-[10px] text-gray-300',textContent:`${vals.length}`}));
-  const arrows = el('div',{class:'flex items-center gap-0.5 ml-auto'});
-  arrows.appendChild(el('button',{class:'text-gray-300 hover:text-gray-600 text-[10px] px-1 py-0.5 rounded hover:bg-gray-100',innerHTML:'<i class="fas fa-chevron-up"></i>',
-    onClick:()=>{const o=currentMappings.__groupOrder||[...Object.keys(allUniqueValues)];const i=o.indexOf(column);
-      if(i>0){[o[i-1],o[i]]=[o[i],o[i-1]];currentMappings.__groupOrder=o;persist(field);render();}}}));
-  arrows.appendChild(el('button',{class:'text-gray-300 hover:text-gray-600 text-[10px] px-1 py-0.5 rounded hover:bg-gray-100',innerHTML:'<i class="fas fa-chevron-down"></i>',
-    onClick:()=>{const o=currentMappings.__groupOrder||[...Object.keys(allUniqueValues)];const i=o.indexOf(column);
-      if(i<o.length-1){[o[i],o[i+1]]=[o[i+1],o[i]];currentMappings.__groupOrder=o;persist(field);render();}}}));
-  header.appendChild(arrows);
   sec.appendChild(header);
 
   const items = el('div',{class:'flex flex-wrap gap-2 items-start mt-1',dataset:{column}});
@@ -176,6 +178,59 @@ function renderSection(field, column) {
   }, 0);
 
   return sec;
+}
+
+// ─── Section drag (vertical reorder of group types) ────────
+function setupSectionDrag(wrapper, field) {
+  wrapper.querySelectorAll('[data-section-handle]').forEach(handle => {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const sec = handle.closest('[data-section-col]');
+      if (!sec) return;
+
+      const r = sec.getBoundingClientRect();
+      const offsetY = e.clientY - r.top;
+      let ghost = null, dragging = false, startY = e.clientY;
+
+      function onMove(ev) {
+        if (!dragging) {
+          if (Math.abs(ev.clientY - startY) < 4) return;
+          dragging = true;
+          ghost = sec.cloneNode(true);
+          ghost.style.cssText = `position:fixed;pointer-events:none;opacity:0.8;z-index:9998;width:${r.width}px;left:${r.left}px;top:${r.top}px;box-shadow:0 4px 12px rgba(0,0,0,0.12);border-radius:8px;`;
+          document.body.appendChild(ghost);
+          sec.style.opacity = '0.2';
+        }
+        ghost.style.top = (ev.clientY - offsetY) + 'px';
+
+        // Live reorder in DOM
+        const siblings = [...wrapper.querySelectorAll('[data-section-col]')];
+        for (const sib of siblings) {
+          if (sib === sec) continue;
+          const sr = sib.getBoundingClientRect();
+          const midY = sr.top + sr.height / 2;
+          if (ev.clientY < midY) { wrapper.insertBefore(sec, sib); break; }
+        }
+      }
+
+      function onUp() {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        if (ghost) ghost.remove();
+        sec.style.opacity = '';
+        if (!dragging) return;
+        // Persist new order
+        currentMappings.__groupOrder = [...wrapper.querySelectorAll('[data-section-col]')].map(s => s.dataset.sectionCol);
+        persist(field); render();
+      }
+
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+  });
 }
 
 // ─── Color palette menu ────────────────────────────────────

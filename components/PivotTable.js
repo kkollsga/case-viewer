@@ -220,8 +220,8 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       }
     }
 
-    // Apply stack/pill color for level 1 groups
-    if (level === 1 && mappings) {
+    // Apply stack/pill color from group mappings
+    if (mappings) {
       const col = groupColumns[level];
       const stacks = mappings[col] || [];
       const st = stacks.find(s => s.name === groupValue);
