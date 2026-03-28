@@ -57,10 +57,18 @@ export function render() {
 function renderSection(field, column) {
   const vals = allUniqueValues[column]||[];
   const sec = el('div',{class:'mt-4'});
-  sec.appendChild(el('div',{class:'flex items-center gap-2 py-1'},[
-    el('span',{class:'text-xs font-medium text-gray-500 uppercase tracking-wider',textContent:column}),
-    el('span',{class:'text-[10px] text-gray-300',textContent:`${vals.length}`}),
-  ]));
+  const header = el('div',{class:'flex items-center gap-2 py-1'});
+  header.appendChild(el('span',{class:'text-xs font-medium text-gray-500 uppercase tracking-wider',textContent:column}));
+  header.appendChild(el('span',{class:'text-[10px] text-gray-300',textContent:`${vals.length}`}));
+  const arrows = el('div',{class:'flex items-center gap-0.5 ml-auto'});
+  arrows.appendChild(el('button',{class:'text-gray-300 hover:text-gray-600 text-[10px] px-1 py-0.5 rounded hover:bg-gray-100',innerHTML:'<i class="fas fa-chevron-up"></i>',
+    onClick:()=>{const o=currentMappings.__groupOrder||[...Object.keys(allUniqueValues)];const i=o.indexOf(column);
+      if(i>0){[o[i-1],o[i]]=[o[i],o[i-1]];currentMappings.__groupOrder=o;persist(field);render();}}}));
+  arrows.appendChild(el('button',{class:'text-gray-300 hover:text-gray-600 text-[10px] px-1 py-0.5 rounded hover:bg-gray-100',innerHTML:'<i class="fas fa-chevron-down"></i>',
+    onClick:()=>{const o=currentMappings.__groupOrder||[...Object.keys(allUniqueValues)];const i=o.indexOf(column);
+      if(i<o.length-1){[o[i],o[i+1]]=[o[i+1],o[i]];currentMappings.__groupOrder=o;persist(field);render();}}}));
+  header.appendChild(arrows);
+  sec.appendChild(header);
 
   const items = el('div',{class:'flex flex-wrap gap-2 items-start mt-1',dataset:{column}});
   const stacks = currentMappings[column]||[];
@@ -106,7 +114,7 @@ function renderSection(field, column) {
           const targetVal = target.dataset.value;
           removeVal(column, dragVal); removeVal(column, targetVal);
           if (!currentMappings[column]) currentMappings[column] = [];
-          currentMappings[column].push({ name: targetVal, values: [targetVal, dragVal] });
+          currentMappings[column].push({ name: targetVal, color: dc(currentMappings[column].length), values: [targetVal, dragVal] });
         } else if (target.dataset.gs === 'stack') {
           removeVal(column, dragVal);
           const st = (currentMappings[column]||[]).find(s => s.name === target.dataset.stackName);
@@ -129,7 +137,7 @@ function renderSection(field, column) {
           const tv = drop.target.dataset.value;
           removeVal(column, tv);
           if (!currentMappings[column]) currentMappings[column] = [];
-          currentMappings[column].push({ name: tv, values: [tv, value] });
+          currentMappings[column].push({ name: tv, color: dc((currentMappings[column]||[]).length), values: [tv, value] });
         }
         persist(field); render();
       },
