@@ -145,8 +145,9 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
   if (!nestedData || typeof nestedData !== 'object') return;
 
   const ui = getUI();
-  const caseKey = getActiveCase();
+  // Use field+scenario as key (not case) so expanded state persists across case switches
   const field = getActiveField();
+  const caseKey = `${field}_pivot`;
 
   // Sort groups: user-defined order first, then by Bulk volume
   const currentCol = groupColumns[level];
@@ -253,19 +254,22 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
 function renderSubtotalRow(container, items, level, groupColumns, formattedHeaders, units, groupName) {
   const ui = getUI();
   const subtotalRow = el('tr', {
-    style: { fontSize: '12px', backgroundColor: '#f9fafb' },
+    style: { fontSize: '12px' },
+    class: 'border-t border-gray-200',
   });
 
   // Spacer
-  subtotalRow.appendChild(el('td', { class: 'w-6' }));
+  const spacer = el('td', { class: 'w-6' });
+  spacer.style.cssText = 'background:linear-gradient(to right, #e5e7eb 0%, transparent 100%); height:1px; padding:0;';
+  subtotalRow.appendChild(spacer);
 
   // Label
   const labelCell = el('td', {
-    class: 'px-2 py-1 text-gray-400 font-medium min-w-[150px]',
+    class: 'px-2 py-1.5 text-gray-400 italic min-w-[150px]',
     colSpan: Math.max(1, groupColumns.length),
   });
   const indent = (level + 1) * 16;
-  labelCell.innerHTML = `<div style="padding-left: ${indent}px">${groupName} total</div>`;
+  labelCell.innerHTML = `<div style="padding-left: ${indent}px">sum</div>`;
   subtotalRow.appendChild(labelCell);
 
   // Values
@@ -273,7 +277,7 @@ function renderSubtotalRow(container, items, level, groupColumns, formattedHeade
     const params = calculateGroupParameters(items, groupColumns, units);
     for (const col of formattedHeaders) {
       subtotalRow.appendChild(el('td', {
-        class: 'px-2 py-1 text-right text-gray-500',
+        class: 'px-2 py-1.5 text-right text-gray-400',
         textContent: formatParameterValue(col.key, params[col.key] || 0),
       }));
     }
@@ -281,7 +285,7 @@ function renderSubtotalRow(container, items, level, groupColumns, formattedHeade
     for (const col of formattedHeaders) {
       const sum = items.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
       subtotalRow.appendChild(el('td', {
-        class: 'px-2 py-1 text-right text-gray-500',
+        class: 'px-2 py-1.5 text-right text-gray-400',
         textContent: formatNumber(sum),
       }));
     }
