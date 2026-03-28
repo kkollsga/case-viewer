@@ -88,7 +88,7 @@ export function render() {
 
   // Numeric headers
   for (const col of formattedHeaders) {
-    const th = el('th', { class: 'w-32 px-2 py-1 text-right text-xs font-semibold text-gray-700' });
+    const th = el('th', { class: 'w-32 px-2 py-2 text-right font-semibold text-gray-600', style: { fontSize: '11px' } });
     th.innerHTML = `<div>${col.label}</div>${col.unit ? `<div class="text-[10px] text-gray-400 leading-tight">${col.unit}</div>` : ''}`;
     headerRow.appendChild(th);
   }
@@ -182,7 +182,11 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
     const hasSubgroups = groupColumns.length > level + 1;
 
     // ── Group summary row ──
-    const groupRow = el('tr', { class: 'pivot-row-toggle hover:bg-gray-50 text-sm', dataset: { group: groupKey } });
+    const groupRow = el('tr', {
+      class: `pivot-row-toggle hover:bg-gray-50 ${isExpanded ? 'font-medium text-gray-800' : 'text-gray-700'}`,
+      dataset: { group: groupKey },
+      style: { fontSize: '13px' },
+    });
 
     // Toggle cell
     const toggleCell = el('td', { class: 'w-6 px-2 py-1' });
@@ -232,12 +236,58 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
     // Expanded content
     if (isExpanded && hasSubgroups && groupData.subgroups) {
       renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData);
+
+      // Subtotal row at bottom of expanded group
+      renderSubtotalRow(container, groupItems, level, groupColumns, formattedHeaders, units, groupValue);
     }
 
     if (isExpanded && !hasSubgroups) {
       renderDetailRows(container, groupItems, level, groupColumns, formattedHeaders, units);
+
+      // Subtotal row at bottom of detail rows
+      renderSubtotalRow(container, groupItems, level, groupColumns, formattedHeaders, units, groupValue);
     }
   }
+}
+
+function renderSubtotalRow(container, items, level, groupColumns, formattedHeaders, units, groupName) {
+  const ui = getUI();
+  const subtotalRow = el('tr', {
+    style: { fontSize: '12px', backgroundColor: '#f9fafb' },
+  });
+
+  // Spacer
+  subtotalRow.appendChild(el('td', { class: 'w-6' }));
+
+  // Label
+  const labelCell = el('td', {
+    class: 'px-2 py-1 text-gray-400 font-medium min-w-[150px]',
+    colSpan: Math.max(1, groupColumns.length),
+  });
+  const indent = (level + 1) * 16;
+  labelCell.innerHTML = `<div style="padding-left: ${indent}px">${groupName} total</div>`;
+  subtotalRow.appendChild(labelCell);
+
+  // Values
+  if (ui.showParameters) {
+    const params = calculateGroupParameters(items, groupColumns, units);
+    for (const col of formattedHeaders) {
+      subtotalRow.appendChild(el('td', {
+        class: 'px-2 py-1 text-right text-gray-500',
+        textContent: formatParameterValue(col.key, params[col.key] || 0),
+      }));
+    }
+  } else {
+    for (const col of formattedHeaders) {
+      const sum = items.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
+      subtotalRow.appendChild(el('td', {
+        class: 'px-2 py-1 text-right text-gray-500',
+        textContent: formatNumber(sum),
+      }));
+    }
+  }
+
+  container.appendChild(subtotalRow);
 }
 
 function renderDetailRows(container, items, level, groupColumns, formattedHeaders, units) {
@@ -249,12 +299,15 @@ function renderDetailRows(container, items, level, groupColumns, formattedHeader
   }
 
   detailItems.forEach((row, idx) => {
-    const detailRow = el('tr', { class: 'bg-gray-50 text-xs pivot-detail-row' });
+    const detailRow = el('tr', {
+      class: 'pivot-detail-row',
+      style: { fontSize: '12px' },
+    });
 
     // Spacer
     detailRow.appendChild(el('td', { class: 'w-6' }));
 
-    // Label
+    // Label — show the next grouping level value if available
     const labelCell = el('td', {
       class: 'px-2 py-1 text-gray-500 min-w-[150px]',
       colSpan: Math.max(1, groupColumns.length),
@@ -287,7 +340,7 @@ function renderDetailRows(container, items, level, groupColumns, formattedHeader
 
 function renderTotalRow(body, data, groupColumns, formattedHeaders, units) {
   const ui = getUI();
-  const totalRow = el('tr', { class: 'pivot-total-row text-sm' });
+  const totalRow = el('tr', { class: 'pivot-total-row', style: { fontSize: '13px' } });
 
   totalRow.appendChild(el('td', { class: 'w-6 px-2 py-1' }));
 

@@ -1493,23 +1493,24 @@ function renderCaseGrid(caseNames, casesData, selected) {
     style: { gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' },
   });
 
+  const activeCase = getActiveCase();
   for (const caseName of caseNames) {
     const caseData = casesData[caseName];
     if (!caseData) continue;
-    const isSelected = selected.includes(caseName);
-    grid.appendChild(renderCaseCard(caseName, caseData, isSelected));
+    const isActive = caseName === activeCase;
+    grid.appendChild(renderCaseCard(caseName, caseData, isActive));
   }
 
   return grid;
 }
 
-function renderCaseCard(caseName, caseData, isSelected) {
+function renderCaseCard(caseName, caseData, isActive) {
   const card = el('div', {
     class: [
-      'relative bg-white rounded-2xl p-5 cursor-pointer transition-all group',
-      isSelected
-        ? 'border-l-4 border-l-indigo-500 border border-indigo-100 bg-indigo-50/30 shadow-sm'
-        : 'border border-transparent hover:shadow-md',
+      'relative rounded-2xl p-5 cursor-pointer transition-all group',
+      isActive
+        ? 'bg-indigo-50 ring-2 ring-indigo-500 shadow-md'
+        : 'bg-white border border-gray-100 hover:shadow-md hover:border-gray-200',
     ].join(' '),
   });
 
@@ -1548,11 +1549,6 @@ function renderCaseCard(caseName, caseData, isSelected) {
     card.appendChild(el('div', { class: 'mt-4' }));
     card.appendChild(renderZoneBar(zoneBreakdown));
   }
-
-  // Checkbox
-  const checkbox = renderCheckbox(isSelected);
-  checkbox.classList.add('absolute', 'bottom-4', 'right-4');
-  card.appendChild(checkbox);
 
   // Click → activate case (opens data view)
   card.addEventListener('click', () => {
