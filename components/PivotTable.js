@@ -81,14 +81,14 @@ export function render() {
   // Toggle column
   headerRow.appendChild(el('th', { class: 'w-6 px-2 py-1' }));
 
-  // Group column headers (empty, but reserve space)
+  // Group column headers (auto-width)
   for (let i = 0; i < groupColumns.length; i++) {
-    headerRow.appendChild(el('th', { class: 'px-2 py-1 min-w-[150px]' }));
+    headerRow.appendChild(el('th', { class: 'px-2 py-1' }));
   }
 
-  // Numeric headers
+  // Numeric headers — generous padding for breathing room
   for (const col of formattedHeaders) {
-    const th = el('th', { class: 'w-32 px-2 py-2 text-right font-semibold text-gray-600', style: { fontSize: '11px' } });
+    const th = el('th', { class: 'px-4 py-2 text-right font-semibold text-gray-600', style: { fontSize: '11px', minWidth: '90px' } });
     th.innerHTML = `<div>${col.label}</div>${col.unit ? `<div class="text-[10px] text-gray-400 leading-tight">${col.unit}</div>` : ''}`;
     headerRow.appendChild(th);
   }
@@ -198,7 +198,7 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
 
     // Label cell
     const labelCell = el('td', {
-      class: 'px-2 py-1 text-gray-800 font-medium min-w-[150px]',
+      class: 'px-2 py-1 text-gray-800 font-medium ',
       colSpan: Math.max(1, groupColumns.length),
     });
     const indent = level * 16;
@@ -210,7 +210,7 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       const params = calculateGroupParameters(groupItems, groupColumns, units);
       for (const col of formattedHeaders) {
         groupRow.appendChild(el('td', {
-          class: 'px-2 py-1 text-right text-gray-700',
+          class: 'px-4 py-1.5 text-right text-gray-700',
           textContent: formatParameterValue(col.key, params[col.key] || 0),
         }));
       }
@@ -218,7 +218,7 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       for (const col of formattedHeaders) {
         const sum = groupItems.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
         groupRow.appendChild(el('td', {
-          class: 'px-2 py-1 text-right text-gray-700',
+          class: 'px-4 py-1.5 text-right text-gray-700',
           textContent: formatNumber(sum),
         }));
       }
@@ -253,31 +253,27 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
 
 function renderSubtotalRow(container, items, level, groupColumns, formattedHeaders, units, groupName) {
   const ui = getUI();
-  const subtotalRow = el('tr', {
-    style: { fontSize: '12px' },
-    class: 'border-t border-gray-200',
-  });
+  const subtotalRow = el('tr', { style: { fontSize: '11px' } });
 
   // Spacer
-  const spacer = el('td', { class: 'w-6' });
-  spacer.style.cssText = 'background:linear-gradient(to right, #e5e7eb 0%, transparent 100%); height:1px; padding:0;';
-  subtotalRow.appendChild(spacer);
+  subtotalRow.appendChild(el('td', { class: 'w-6' }));
 
-  // Label
+  // Label — "sum" floated right so it sits next to the number columns
   const labelCell = el('td', {
-    class: 'px-2 py-1.5 text-gray-400 italic min-w-[150px]',
+    class: 'py-1 text-gray-300 italic',
     colSpan: Math.max(1, groupColumns.length),
   });
-  const indent = (level + 1) * 16;
-  labelCell.innerHTML = `<div style="padding-left: ${indent}px">sum</div>`;
+  labelCell.innerHTML = `<div class="text-right pr-2">sum</div>`;
   subtotalRow.appendChild(labelCell);
 
-  // Values
+  // Value cells — top border for visual separation
+  const cellClass = 'px-4 py-1 text-right text-gray-400 border-t border-gray-200';
+
   if (ui.showParameters) {
     const params = calculateGroupParameters(items, groupColumns, units);
     for (const col of formattedHeaders) {
       subtotalRow.appendChild(el('td', {
-        class: 'px-2 py-1.5 text-right text-gray-400',
+        class: cellClass,
         textContent: formatParameterValue(col.key, params[col.key] || 0),
       }));
     }
@@ -285,7 +281,7 @@ function renderSubtotalRow(container, items, level, groupColumns, formattedHeade
     for (const col of formattedHeaders) {
       const sum = items.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
       subtotalRow.appendChild(el('td', {
-        class: 'px-2 py-1.5 text-right text-gray-400',
+        class: cellClass,
         textContent: formatNumber(sum),
       }));
     }
@@ -313,7 +309,7 @@ function renderDetailRows(container, items, level, groupColumns, formattedHeader
 
     // Label — show the next grouping level value if available
     const labelCell = el('td', {
-      class: 'px-2 py-1 text-gray-500 min-w-[150px]',
+      class: 'px-2 py-1 text-gray-500 ',
       colSpan: Math.max(1, groupColumns.length),
     });
     const indent = (level + 1) * 16;
@@ -325,14 +321,14 @@ function renderDetailRows(container, items, level, groupColumns, formattedHeader
       const params = calculateParameters(row, units);
       for (const col of formattedHeaders) {
         detailRow.appendChild(el('td', {
-          class: 'px-2 py-1 text-right text-gray-800',
+          class: 'px-4 py-1.5 text-right text-gray-700',
           textContent: formatParameterValue(col.key, params[col.key] || 0),
         }));
       }
     } else {
       for (const col of formattedHeaders) {
         detailRow.appendChild(el('td', {
-          class: 'px-2 py-1 text-right text-gray-800',
+          class: 'px-4 py-1.5 text-right text-gray-700',
           textContent: formatNumber(parseFloat(row[col.key]) || 0),
         }));
       }
@@ -349,7 +345,7 @@ function renderTotalRow(body, data, groupColumns, formattedHeaders, units) {
   totalRow.appendChild(el('td', { class: 'w-6 px-2 py-1' }));
 
   const labelCell = el('td', {
-    class: 'px-2 py-1 text-left font-medium min-w-[150px]',
+    class: 'px-2 py-1 text-left font-medium ',
     colSpan: Math.max(1, groupColumns.length),
     textContent: 'Total',
   });
@@ -359,7 +355,7 @@ function renderTotalRow(body, data, groupColumns, formattedHeaders, units) {
     const params = calculateGroupParameters(data, groupColumns, units);
     for (const col of formattedHeaders) {
       totalRow.appendChild(el('td', {
-        class: 'px-2 py-1 text-right',
+        class: 'px-4 py-1.5 text-right',
         textContent: formatParameterValue(col.key, params[col.key] || 0),
       }));
     }
@@ -367,7 +363,7 @@ function renderTotalRow(body, data, groupColumns, formattedHeaders, units) {
     for (const col of formattedHeaders) {
       const sum = data.reduce((acc, row) => acc + (parseFloat(row[col.key]) || 0), 0);
       totalRow.appendChild(el('td', {
-        class: 'px-2 py-1 text-right',
+        class: 'px-4 py-1.5 text-right',
         textContent: formatNumber(sum),
       }));
     }
