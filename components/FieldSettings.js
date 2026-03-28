@@ -5,7 +5,7 @@ import { getActiveField, store } from '../core/state.js';
 import { loadGroupMappings, saveGroupMappings, collectUniqueGroupValues } from '../core/storage.js';
 // events.js removed — using store.dispatch for signals
 import { el, clear } from '../utils/dom.js';
-import { PALETTES } from '../utils/color.js';
+import { PALETTES, faintColor } from '../utils/color.js';
 import { makeDraggable } from '../utils/draggable.js';
 
 let containerEl = null, visible = false, currentMappings = {}, allUniqueValues = {};
@@ -170,20 +170,49 @@ function renderSection(field, column) {
   return sec;
 }
 
+// ─── Color palette menu ────────────────────────────────────
+function renderColorMenu(anchor, onSelect) {
+  document.querySelectorAll('.gs-color-menu').forEach(m => m.remove());
+  const menu = el('div',{class:'gs-color-menu'});
+  for (const c of PALETTES.vibrant) {
+    const sw = el('div',{class:'gs-color-swatch',style:{backgroundColor:c}});
+    sw.addEventListener('click',e=>{e.stopPropagation();menu.remove();onSelect(c);});
+    menu.appendChild(sw);
+  }
+  anchor.appendChild(menu);
+  const close = e=>{if(!menu.contains(e.target)){menu.remove();document.removeEventListener('pointerdown',close);}};
+  setTimeout(()=>document.addEventListener('pointerdown',close),0);
+}
+
 // ─── Bare pill ──────────────────────────────────────────────
 function renderPill(field, column, value) {
+  const pillColors = currentMappings[`__colors_${column}`]||{};
+  const hue = pillColors[value];
   const w = el('div',{class:'relative inline-block',dataset:{gs:'pill',value}});
-  w.appendChild(el('span',{
-    class:'inline-flex items-center px-3 py-1.5 text-xs rounded-full bg-white border border-gray-200 text-gray-600 cursor-grab hover:border-indigo-300 hover:text-indigo-600 transition-colors select-none whitespace-nowrap',
+  const span = el('span',{
+    class:'inline-flex items-center px-3 py-1.5 text-xs rounded-full cursor-grab hover:border-indigo-300 hover:text-indigo-600 transition-colors select-none whitespace-nowrap',
     textContent:value,
-  }));
+  });
+  if (hue) {
+    span.style.backgroundColor = faintColor(hue, 0.85);
+    span.style.border = `1px solid ${hue}40`;
+    span.style.color = '#374151';
+  } else {
+    span.className += ' bg-white border border-gray-200 text-gray-600';
+  }
+  w.appendChild(span);
   const tb = el('div',{
     class:'fs-tb absolute top-full right-0 mt-0.5 flex items-center bg-white border border-gray-200 rounded shadow-sm opacity-0 transition-opacity z-10 overflow-hidden',
   });
+  tb.appendChild(el('button',{class:'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 text-[7px]',innerHTML:'<i class="fas fa-palette"></i>',
+    onClick:(e)=>{e.stopPropagation();renderColorMenu(w,(c)=>{
+      if(!currentMappings[`__colors_${column}`])currentMappings[`__colors_${column}`]={};
+      currentMappings[`__colors_${column}`][value]=c;persist(field);render();});}}));
   tb.appendChild(el('button',{class:'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 text-[7px]',innerHTML:'<i class="fas fa-pen"></i>',
-    onClick:(e)=>{e.stopPropagation();if(!currentMappings[column])currentMappings[column]=[];currentMappings[column].push({name:value,color:dc(currentMappings[column].length),values:[value]});persist(field);render();}}));
+    onClick:(e)=>{e.stopPropagation();const pc=currentMappings[`__colors_${column}`]||{};const c=pc[value]||dc((currentMappings[column]||[]).length);
+      if(!currentMappings[column])currentMappings[column]=[];currentMappings[column].push({name:value,color:c,values:[value]});
+      if(pc[value])delete pc[value];persist(field);render();}}));
   w.appendChild(tb);
-  // Show toolbar on hover
   w.addEventListener('mouseenter',()=>{tb.style.opacity='1';});
   w.addEventListener('mouseleave',()=>{tb.style.opacity='';});
   return w;
@@ -197,11 +226,6 @@ function renderStack(field, column, stack, index) {
     class:'inline-flex items-center gap-1.5 rounded-full pl-3.5 pr-2.5 py-1.5 cursor-grab select-none',
     style:{backgroundColor:color},
   });
-
-  // Color picker
-  const cp=el('input',{type:'color',class:'absolute w-0 h-0 opacity-0',value:color});
-  cp.addEventListener('input',e=>{stack.color=e.target.value;row.style.backgroundColor=e.target.value;persist(field);});
-  row.addEventListener('dblclick',e=>{if(e.target===row)cp.click();}); row.appendChild(cp);
 
   // Title + edit
   const lbl=el('span',{class:'text-xs font-semibold whitespace-nowrap',textContent:stack.name,style:{color:tc}});
@@ -238,6 +262,8 @@ function renderStack(field, column, stack, index) {
     class:'fs-tb absolute top-full right-0 mt-0.5 flex items-center bg-white border border-gray-200 rounded shadow-sm opacity-0 hover:opacity-100 transition-opacity z-10 overflow-hidden',
   });
   tb.append(
+    el('button',{class:'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 text-[7px]',innerHTML:'<i class="fas fa-palette"></i>',
+      onClick:(e)=>{e.stopPropagation();renderColorMenu(outer,(c)=>{stack.color=c;persist(field);render();});}}),
     el('button',{class:'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 text-[7px]',innerHTML:'<i class="fas fa-pen"></i>',onClick:(e)=>{e.stopPropagation();showEdit();}}),
     el('button',{class:'px-1.5 py-0.5 text-gray-300 hover:text-red-500 hover:bg-red-50 text-[8px]',innerHTML:'<i class="fas fa-times"></i>',
       onClick:()=>{const s=currentMappings[column]||[];const i=s.indexOf(stack);if(i!==-1)s.splice(i,1);persist(field);render();}})

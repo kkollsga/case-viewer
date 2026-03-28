@@ -19,6 +19,20 @@ export const PALETTES = {
   ],
 };
 
+/**
+ * Create a faint (lightened) version of a hex color by mixing towards white.
+ * amount: 0 = original, 1 = pure white. Default 0.88.
+ */
+export function faintColor(hex, amount = 0.88) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const lr = Math.round(r + (255 - r) * amount);
+  const lg = Math.round(g + (255 - g) * amount);
+  const lb = Math.round(b + (255 - b) * amount);
+  return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`;
+}
+
 export const THEME = {
   white: '#FFFFFF',
   totalCircle: '#F9FAFB',

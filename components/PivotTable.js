@@ -1,10 +1,11 @@
 // components/PivotTable.js — Zone/segment hierarchy table (core view)
 
 import { getState, getRuntime, getActiveField, getActiveCase, getUI, getExpandedZones, toggleZoneExpanded, store } from '../core/state.js';
-import { getGroupValueOrder, getGroupTypeOrder } from '../core/storage.js';
+import { getGroupValueOrder, getGroupTypeOrder, loadGroupMappings } from '../core/storage.js';
 import { formatNumber } from '../utils/format.js';
 import { calculateParameters, PARAMETER_COLUMNS, getParameterUnits, formatParameterValue, calculateGroupParameters } from '../utils/parameters.js';
 import { el, clear } from '../utils/dom.js';
+import { faintColor } from '../utils/color.js';
 
 export function init() {}
 
@@ -29,6 +30,7 @@ export function render() {
   let data = [...vData.data];
   const units = vData.units || {};
   const field = getActiveField();
+  const mappings = loadGroupMappings(field);
 
   // Apply group type order from field settings
   let groupColumns = vData.volumeGroups?.columns || [];
@@ -97,7 +99,7 @@ export function render() {
 
   // ── Nested data ──
   const nestedData = createMultiLevelGroups(data, groupColumns);
-  renderGroups(body, nestedData, 0, groupColumns, displayColumns, formattedHeaders, units, data);
+  renderGroups(body, nestedData, 0, groupColumns, displayColumns, formattedHeaders, units, data, mappings);
 
   // ── Total row ──
   renderTotalRow(body, data, groupColumns, formattedHeaders, units);
@@ -140,7 +142,7 @@ function createMultiLevelGroups(data, groupColumns) {
   return result;
 }
 
-function renderGroups(container, nestedData, level, groupColumns, displayColumns, formattedHeaders, units, allData) {
+function renderGroups(container, nestedData, level, groupColumns, displayColumns, formattedHeaders, units, allData, mappings) {
   if (!nestedData || typeof nestedData !== 'object') return;
 
   const ui = getUI();
@@ -218,6 +220,23 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       }
     }
 
+    // Apply stack/pill color for level 1 groups
+    if (level === 1 && mappings) {
+      const col = groupColumns[level];
+      const stacks = mappings[col] || [];
+      const st = stacks.find(s => s.name === groupValue);
+      const pillColors = mappings[`__colors_${col}`] || {};
+      const hue = st?.color || pillColors[groupValue] || null;
+      if (hue) {
+        const bg = faintColor(hue, 0.92);
+        const bgHover = faintColor(hue, 0.84);
+        groupRow.style.borderLeftColor = hue;
+        groupRow.style.backgroundColor = bg;
+        groupRow.addEventListener('mouseenter', () => { groupRow.style.backgroundColor = bgHover; });
+        groupRow.addEventListener('mouseleave', () => { groupRow.style.backgroundColor = bg; });
+      }
+    }
+
     container.appendChild(groupRow);
 
     // Toggle handler
@@ -230,7 +249,7 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
 
     // Expanded content (no subtotal rows — the group row already shows the sum)
     if (isExpanded && hasSubgroups && groupData.subgroups) {
-      renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData);
+      renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData, mappings);
     }
 
     if (isExpanded && !hasSubgroups) {

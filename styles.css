@@ -314,6 +314,37 @@
 .pivot-legend-swatch.level-1 { background: #93c5fd; }
 .pivot-legend-swatch.level-2 { background: #e2e8f0; }
 
+/* ── Color palette menu (FieldSettings) ── */
+.gs-color-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  padding: 6px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  z-index: 30;
+}
+
+.gs-color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.1s, border-color 0.1s;
+}
+
+.gs-color-swatch:hover {
+  transform: scale(1.2);
+  border-color: #374151;
+}
+
 /* ==================== CIRCLE VISUALIZATION ==================== */
 .circle-diagram-container {
   position: relative;
