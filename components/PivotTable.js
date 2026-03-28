@@ -233,10 +233,12 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       const faintAmount = Math.min(0.82 + level * 0.05, 0.96);
       const bg = faintColor(hue, faintAmount);
       const bgHover = faintColor(hue, faintAmount - 0.06);
-      groupRow.style.borderLeftColor = hue;
-      groupRow.style.backgroundColor = bg;
-      groupRow.addEventListener('mouseenter', () => { groupRow.style.backgroundColor = bgHover; });
-      groupRow.addEventListener('mouseleave', () => { groupRow.style.backgroundColor = bg; });
+      const offset = level * 10;
+      const grad = (bgc) => `linear-gradient(to right, transparent ${offset}px, ${hue} ${offset}px, ${hue} ${offset + 3}px, ${bgc} ${offset + 3}px)`;
+      groupRow.style.borderLeft = 'none';
+      groupRow.style.background = grad(bg);
+      groupRow.addEventListener('mouseenter', () => { groupRow.style.background = grad(bgHover); });
+      groupRow.addEventListener('mouseleave', () => { groupRow.style.background = grad(bg); });
     }
 
     container.appendChild(groupRow);

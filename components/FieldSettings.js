@@ -261,7 +261,7 @@ function renderPill(field, column, value) {
     span.style.border = `1px solid ${hue}40`;
     span.style.color = '#374151';
   } else {
-    span.className += ' bg-white border border-gray-200 text-gray-600';
+    span.className += ' bg-gray-50 border border-gray-200 text-gray-600';
   }
   w.appendChild(span);
   const tb = el('div',{
