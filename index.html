@@ -86,7 +86,7 @@
                         <tbody id="pivot-body"></tbody>
                     </table>
                 </div>
-                <div class="flex items-center justify-between">
+                <div style="display:flex;justify-content:flex-end;gap:8px;align-items:start">
                     <div class="flex items-center gap-3">
                         <label class="inline-flex items-center cursor-pointer text-xs text-gray-500 hover:text-gray-700">
                             <input type="checkbox" id="hide-empty-toggle" class="sr-only peer">
@@ -98,13 +98,15 @@
                             <div class="relative w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
                             <span class="ml-1.5">Parameters</span>
                         </label>
-                        <div id="pivot-legend" class="pivot-legend"></div>
                     </div>
-                    <div id="case-metadata-container" class="flex items-center gap-3 text-xs text-gray-400">
-                        <div id="case-author-timestamp" class="flex items-center gap-3 cursor-pointer hover:text-gray-600 transition-colors">
-                            <span class="flex items-center gap-1"><i class="fas fa-user text-[10px]"></i><span class="author-name">—</span></span>
-                            <span class="flex items-center gap-1"><i class="fas fa-calendar-alt text-[10px]"></i><span class="timestamp-value">—</span></span>
-                        </div>
+                    <div id="pivot-legend" class="pivot-legend"></div>
+                </div>
+            </div>
+            <div class="flex justify-end mt-2">
+                <div id="case-metadata-container" class="flex items-center gap-3 text-xs text-gray-400">
+                    <div id="case-author-timestamp" class="flex items-center gap-3 cursor-pointer hover:text-gray-600 transition-colors">
+                        <span class="flex items-center gap-1"><i class="fas fa-user text-[10px]"></i><span class="author-name">—</span></span>
+                        <span class="flex items-center gap-1"><i class="fas fa-calendar-alt text-[10px]"></i><span class="timestamp-value">—</span></span>
                     </div>
                 </div>
             </div>
