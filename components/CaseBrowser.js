@@ -12,7 +12,7 @@ import {
   getCasesForScenario, getOrderedCaseNames, saveAppState,
   hasLegacyData, clearLegacyData,
   saveCase, addCaseToOrder, loadDefaultAuthor, saveDefaultAuthor,
-  applyGroupMappings,
+  applyGroupMappings, computeColumnColors,
   deleteFieldData, renameFieldData, deleteScenarioData, renameScenarioData,
 } from '../core/storage.js';
 import { parseOutputSheet, FORMAT } from '../core/parser.js';
@@ -1623,6 +1623,7 @@ function computeZoneOEBreakdown(caseData) {
   const zones = Object.entries(zoneMap)
     .map(([name, oe]) => ({ name, oe }))
     .filter(z => z.oe > 0);
+  zones._groupCol = groupCol;
 
   return zones;
 }
@@ -1631,47 +1632,42 @@ function renderZoneBar(zones) {
   const totalOE = zones.reduce((s, z) => s + z.oe, 0);
   if (totalOE === 0) return el('div');
 
+  const field = getActiveField();
+  // Use shared color map for zone column (first group column)
+  const groupCol = zones._groupCol || 'Zone';
+  const colorMap = field ? computeColumnColors(field, groupCol) : {};
+  const fallback = PALETTES.vibrant;
+
   const container = el('div', { class: 'space-y-1.5' });
 
-  // Label
   container.appendChild(el('div', {
     class: 'text-xs text-gray-400 font-medium',
     textContent: 'Zone OE',
   }));
 
-  // Stacked bar
-  const bar = el('div', {
-    class: 'flex h-2.5 rounded-full overflow-hidden',
-  });
-
-  const palette = PALETTES.vibrant;
+  const bar = el('div', { class: 'flex h-2.5 rounded-full overflow-hidden' });
 
   zones.forEach((zone, i) => {
     const pct = (zone.oe / totalOE) * 100;
+    const color = colorMap[zone.name] || fallback[i % fallback.length];
     const segment = el('div', {
       class: 'h-full transition-all',
       title: `${zone.name}: ${formatNumber(zone.oe)} MCM`,
     });
     segment.style.width = `${pct}%`;
-    segment.style.backgroundColor = palette[i % palette.length];
+    segment.style.backgroundColor = color;
     bar.appendChild(segment);
   });
-
   container.appendChild(bar);
 
-  // Zone labels
   const labels = el('div', { class: 'flex flex-wrap gap-x-3 gap-y-0.5 mt-1' });
   zones.forEach((zone, i) => {
+    const color = colorMap[zone.name] || fallback[i % fallback.length];
     const label = el('div', { class: 'flex items-center gap-1' });
-    const dot = el('div', {
-      class: 'w-2 h-2 rounded-full flex-shrink-0',
-    });
-    dot.style.backgroundColor = palette[i % palette.length];
+    const dot = el('div', { class: 'w-2 h-2 rounded-full flex-shrink-0' });
+    dot.style.backgroundColor = color;
     label.appendChild(dot);
-    label.appendChild(el('span', {
-      class: 'text-xs text-gray-500 truncate',
-      textContent: zone.name,
-    }));
+    label.appendChild(el('span', { class: 'text-xs text-gray-500 truncate', textContent: zone.name }));
     labels.appendChild(label);
   });
   container.appendChild(labels);

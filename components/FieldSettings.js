@@ -2,7 +2,7 @@
 // Uses custom pointer-based drag from utils/draggable.js
 
 import { getActiveField, store } from '../core/state.js';
-import { loadGroupMappings, saveGroupMappings, collectUniqueGroupValues } from '../core/storage.js';
+import { loadGroupMappings, saveGroupMappings, collectUniqueGroupValues, computeColumnColors } from '../core/storage.js';
 // events.js removed — using store.dispatch for signals
 import { el, clear } from '../utils/dom.js';
 import { PALETTES, faintColor } from '../utils/color.js';
@@ -84,7 +84,7 @@ function renderSection(field, column) {
   const stacks = currentMappings[column]||[];
   const asgn = new Set(); for(const s of stacks) for(const v of s.values) asgn.add(v);
   const unassigned = vals.filter(v => !asgn.has(v));
-  const colorMap = computeColumnColors(column);
+  const colorMap = computeColumnColors(getActiveField(), column);
 
   // Use persisted order if available
   const savedOrder = currentMappings[`__order_${column}`];
@@ -256,41 +256,7 @@ function renderColorMenu(anchor, onSelect) {
   setTimeout(()=>document.addEventListener('pointerdown',close),0);
 }
 
-// ─── Color assignment per column ─────────────────────────────
-// Sequential round-robin: explicit (palette/stack) colors are reserved,
-// auto-assigned pills get the next available color in palette order.
-function computeColumnColors(column) {
-  const palette = PALETTES.vibrant;
-  const map = {};
-  const reserved = new Set();
-
-  // 1. Explicit assignments from stacks
-  for (const s of (currentMappings[column] || [])) {
-    if (s.color) { map[s.name] = s.color; reserved.add(s.color); }
-  }
-  // 2. Explicit assignments from pill palette
-  for (const [val, col] of Object.entries(currentMappings[`__colors_${column}`] || {})) {
-    map[val] = col; reserved.add(col);
-  }
-  // 3. Auto-assign remaining values sequentially
-  const vals = allUniqueValues[column] || [];
-  const inStack = new Set();
-  for (const s of (currentMappings[column] || [])) for (const v of s.values) inStack.add(v);
-
-  let idx = 0;
-  for (const val of vals) {
-    if (map[val] || inStack.has(val)) continue;
-    // Find next unreserved color
-    let color = null;
-    for (let i = 0; i < palette.length; i++) {
-      const c = palette[(idx + i) % palette.length];
-      if (!reserved.has(c)) { color = c; idx = idx + i + 1; reserved.add(c); break; }
-    }
-    if (!color) { color = palette[idx % palette.length]; idx++; } // all taken, reuse
-    map[val] = color;
-  }
-  return map;
-}
+// Color map uses the shared computeColumnColors from storage.js
 
 // ─── Bare pill ──────────────────────────────────────────────
 function renderPill(field, column, value, colorMap) {

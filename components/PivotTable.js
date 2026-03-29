@@ -1,7 +1,7 @@
 // components/PivotTable.js — Zone/segment hierarchy table (core view)
 
 import { getState, getRuntime, getActiveField, getActiveCase, getUI, getExpandedZones, toggleZoneExpanded, store } from '../core/state.js';
-import { getGroupValueOrder, getGroupTypeOrder, loadGroupMappings } from '../core/storage.js';
+import { getGroupValueOrder, getGroupTypeOrder, computeColumnColors } from '../core/storage.js';
 import { formatNumber } from '../utils/format.js';
 import { calculateParameters, PARAMETER_COLUMNS, getParameterUnits, formatParameterValue, calculateGroupParameters } from '../utils/parameters.js';
 import { el, clear } from '../utils/dom.js';
@@ -30,7 +30,6 @@ export function render() {
   let data = [...vData.data];
   const units = vData.units || {};
   const field = getActiveField();
-  const mappings = loadGroupMappings(field);
 
   // Apply group type order from field settings
   let groupColumns = vData.volumeGroups?.columns || [];
@@ -99,7 +98,11 @@ export function render() {
 
   // ── Nested data ──
   const nestedData = createMultiLevelGroups(data, groupColumns);
-  renderGroups(body, nestedData, 0, groupColumns, displayColumns, formattedHeaders, units, data, mappings, null);
+  // Pre-compute color maps for all group columns
+  const colorMaps = {};
+  for (const col of groupColumns) colorMaps[col] = computeColumnColors(field, col);
+
+  renderGroups(body, nestedData, 0, groupColumns, displayColumns, formattedHeaders, units, data, colorMaps, null);
 
   // ── Total row ──
   renderTotalRow(body, data, groupColumns, formattedHeaders, units);
@@ -142,7 +145,7 @@ function createMultiLevelGroups(data, groupColumns) {
   return result;
 }
 
-function renderGroups(container, nestedData, level, groupColumns, displayColumns, formattedHeaders, units, allData, mappings, parentHue) {
+function renderGroups(container, nestedData, level, groupColumns, displayColumns, formattedHeaders, units, allData, colorMaps, parentHue) {
   if (!nestedData || typeof nestedData !== 'object') return;
 
   const ui = getUI();
@@ -220,25 +223,28 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       }
     }
 
-    // Apply stack/pill color — own color or inherited from parent, fainter per level
-    let hue = null;
-    if (mappings) {
-      const col = groupColumns[level];
-      const stacks = mappings[col] || [];
-      const st = stacks.find(s => s.name === groupValue);
-      const pillColors = mappings[`__colors_${col}`] || {};
-      hue = st?.color || pillColors[groupValue] || parentHue || null;
-    }
+    // Apply color from shared color map — own color or inherited from parent
+    const colMap = colorMaps[groupColumns[level]] || {};
+    let hue = colMap[groupValue] || parentHue || null;
     if (hue) {
       const faintAmount = Math.min(0.82 + level * 0.05, 0.96);
       const bg = faintColor(hue, faintAmount);
       const bgHover = faintColor(hue, faintAmount - 0.06);
-      const offset = level * 10;
-      const grad = (bgc) => `linear-gradient(to right, transparent ${offset}px, ${hue} ${offset}px, ${hue} ${offset + 3}px, ${bgc} ${offset + 3}px)`;
-      groupRow.style.borderLeft = 'none';
-      groupRow.style.background = grad(bg);
-      groupRow.addEventListener('mouseenter', () => { groupRow.style.background = grad(bgHover); });
-      groupRow.addEventListener('mouseleave', () => { groupRow.style.background = grad(bg); });
+      if (level === 0) {
+        // Level 0: use border-left (flush, no indent issue)
+        groupRow.style.borderLeftColor = hue;
+        groupRow.style.backgroundColor = bg;
+        groupRow.addEventListener('mouseenter', () => { groupRow.style.backgroundColor = bgHover; });
+        groupRow.addEventListener('mouseleave', () => { groupRow.style.backgroundColor = bg; });
+      } else {
+        // Level 1+: indented via gradient
+        const offset = level * 10;
+        const grad = (bgc) => `linear-gradient(to right, transparent ${offset}px, ${hue} ${offset}px, ${hue} ${offset + 3}px, ${bgc} ${offset + 3}px)`;
+        groupRow.style.borderLeft = 'none';
+        groupRow.style.background = grad(bg);
+        groupRow.addEventListener('mouseenter', () => { groupRow.style.background = grad(bgHover); });
+        groupRow.addEventListener('mouseleave', () => { groupRow.style.background = grad(bg); });
+      }
     }
 
     container.appendChild(groupRow);
@@ -253,7 +259,7 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
 
     // Expanded content (no subtotal rows — the group row already shows the sum)
     if (isExpanded && hasSubgroups && groupData.subgroups) {
-      renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData, mappings, hue || parentHue);
+      renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData, colorMaps, hue || parentHue);
     }
 
     if (isExpanded && !hasSubgroups) {

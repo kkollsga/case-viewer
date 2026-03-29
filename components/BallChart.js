@@ -9,6 +9,7 @@ import {
   saveFieldCircleSettings, loadFieldCircleSettings,
   saveLegendLayer, loadLegendLayer,
   saveFieldSettings, getCaseData,
+  computeColumnColors, loadGroupMappings, getGroupTypeOrder,
 } from '../core/storage.js';
 // events.js removed
 import { formatNumber, formatCompact } from '../utils/format.js';
@@ -88,6 +89,20 @@ export function render() {
 
   // Update total / unit display
   updateCurrentUnit();
+
+  // Build color maps from group settings for zone/facies/region
+  const field = getActiveField();
+  _ballColorMaps = {};
+  if (field && vData.volumeGroups?.columns) {
+    const typeOrder = getGroupTypeOrder(field);
+    let cols = vData.volumeGroups.columns;
+    if (typeOrder) {
+      const ordered = typeOrder.filter(c => cols.includes(c));
+      const extras = cols.filter(c => !ordered.includes(c));
+      cols = [...ordered, ...extras];
+    }
+    cols.forEach((col, i) => { _ballColorMaps[i] = computeColumnColors(field, col); });
+  }
 
   // Draw the visualisation
   drawCirclePacking();
@@ -436,8 +451,14 @@ function getMaxDepth(node, depth = 0) {
 // NODE STYLING HELPERS
 // ====================================================================
 
+// Pre-computed color maps from group settings (set before each render)
+let _ballColorMaps = {};
+
 function nodeColor(d) {
   if (d.depth === 0) return THEME.totalCircle;
+  // Check shared color map first (synced with settings)
+  const map = _ballColorMaps[d.depth - 1];
+  if (map && map[d.data.name]) return map[d.data.name];
   return getNodeColor(d.data.name, d.depth);
 }
 

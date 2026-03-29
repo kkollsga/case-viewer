@@ -8,6 +8,7 @@ import {
   serializeState, hydrateState, setDefaultAuthor,
 } from './state.js';
 import { SCHEMA_VERSION } from './state.js';
+import { PALETTES } from '../utils/color.js';
 
 // ─── JSON helpers ───────────────────────────────────────────
 
@@ -383,6 +384,45 @@ export function collectUniqueGroupValues(field) {
   const out = {};
   for (const [col, vals] of Object.entries(result)) out[col] = [...vals].sort();
   return out;
+}
+
+/**
+ * Compute deterministic color assignments for all values in a column.
+ * Explicit colors (stack.color, __colors_*) are reserved first.
+ * Remaining values auto-assigned sequentially from PALETTES.vibrant.
+ */
+export function computeColumnColors(field, column) {
+  const mappings = loadGroupMappings(field);
+  const palette = PALETTES.vibrant;
+  const map = {};
+  const reserved = new Set();
+
+  // 1. Explicit from stacks
+  for (const s of (mappings[column] || [])) {
+    if (s.color) { map[s.name] = s.color; reserved.add(s.color); }
+  }
+  // 2. Explicit from pill palette
+  for (const [val, col] of Object.entries(mappings[`__colors_${column}`] || {})) {
+    map[val] = col; reserved.add(col);
+  }
+  // 3. Auto-assign remaining values
+  const uniqueVals = collectUniqueGroupValues(field);
+  const vals = uniqueVals[column] || [];
+  const inStack = new Set();
+  for (const s of (mappings[column] || [])) for (const v of s.values) inStack.add(v);
+
+  let idx = 0;
+  for (const val of vals) {
+    if (map[val] || inStack.has(val)) continue;
+    let color = null;
+    for (let i = 0; i < palette.length; i++) {
+      const c = palette[(idx + i) % palette.length];
+      if (!reserved.has(c)) { color = c; idx = idx + i + 1; reserved.add(c); break; }
+    }
+    if (!color) { color = palette[idx % palette.length]; idx++; }
+    map[val] = color;
+  }
+  return map;
 }
 
 // ─── Default author ─────────────────────────────────────────
