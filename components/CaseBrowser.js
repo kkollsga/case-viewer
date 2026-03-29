@@ -66,8 +66,19 @@ export function render() {
     inner.appendChild(renderLegacyBanner());
   }
 
-  // Field settings panel (toggled from header dropdown)
+  // Settings toggle bar + collapsible panel
   if (field) {
+    const settingsToggle = el('div', {
+      class: 'flex items-center gap-2 py-1.5 px-1 cursor-pointer text-xs select-none mb-2 ' +
+             (FieldSettings.isVisible() ? 'text-indigo-500' : 'text-gray-400 hover:text-gray-600'),
+      onClick: () => {
+        const panel = document.getElementById('field-settings-panel');
+        if (panel) FieldSettings.toggle(panel);
+      },
+    });
+    settingsToggle.innerHTML = `<i class="fas fa-cog text-[10px]"></i> <span>Group settings</span> <i class="fas fa-chevron-${FieldSettings.isVisible() ? 'up' : 'down'} text-[8px] ml-auto"></i>`;
+    inner.appendChild(settingsToggle);
+
     const settingsPanel = el('div', { id: 'field-settings-panel' });
     inner.appendChild(settingsPanel);
     if (FieldSettings.isVisible()) {
@@ -293,10 +304,6 @@ export function renderHeaderSelectors(activeField, activeScenario) {
     onSelect: (name) => { FieldSettings.hide(); setActiveField(name); saveAppState(); },
     onAdd: (name) => { addField(name); saveAppState(); render(); },
     addLabel: '+ New field',
-    onSettings: activeField ? () => {
-      const panel = document.getElementById('field-settings-panel');
-      if (panel) FieldSettings.toggle(panel);
-    } : null,
   }));
 
   if (activeField) {
@@ -335,15 +342,6 @@ function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addL
       class: `w-full text-left px-3 py-2 text-sm transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`,
       textContent: item,
       onClick: () => { menu.classList.add('hidden'); onSelect(item); },
-    }));
-  }
-
-  if (onSettings) {
-    menu.appendChild(el('div', { class: 'border-t border-gray-100 my-1' }));
-    menu.appendChild(el('button', {
-      class: 'w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:text-indigo-600 hover:bg-gray-50 transition-colors flex items-center gap-1.5',
-      innerHTML: '<i class="fas fa-cog text-[10px]"></i> Group settings',
-      onClick: () => { menu.classList.add('hidden'); onSettings(); },
     }));
   }
 
@@ -387,10 +385,6 @@ function renderSelectors(activeField, activeScenario) {
     onSelect: (name) => { FieldSettings.hide(); setActiveField(name); saveAppState(); },
     onAdd: (name) => { addField(name); saveAppState(); render(); },
     addLabel: '+ New field',
-    onSettings: activeField ? () => {
-      const panel = document.getElementById('field-settings-panel');
-      if (panel) FieldSettings.toggle(panel);
-    } : null,
   }));
 
   row.appendChild(el('span', { class: 'text-gray-300 text-xs', textContent: '›' }));
@@ -434,16 +428,6 @@ function renderDropdown({ value, items, placeholder, onSelect, onAdd, addLabel, 
       class: `w-full text-left px-3 py-1.5 text-sm transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`,
       textContent: item,
       onClick: () => { menu.classList.add('hidden'); onSelect(item); },
-    }));
-  }
-
-  // Settings button (for field)
-  if (onSettings) {
-    menu.appendChild(el('div', { class: 'border-t border-gray-100 my-1' }));
-    menu.appendChild(el('button', {
-      class: 'w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:text-indigo-600 hover:bg-gray-50 transition-colors flex items-center gap-1.5',
-      innerHTML: '<i class="fas fa-cog text-[10px]"></i> Group settings',
-      onClick: () => { menu.classList.add('hidden'); onSettings(); },
     }));
   }
 

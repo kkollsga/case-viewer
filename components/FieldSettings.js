@@ -247,22 +247,23 @@ function renderColorMenu(anchor, onSelect) {
   setTimeout(()=>document.addEventListener('pointerdown',close),0);
 }
 
+// ─── Stable color index from string hash ────────────────────
+function colorIndexOf(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  return Math.abs(h) % PALETTES.vibrant.length;
+}
+
 // ─── Bare pill ──────────────────────────────────────────────
 function renderPill(field, column, value) {
   const pillColors = currentMappings[`__colors_${column}`]||{};
-  const hue = pillColors[value];
+  const hue = pillColors[value] || dc(colorIndexOf(value));
   const w = el('div',{class:'relative inline-block',dataset:{gs:'pill',value}});
   const span = el('span',{
     class:'inline-flex items-center px-3 py-1.5 text-xs rounded-full cursor-grab hover:border-indigo-300 hover:text-indigo-600 transition-colors select-none whitespace-nowrap',
     textContent:value,
+    style: { backgroundColor: faintColor(hue, 0.88), border: `1px solid ${hue}30`, color: '#374151' },
   });
-  if (hue) {
-    span.style.backgroundColor = faintColor(hue, 0.85);
-    span.style.border = `1px solid ${hue}40`;
-    span.style.color = '#374151';
-  } else {
-    span.className += ' bg-gray-50 border border-gray-200 text-gray-600';
-  }
   w.appendChild(span);
   const tb = el('div',{
     class:'fs-tb absolute top-full right-0 mt-0.5 flex items-center bg-white border border-gray-200 rounded shadow-sm opacity-0 transition-opacity z-10 overflow-hidden',
