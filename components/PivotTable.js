@@ -5,7 +5,7 @@ import { getGroupValueOrder, getGroupTypeOrder, computeColumnColors } from '../c
 import { formatNumber } from '../utils/format.js';
 import { calculateParameters, PARAMETER_COLUMNS, getParameterUnits, formatParameterValue, calculateGroupParameters } from '../utils/parameters.js';
 import { el, clear } from '../utils/dom.js';
-import { faintColor } from '../utils/color.js';
+import { faintColor, deriveSubLevelColor } from '../utils/color.js';
 
 export function init() {}
 
@@ -223,9 +223,17 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
       }
     }
 
-    // Apply color from shared color map — own color or inherited from parent
+    // Apply color — level 0 uses own colour; sub-levels derive from parent hue
     const colMap = colorMaps[groupColumns[level]] || {};
-    let hue = colMap[groupValue] || parentHue || null;
+    const ownColor = colMap[groupValue] || null;
+    let hue;
+    if (level === 0) {
+      hue = ownColor;
+    } else if (parentHue && ownColor) {
+      hue = deriveSubLevelColor(parentHue, ownColor);
+    } else {
+      hue = parentHue || ownColor || null;
+    }
     if (hue) {
       const faintAmount = Math.min(0.82 + level * 0.05, 0.96);
       const bg = faintColor(hue, faintAmount);
@@ -259,7 +267,9 @@ function renderGroups(container, nestedData, level, groupColumns, displayColumns
 
     // Expanded content (no subtotal rows — the group row already shows the sum)
     if (isExpanded && hasSubgroups && groupData.subgroups) {
-      renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData, colorMaps, hue || parentHue);
+      // Always pass the level 0 ancestor colour so all sub-levels derive from it
+      const childParentHue = (level === 0) ? hue : parentHue;
+      renderGroups(container, groupData.subgroups, level + 1, groupColumns, displayColumns, formattedHeaders, units, allData, colorMaps, childParentHue || hue);
     }
 
     if (isExpanded && !hasSubgroups) {
