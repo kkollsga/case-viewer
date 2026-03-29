@@ -7,10 +7,11 @@ import {
 } from '../core/state.js';
 import {
   getCasesForField, saveCrossPlotSettings, loadCrossPlotSettings, saveFieldSettings,
+  computeColumnColors,
 } from '../core/storage.js';
 // events.js no longer needed — using store.subscribe
 import { formatNumber, formatPercent, formatMetricName } from '../utils/format.js';
-import { getColorForGroup, getColorForCase, PALETTES } from '../utils/color.js';
+import { getColorForCase, PALETTES } from '../utils/color.js';
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -377,7 +378,7 @@ function buildLegend(container, groups, caseToSymbol) {
   groupItemsContainer.className = 'flex flex-wrap gap-x-4 gap-y-1';
 
   function makeGroupItem(name) {
-    const color = getColorForGroup(name);
+    const color = groupColor(name);
     const isVisible = vis.groups?.[name] !== false;
 
     const item = document.createElement('div');
@@ -565,6 +566,14 @@ export function render() {
   const outerContainer = document.getElementById('cross-plot-outer-container');
   if (!container || !outerContainer || outerContainer.classList.contains('hidden')) return;
 
+  // Build color map for the current group column
+  const field = getActiveField();
+  const runtime = getRuntime();
+  const groupingLevel = getUI().crossPlotGroupLevel || 1;
+  const groupCol = runtime.volumetricData?.volumeGroups?.columns?.[groupingLevel - 1];
+  const _cpColorMap = (field && groupCol) ? computeColumnColors(field, groupCol) : {};
+  const groupColor = (name) => _cpColorMap[name] || PALETTES.vibrant[0];
+
   const groups = extractGroups();
   if (groups.length === 0) {
     container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">No group data available</div>';
@@ -693,7 +702,7 @@ export function render() {
         return symbolGen.type(d3.symbolCircle)();
       }
     })
-    .attr('fill', d => getColorForGroup(d.groupName))
+    .attr('fill', d => groupColor(d.groupName))
     .attr('stroke', '#333')
     .attr('stroke-width', 1)
     .attr('opacity', d => isPointVisible(d) ? 0.85 : 0)

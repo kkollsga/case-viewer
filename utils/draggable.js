@@ -88,7 +88,7 @@ export function makeDraggable(container, options) {
   // ─── Pointer events ───────────────────────────────────────
 
   container.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('button, input, .fs-tb')) return;
+    if (e.target.closest('button, input, .fs-tb, .gs-color-menu')) return;
     if (e.button !== 0) return; // left button only
 
     // Check inner items first (priority)

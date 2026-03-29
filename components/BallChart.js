@@ -456,11 +456,14 @@ let _ballColorMaps = {};
 
 function nodeColor(d) {
   if (d.depth === 0) return THEME.totalCircle;
-  // Check shared color map first (synced with settings)
+  // Use shared color map (synced with group settings)
   const map = _ballColorMaps[d.depth - 1];
   if (map && map[d.data.name]) return map[d.data.name];
-  return getNodeColor(d.data.name, d.depth);
+  // Fallback for unmapped values — use palette by depth
+  const palette = getPalette(d.depth);
+  return palette[Math.abs(hashName(d.data.name)) % palette.length];
 }
+function hashName(s) { let h=0; for(let i=0;i<s.length;i++) h=((h<<5)-h+s.charCodeAt(i))|0; return h; }
 
 function nodeOpacity(d) {
   if (d.depth === 0) return 1;

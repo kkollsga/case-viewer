@@ -479,8 +479,7 @@ function renderFieldTabs(activeField) {
       onSelect: () => {
         if (isActive) {
           // Clicking active field toggles settings panel
-          const panel = document.getElementById('field-settings-panel');
-          if (panel) FieldSettings.toggle(panel);
+          FieldSettings.toggle();
         } else {
           FieldSettings.hide();
           setActiveField(field);

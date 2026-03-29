@@ -2,7 +2,7 @@
 // X axis = case index (ordered), Y axis = selected metric, one line per zone.
 
 import { getRuntime, getUI, getActiveField, getActiveCase, store } from '../core/state.js';
-import { getCasesForField, getOrderedCaseNames } from '../core/storage.js';
+import { getCasesForField, getOrderedCaseNames, computeColumnColors } from '../core/storage.js';
 // events.js no longer needed — using store.subscribe
 import { formatNumber, formatDateShort } from '../utils/format.js';
 import { PALETTES } from '../utils/color.js';
@@ -124,8 +124,11 @@ function extractTimelineData() {
 
 // ─── Colour helper ──────────────────────────────────────────
 
-function getZoneColor(index) {
-  return PALETTES.vibrant[index % PALETTES.vibrant.length];
+// Cached color map for the current render
+let _timelineColorMap = {};
+
+function getZoneColor(zoneName, index) {
+  return _timelineColorMap[zoneName] || PALETTES.vibrant[index % PALETTES.vibrant.length];
 }
 
 // ─── Main render ────────────────────────────────────────────
@@ -136,6 +139,12 @@ export function render() {
   if (!container || !outerContainer || outerContainer.classList.contains('hidden')) return;
 
   clear(container);
+
+  // Build zone color map from group settings
+  const field = getActiveField();
+  const runtime = getRuntime();
+  const groupCol = runtime.volumetricData?.volumeGroups?.columns?.[0];
+  _timelineColorMap = (field && groupCol) ? computeColumnColors(field, groupCol) : {};
 
   const data = extractTimelineData();
   if (!data) {
@@ -233,7 +242,7 @@ export function render() {
 
   // ── Lines + points per zone ──
   zones.forEach((zone, zIdx) => {
-    const color = getZoneColor(zIdx);
+    const color = getZoneColor(zone, zIdx);
     const points = series.get(zone);
 
     // Draw line (skip null gaps naturally via .defined())
@@ -316,7 +325,7 @@ export function render() {
       zones.forEach((zone, zIdx) => {
         const pt = series.get(zone)[caseIdx];
         if (!pt) return;
-        const color = getZoneColor(zIdx);
+        const color = getZoneColor(zone, zIdx);
         html += `<div class="flex items-center gap-2 py-0.5">`;
         html += `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0"></span>`;
         html += `<span class="text-gray-700">${zone}:</span>`;
@@ -359,7 +368,7 @@ function buildLegend(container, zones) {
   });
 
   zones.forEach((zone, idx) => {
-    const color = getZoneColor(idx);
+    const color = getZoneColor(zone, idx);
 
     const item = el('div', { class: 'flex items-center gap-1.5' });
 
