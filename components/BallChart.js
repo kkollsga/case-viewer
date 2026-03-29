@@ -14,9 +14,9 @@ import {
 // events.js removed
 import { formatNumber, formatCompact } from '../utils/format.js';
 import {
-  getNodeColor, getPalette, THEME,
+  getPalette, PALETTES, THEME,
   getNodeOpacity, getLabelTextColor,
-  truncateTextToFit, resetColorAssignments,
+  truncateTextToFit,
 } from '../utils/color.js';
 
 // ─── Standard metrics shown in the metric dropdown ────────────
@@ -456,12 +456,16 @@ let _ballColorMaps = {};
 
 function nodeColor(d) {
   if (d.depth === 0) return THEME.totalCircle;
-  // Use shared color map (synced with group settings)
+  const depthPalette = getPalette(d.depth);
+  // Look up vibrant hue from shared color map, then pick depth-appropriate saturation
   const map = _ballColorMaps[d.depth - 1];
-  if (map && map[d.data.name]) return map[d.data.name];
-  // Fallback for unmapped values — use palette by depth
-  const palette = getPalette(d.depth);
-  return palette[Math.abs(hashName(d.data.name)) % palette.length];
+  const vibrant = map?.[d.data.name];
+  if (vibrant) {
+    const idx = PALETTES.vibrant.indexOf(vibrant);
+    if (idx >= 0) return depthPalette[idx % depthPalette.length];
+  }
+  // Fallback for unmapped values — hash into depth palette
+  return depthPalette[Math.abs(hashName(d.data.name)) % depthPalette.length];
 }
 function hashName(s) { let h=0; for(let i=0;i<s.length;i++) h=((h<<5)-h+s.charCodeAt(i))|0; return h; }
 
@@ -512,8 +516,6 @@ function drawCirclePacking() {
   const runtime = getRuntime();
   const vData = runtime.volumetricData;
   if (!vData || !vData.data) return;
-
-  resetColorAssignments();
 
   const container = document.getElementById('circle-diagram');
   if (!container) return;
