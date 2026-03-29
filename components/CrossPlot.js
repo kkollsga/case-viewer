@@ -288,7 +288,7 @@ function showMetricDropdown(axis) {
 
 // ─── Legend ──────────────────────────────────────────────────
 
-function buildLegend(container, groups, caseToSymbol) {
+function buildLegend(container, groups, caseToSymbol, groupColor) {
   d3.select('#cross-plot-legend').remove();
 
   const vis = getVisibility();
@@ -744,7 +744,7 @@ export function render() {
   drawRegressionLine(g, groups, xMetric, yMetric, xScale, yScale, innerWidth, innerHeight);
 
   // Legend
-  buildLegend(container, groups, caseToSymbol);
+  buildLegend(container, groups, caseToSymbol, groupColor);
 }
 
 // ─── Regression line (simple linear, purely visual) ─────────
