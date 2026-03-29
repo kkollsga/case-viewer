@@ -66,26 +66,6 @@ export function render() {
     inner.appendChild(renderLegacyBanner());
   }
 
-  // Settings toggle bar + collapsible panel
-  if (field) {
-    const settingsToggle = el('div', {
-      class: 'flex items-center gap-2 py-1.5 px-1 cursor-pointer text-xs select-none mb-2 ' +
-             (FieldSettings.isVisible() ? 'text-indigo-500' : 'text-gray-400 hover:text-gray-600'),
-      onClick: () => {
-        const panel = document.getElementById('field-settings-panel');
-        if (panel) FieldSettings.toggle(panel);
-      },
-    });
-    settingsToggle.innerHTML = `<i class="fas fa-cog text-[10px]"></i> <span>Group settings</span> <i class="fas fa-chevron-${FieldSettings.isVisible() ? 'up' : 'down'} text-[8px] ml-auto"></i>`;
-    inner.appendChild(settingsToggle);
-
-    const settingsPanel = el('div', { id: 'field-settings-panel' });
-    inner.appendChild(settingsPanel);
-    if (FieldSettings.isVisible()) {
-      FieldSettings.toggle(settingsPanel);
-    }
-  }
-
   // Main content area
   if (!field && getFields().length === 0) {
     inner.appendChild(renderEmptyStateWithInput(

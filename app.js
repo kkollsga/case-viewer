@@ -368,6 +368,13 @@ function showBrowser_fn() { showBrowser(); }
 
 function setupDataViewControls() {
   // Collapsible section toggles
+  // Settings section — toggle via FieldSettings which manages render/clear
+  const settingsHeader = $('#settings-section-header');
+  if (settingsHeader) {
+    settingsHeader.addEventListener('click', () => {
+      import('./components/FieldSettings.js').then(m => m.toggle());
+    });
+  }
   setupCollapsible('case-section-header', 'case-browser');
   setupCollapsible('toggle-volumetrics', 'volumetrics-container');
 

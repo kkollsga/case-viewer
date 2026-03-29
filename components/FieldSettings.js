@@ -8,16 +8,23 @@ import { el, clear } from '../utils/dom.js';
 import { PALETTES, faintColor } from '../utils/color.js';
 import { makeDraggable } from '../utils/draggable.js';
 
-let containerEl = null, visible = false, currentMappings = {}, allUniqueValues = {};
+let visible = false, currentMappings = {}, allUniqueValues = {};
+
+function getContainer() { return document.getElementById('settings-panel'); }
 
 export function init() {}
-export function toggle(t) {
-  containerEl = t; visible = !visible;
+export function toggle() {
+  visible = !visible;
   if (visible) { render(); }
-  else { if (containerEl) clear(containerEl); propagateChanges(); }
+  else { const c = getContainer(); if (c) clear(c); propagateChanges(); }
+  // Sync the Settings section collapse state
+  const header = document.getElementById('settings-section-header');
+  const body = getContainer();
+  if (header) header.dataset.expanded = visible ? 'true' : 'false';
+  if (body) body.classList.toggle('collapsed', !visible);
 }
 export function isVisible() { return visible; }
-export function hide() { visible = false; if (containerEl) clear(containerEl); propagateChanges(); }
+export function hide() { visible = false; const c = getContainer(); if (c) clear(c); propagateChanges(); }
 export function setupEvents() {}
 
 function persist(f) {
@@ -34,7 +41,8 @@ function dc(i) { return PALETTES.vibrant[i % PALETTES.vibrant.length]; }
 
 // ─── Render ─────────────────────────────────────────────────
 export function render() {
-  if (!containerEl || !visible) return;
+  const containerEl = getContainer();
+  if (!containerEl) return;
   clear(containerEl);
   const field = getActiveField(); if (!field) return;
   currentMappings = loadGroupMappings(field);
@@ -76,6 +84,7 @@ function renderSection(field, column) {
   const stacks = currentMappings[column]||[];
   const asgn = new Set(); for(const s of stacks) for(const v of s.values) asgn.add(v);
   const unassigned = vals.filter(v => !asgn.has(v));
+  const colorMap = computeColumnColors(column);
 
   // Use persisted order if available
   const savedOrder = currentMappings[`__order_${column}`];
@@ -89,16 +98,16 @@ function renderSection(field, column) {
         items.appendChild(renderStack(field, column, stacks[stackMap[entry.name]], stackMap[entry.name]));
         usedStacks.add(entry.name);
       } else if (entry.type === 'pill' && unassigned.includes(entry.value) && !usedPills.has(entry.value)) {
-        items.appendChild(renderPill(field, column, entry.value));
+        items.appendChild(renderPill(field, column, entry.value, colorMap));
         usedPills.add(entry.value);
       }
     }
     // Append any new items not in saved order
     stacks.forEach((s,i) => { if (!usedStacks.has(s.name)) items.appendChild(renderStack(field, column, s, i)); });
-    unassigned.forEach(v => { if (!usedPills.has(v)) items.appendChild(renderPill(field, column, v)); });
+    unassigned.forEach(v => { if (!usedPills.has(v)) items.appendChild(renderPill(field, column, v, colorMap)); });
   } else {
     for(let i=0;i<stacks.length;i++) items.appendChild(renderStack(field,column,stacks[i],i));
-    for(const v of unassigned) items.appendChild(renderPill(field, column, v));
+    for(const v of unassigned) items.appendChild(renderPill(field, column, v, colorMap));
   }
   sec.appendChild(items);
 
@@ -116,7 +125,7 @@ function renderSection(field, column) {
           const targetVal = target.dataset.value;
           removeVal(column, dragVal); removeVal(column, targetVal);
           if (!currentMappings[column]) currentMappings[column] = [];
-          currentMappings[column].push({ name: targetVal, color: dc(currentMappings[column].length), values: [targetVal, dragVal] });
+          currentMappings[column].push({ name: targetVal, color: colorMap[targetVal] || dc(currentMappings[column].length), values: [targetVal, dragVal] });
         } else if (target.dataset.gs === 'stack') {
           removeVal(column, dragVal);
           const st = (currentMappings[column]||[]).find(s => s.name === target.dataset.stackName);
@@ -139,7 +148,7 @@ function renderSection(field, column) {
           const tv = drop.target.dataset.value;
           removeVal(column, tv);
           if (!currentMappings[column]) currentMappings[column] = [];
-          currentMappings[column].push({ name: tv, color: dc((currentMappings[column]||[]).length), values: [tv, value] });
+          currentMappings[column].push({ name: tv, color: colorMap[tv] || dc((currentMappings[column]||[]).length), values: [tv, value] });
         }
         persist(field); render();
       },
@@ -247,17 +256,45 @@ function renderColorMenu(anchor, onSelect) {
   setTimeout(()=>document.addEventListener('pointerdown',close),0);
 }
 
-// ─── Stable color index from string hash ────────────────────
-function colorIndexOf(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
-  return Math.abs(h) % PALETTES.vibrant.length;
+// ─── Color assignment per column ─────────────────────────────
+// Sequential round-robin: explicit (palette/stack) colors are reserved,
+// auto-assigned pills get the next available color in palette order.
+function computeColumnColors(column) {
+  const palette = PALETTES.vibrant;
+  const map = {};
+  const reserved = new Set();
+
+  // 1. Explicit assignments from stacks
+  for (const s of (currentMappings[column] || [])) {
+    if (s.color) { map[s.name] = s.color; reserved.add(s.color); }
+  }
+  // 2. Explicit assignments from pill palette
+  for (const [val, col] of Object.entries(currentMappings[`__colors_${column}`] || {})) {
+    map[val] = col; reserved.add(col);
+  }
+  // 3. Auto-assign remaining values sequentially
+  const vals = allUniqueValues[column] || [];
+  const inStack = new Set();
+  for (const s of (currentMappings[column] || [])) for (const v of s.values) inStack.add(v);
+
+  let idx = 0;
+  for (const val of vals) {
+    if (map[val] || inStack.has(val)) continue;
+    // Find next unreserved color
+    let color = null;
+    for (let i = 0; i < palette.length; i++) {
+      const c = palette[(idx + i) % palette.length];
+      if (!reserved.has(c)) { color = c; idx = idx + i + 1; reserved.add(c); break; }
+    }
+    if (!color) { color = palette[idx % palette.length]; idx++; } // all taken, reuse
+    map[val] = color;
+  }
+  return map;
 }
 
 // ─── Bare pill ──────────────────────────────────────────────
-function renderPill(field, column, value) {
-  const pillColors = currentMappings[`__colors_${column}`]||{};
-  const hue = pillColors[value] || dc(colorIndexOf(value));
+function renderPill(field, column, value, colorMap) {
+  const hue = colorMap[value] || PALETTES.vibrant[0];
   const w = el('div',{class:'relative inline-block',dataset:{gs:'pill',value}});
   const span = el('span',{
     class:'inline-flex items-center px-3 py-1.5 text-xs rounded-full cursor-grab hover:border-indigo-300 hover:text-indigo-600 transition-colors select-none whitespace-nowrap',
@@ -273,9 +310,10 @@ function renderPill(field, column, value) {
       if(!currentMappings[`__colors_${column}`])currentMappings[`__colors_${column}`]={};
       currentMappings[`__colors_${column}`][value]=c;persist(field);render();});}}));
   tb.appendChild(el('button',{class:'px-1.5 py-0.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 text-[7px]',innerHTML:'<i class="fas fa-pen"></i>',
-    onClick:(e)=>{e.stopPropagation();const pc=currentMappings[`__colors_${column}`]||{};const c=pc[value]||dc((currentMappings[column]||[]).length);
-      if(!currentMappings[column])currentMappings[column]=[];currentMappings[column].push({name:value,color:c,values:[value]});
-      if(pc[value])delete pc[value];persist(field);render();}}));
+    onClick:(e)=>{e.stopPropagation();
+      if(!currentMappings[column])currentMappings[column]=[];
+      currentMappings[column].push({name:value,color:hue,values:[value]});
+      persist(field);render();}}));
   w.appendChild(tb);
   w.addEventListener('mouseenter',()=>{tb.style.opacity='1';});
   w.addEventListener('mouseleave',()=>{tb.style.opacity='';});
