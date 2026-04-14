@@ -111,6 +111,49 @@ function renderSection(field, column) {
   }
   sec.appendChild(items);
 
+  // "Clear unused" — values in stacks/colors that no longer appear in any case
+  const currentVals = new Set(vals);
+  const stackedVals = stacks.flatMap(s => s.values);
+  const colorKey = `__colors_${column}`;
+  const coloredVals = currentMappings[colorKey] ? Object.keys(currentMappings[colorKey]) : [];
+  const staleInStacks = stackedVals.filter(v => !currentVals.has(v));
+  const staleInColors = coloredVals.filter(v => !currentVals.has(v));
+  const hasStale = staleInStacks.length > 0 || staleInColors.length > 0;
+
+  if (hasStale) {
+    const clearRow = el('div', { class: 'flex justify-end mt-1' });
+    const clearBtn = el('button', {
+      class: 'text-[10px] text-gray-300 hover:text-red-400 transition-colors',
+      textContent: 'Clear unused',
+      onClick: (e) => {
+        e.stopPropagation();
+        const staleSet = new Set([...staleInStacks, ...staleInColors]);
+        // Remove stale values from stacks
+        const ss = currentMappings[column] || [];
+        for (let i = ss.length - 1; i >= 0; i--) {
+          ss[i].values = ss[i].values.filter(v => !staleSet.has(v));
+          if (ss[i].values.length === 0) ss.splice(i, 1);
+        }
+        // Remove stale values from colors
+        if (currentMappings[colorKey]) {
+          for (const v of staleSet) delete currentMappings[colorKey][v];
+        }
+        // Remove stale values from saved order
+        const savedOrd = currentMappings[`__order_${column}`];
+        if (savedOrd) {
+          currentMappings[`__order_${column}`] = savedOrd.filter(entry => {
+            const key = entry.type === 'pill' ? entry.value : entry.name;
+            // Remove pill entries for stale values; keep stacks unless empty (already handled above)
+            return !(entry.type === 'pill' && staleSet.has(key));
+          });
+        }
+        persist(field); render();
+      },
+    });
+    clearRow.appendChild(clearBtn);
+    sec.appendChild(clearRow);
+  }
+
   // Wire up draggable
   setTimeout(() => {
     makeDraggable(items, {

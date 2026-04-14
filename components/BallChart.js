@@ -353,7 +353,16 @@ function prepareHierarchicalData() {
 
   const data = vData.data;
   const volumeGroups = vData.volumeGroups || {};
-  const groupColumns = volumeGroups.columns || [];
+  let groupColumns = volumeGroups.columns || [];
+
+  // Apply group type ordering from settings (matches color map ordering)
+  const field = getActiveField();
+  const typeOrder = field ? getGroupTypeOrder(field) : null;
+  if (typeOrder) {
+    const ordered = typeOrder.filter(c => groupColumns.includes(c));
+    const extras = groupColumns.filter(c => !ordered.includes(c));
+    groupColumns = [...ordered, ...extras];
+  }
 
   // Identify numeric columns (anything that isn't a group column or internal)
   const allColumns = Object.keys(data[0] || {});
@@ -847,7 +856,14 @@ function renderLegendItems(hierarchyData, selectedLayer, validDescendants, units
   legendItems.innerHTML = '';
 
   const volumeGroups = getRuntime().volumetricData?.volumeGroups || {};
-  const groupColumns = volumeGroups.columns || [];
+  let groupColumns = volumeGroups.columns || [];
+  const field = getActiveField();
+  const legendTypeOrder = field ? getGroupTypeOrder(field) : null;
+  if (legendTypeOrder) {
+    const ordered = legendTypeOrder.filter(c => groupColumns.includes(c));
+    const extras = groupColumns.filter(c => !ordered.includes(c));
+    groupColumns = [...ordered, ...extras];
+  }
   const layerColumnName = groupColumns[selectedLayer - 1] || '';
 
   // Update legend title

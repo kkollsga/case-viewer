@@ -14,6 +14,7 @@ import {
   saveCase, addCaseToOrder, loadDefaultAuthor, saveDefaultAuthor,
   applyGroupMappings, computeColumnColors,
   deleteFieldData, renameFieldData, deleteScenarioData, renameScenarioData,
+  deleteCase,
 } from '../core/storage.js';
 import { parseOutputSheet, FORMAT } from '../core/parser.js';
 import * as FieldSettings from './FieldSettings.js';
@@ -1476,6 +1477,51 @@ function renderCaseCard(caseName, caseData, isActive) {
         : 'bg-white border border-gray-100 hover:shadow-md hover:border-gray-200',
     ].join(' '),
   });
+
+  // Delete X button (only on active card)
+  if (isActive) {
+    const xBtn = el('button', {
+      class: 'absolute top-3 right-3 w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors z-10',
+      innerHTML: '<i class="fas fa-times text-[9px]"></i>',
+    });
+    xBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Toggle confirm bar
+      const existing = card.querySelector('.case-delete-confirm');
+      if (existing) { existing.remove(); return; }
+      const confirm = el('div', {
+        class: 'case-delete-confirm overflow-hidden',
+        style: { maxHeight: '0', opacity: '0', transition: 'max-height 0.2s ease, opacity 0.15s ease, margin 0.2s ease', marginTop: '0' },
+      });
+      const bar = el('div', { class: 'flex items-center justify-end gap-2 py-2' });
+      bar.appendChild(el('span', { class: 'text-xs text-gray-400 mr-auto', textContent: 'Delete this case?' }));
+      bar.appendChild(el('button', {
+        class: 'px-3 py-1 text-xs text-gray-500 hover:text-gray-700 rounded transition-colors',
+        textContent: 'Cancel',
+        onClick: (ev) => { ev.stopPropagation(); confirm.style.maxHeight = '0'; confirm.style.opacity = '0'; confirm.style.marginTop = '0'; setTimeout(() => confirm.remove(), 200); },
+      }));
+      bar.appendChild(el('button', {
+        class: 'px-3 py-1 text-xs text-white bg-red-500 hover:bg-red-600 rounded transition-colors',
+        textContent: 'Delete',
+        onClick: (ev) => {
+          ev.stopPropagation();
+          const field = getActiveField();
+          const scenario = getActiveScenario();
+          if (field && scenario) {
+            deleteCase(field, scenario, caseName);
+            setActiveCase(null);
+            store.dispatch('CASE_DELETED', { field, scenario, caseName });
+            saveAppState();
+          }
+        },
+      }));
+      confirm.appendChild(bar);
+      card.appendChild(confirm);
+      // Trigger slide-open
+      requestAnimationFrame(() => { confirm.style.maxHeight = '50px'; confirm.style.opacity = '1'; confirm.style.marginTop = '8px'; });
+    });
+    card.appendChild(xBtn);
+  }
 
   // Title
   card.appendChild(el('div', {
