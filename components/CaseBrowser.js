@@ -345,89 +345,20 @@ export function renderHeaderSelectors(activeField, activeScenario) {
 }
 
 function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addLabel, onRename, onDelete, deleteWarning }) {
-  const wrapper = el('div', { class: 'relative inline-flex items-center group' });
-
-  // ── View state: title + hover actions ─────────
-  const viewState = el('div', { class: 'inline-flex items-center gap-1' });
+  const wrapper = el('div', { class: 'relative inline-block' });
 
   const trigger = el('span', {
     class: 'text-xl font-semibold cursor-pointer transition-colors ' +
            (value ? 'text-gray-800 hover:text-indigo-600' : 'text-gray-400 hover:text-indigo-400'),
     textContent: value || placeholder,
   });
-  viewState.appendChild(trigger);
-
-  let editBtn = null;
-  let deleteBtn = null;
-  if (value && (onRename || onDelete)) {
-    const actions = el('div', { class: 'hidden group-hover:flex items-center gap-0.5 ml-1' });
-    if (onRename) {
-      editBtn = el('button', {
-        class: 'w-6 h-6 flex items-center justify-center rounded-full text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all',
-        innerHTML: '<i class="fas fa-pen text-[10px]"></i>',
-        title: 'Rename',
-      });
-      actions.appendChild(editBtn);
-    }
-    if (onDelete) {
-      deleteBtn = el('button', {
-        class: 'w-6 h-6 flex items-center justify-center rounded-full text-red-300 hover:text-red-500 hover:bg-red-50 transition-all',
-        innerHTML: '<i class="fas fa-trash text-[10px]"></i>',
-        title: 'Delete',
-      });
-      actions.appendChild(deleteBtn);
-    }
-    viewState.appendChild(actions);
-  }
-
-  // ── Edit state: input + check/cancel ──────────
-  const editState = el('div', { class: 'items-center gap-1', style: { display: 'none' } });
-  const editInput = el('input', {
-    type: 'text',
-    class: 'text-xl font-semibold px-2 py-0 border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 text-gray-800 w-48 bg-white',
-  });
-  const confirmEditBtn = el('button', {
-    class: 'w-6 h-6 flex items-center justify-center rounded-full bg-indigo-500 text-white text-xs hover:bg-indigo-600 transition-colors',
-    innerHTML: '<i class="fas fa-check text-[10px]"></i>',
-    title: 'Confirm',
-  });
-  const cancelEditBtn = el('button', {
-    class: 'w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 text-xs transition-colors',
-    innerHTML: '<i class="fas fa-times text-[10px]"></i>',
-    title: 'Cancel',
-  });
-  editState.append(editInput, confirmEditBtn, cancelEditBtn);
-
-  function enterEdit() {
-    editInput.value = value || '';
-    viewState.style.display = 'none';
-    editState.style.display = 'inline-flex';
-    requestAnimationFrame(() => { editInput.focus(); editInput.select(); });
-  }
-  function exitEdit() {
-    editState.style.display = 'none';
-    viewState.style.display = 'inline-flex';
-  }
-  function commitEdit() {
-    const next = editInput.value.trim();
-    if (!next || next === value) { exitEdit(); return; }
-    onRename(next);
-  }
-  if (editBtn) editBtn.addEventListener('click', (e) => { e.stopPropagation(); enterEdit(); });
-  confirmEditBtn.addEventListener('click', (e) => { e.stopPropagation(); commitEdit(); });
-  cancelEditBtn.addEventListener('click', (e) => { e.stopPropagation(); exitEdit(); });
-  editInput.addEventListener('click', (e) => e.stopPropagation());
-  editInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') commitEdit();
-    if (e.key === 'Escape') exitEdit();
-  });
 
   // ── Menu ──────────────────────────────────────
   const menu = el('div', {
-    class: 'absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 min-w-[200px] py-1 hidden overflow-hidden',
+    class: 'absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 min-w-[220px] py-1 hidden overflow-hidden',
   });
 
-  // Confirmation slot (inserted directly below the active item below)
+  // Confirmation slot (inserted directly below the active item)
   let confirmContainer = null;
   let confirmText = null;
   function hideConfirm() {
@@ -474,16 +405,98 @@ function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addL
   // Items
   for (const item of items) {
     const isActive = item === value;
-    const btn = el('button', {
-      class: `w-full text-left px-3 py-2 text-sm transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`,
+
+    if (!isActive) {
+      menu.appendChild(el('button', {
+        class: 'w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors',
+        textContent: item,
+        onClick: () => { menu.classList.add('hidden'); hideConfirm(); onSelect(item); },
+      }));
+      continue;
+    }
+
+    // Active item: row with label + hover actions, swappable into edit mode
+    const row = el('div', {
+      class: 'group flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 font-medium text-sm',
+    });
+
+    // View mode (label + pen/trash on row hover)
+    const viewMode = el('div', { class: 'flex items-center gap-2 w-full' });
+    const label = el('button', {
+      class: 'flex-1 text-left truncate cursor-default',
       textContent: item,
       onClick: () => { menu.classList.add('hidden'); hideConfirm(); onSelect(item); },
     });
-    menu.appendChild(btn);
-    if (isActive && confirmContainer) menu.appendChild(confirmContainer);
-  }
+    const actions = el('div', { class: 'hidden group-hover:flex items-center gap-0.5' });
+    let editBtn = null;
+    let deleteBtn = null;
+    if (onRename) {
+      editBtn = el('button', {
+        class: 'w-6 h-6 flex items-center justify-center rounded-full text-indigo-500 hover:text-indigo-700 hover:bg-indigo-100 transition-all',
+        innerHTML: '<i class="fas fa-pen text-[10px]"></i>',
+        title: 'Rename',
+      });
+      actions.appendChild(editBtn);
+    }
+    if (onDelete) {
+      deleteBtn = el('button', {
+        class: 'w-6 h-6 flex items-center justify-center rounded-full text-red-400 hover:text-red-600 hover:bg-red-50 transition-all',
+        innerHTML: '<i class="fas fa-trash text-[10px]"></i>',
+        title: 'Delete',
+      });
+      actions.appendChild(deleteBtn);
+    }
+    viewMode.append(label, actions);
 
-  if (deleteBtn) deleteBtn.addEventListener('click', (e) => { e.stopPropagation(); showConfirm(); });
+    // Edit mode (input + check/cancel)
+    const editMode = el('div', { class: 'flex items-center gap-2 w-full', style: { display: 'none' } });
+    const editInput = el('input', {
+      type: 'text',
+      class: 'flex-1 px-2 py-0.5 text-sm font-medium border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 text-indigo-700 bg-white',
+    });
+    const confirmEditBtn = el('button', {
+      class: 'w-6 h-6 flex items-center justify-center rounded-full bg-indigo-500 text-white hover:bg-indigo-600 transition-colors',
+      innerHTML: '<i class="fas fa-check text-[10px]"></i>',
+      title: 'Confirm',
+    });
+    const cancelEditBtn = el('button', {
+      class: 'w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 transition-colors',
+      innerHTML: '<i class="fas fa-times text-[10px]"></i>',
+      title: 'Cancel',
+    });
+    editMode.append(editInput, confirmEditBtn, cancelEditBtn);
+
+    function enterEdit() {
+      hideConfirm();
+      editInput.value = value || '';
+      viewMode.style.display = 'none';
+      editMode.style.display = 'flex';
+      requestAnimationFrame(() => { editInput.focus(); editInput.select(); });
+    }
+    function exitEdit() {
+      editMode.style.display = 'none';
+      viewMode.style.display = 'flex';
+    }
+    function commitEdit() {
+      const next = editInput.value.trim();
+      if (!next || next === value) { exitEdit(); return; }
+      onRename(next);
+    }
+
+    if (editBtn) editBtn.addEventListener('click', (e) => { e.stopPropagation(); enterEdit(); });
+    if (deleteBtn) deleteBtn.addEventListener('click', (e) => { e.stopPropagation(); showConfirm(); });
+    confirmEditBtn.addEventListener('click', (e) => { e.stopPropagation(); commitEdit(); });
+    cancelEditBtn.addEventListener('click', (e) => { e.stopPropagation(); exitEdit(); });
+    editInput.addEventListener('click', (e) => e.stopPropagation());
+    editInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') commitEdit();
+      if (e.key === 'Escape') exitEdit();
+    });
+
+    row.append(viewMode, editMode);
+    menu.appendChild(row);
+    if (confirmContainer) menu.appendChild(confirmContainer);
+  }
 
   if (onAdd) {
     menu.appendChild(el('div', { class: 'border-t border-gray-100 my-1' }));
@@ -516,7 +529,7 @@ function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addL
   menu.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => { menu.classList.add('hidden'); hideConfirm(); });
 
-  wrapper.append(viewState, editState, menu);
+  wrapper.append(trigger, menu);
   return wrapper;
 }
 
