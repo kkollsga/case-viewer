@@ -7,7 +7,10 @@
 // the same filter UI; changes in one instance re-render both plots via the
 // pub-sub below.
 
-import { loadPlotFilter, savePlotFilter, getCasesForScenario } from '../core/storage.js';
+import {
+  loadPlotFilter, savePlotFilter, getCasesForScenario,
+  loadGroupMappings, getGroupValueOrder,
+} from '../core/storage.js';
 import { getActiveField, getActiveScenario } from '../core/state.js';
 import { el } from '../utils/dom.js';
 
@@ -36,9 +39,27 @@ export function getTitlePrefix(field) {
 }
 
 // Collect unique values per group column across all cases of the active
-// scenario. Returns { columnName: [val, ...] } sorted alphabetically.
+// scenario, **after** applying the field's group mappings. So if you've
+// stacked "Sand 5" + "Sand 3" into "Channel", the pill shows "Channel".
+// Ordering follows the user-defined `__order_<col>` if present, otherwise
+// alphabetical.
 function collectFilterValues(field, scenario) {
   const cases = getCasesForScenario(field, scenario);
+  const mappings = loadGroupMappings(field);
+
+  // Build raw → stack-name lookup per column
+  const stackLookup = {};
+  if (mappings) {
+    for (const [col, stacks] of Object.entries(mappings)) {
+      if (col.startsWith('__') || !Array.isArray(stacks)) continue;
+      stackLookup[col] = {};
+      for (const stack of stacks) {
+        if (!stack || !Array.isArray(stack.values)) continue;
+        for (const v of stack.values) stackLookup[col][String(v)] = stack.name;
+      }
+    }
+  }
+
   const cols = new Set();
   const vals = {};
   for (const c of Object.values(cases)) {
@@ -47,13 +68,26 @@ function collectFilterValues(field, scenario) {
       cols.add(col);
       if (!vals[col]) vals[col] = new Set();
       for (const row of c.data) {
-        const v = row[col];
-        if (v !== undefined && v !== null && v !== '') vals[col].add(String(v));
+        const raw = row[col];
+        if (raw === undefined || raw === null || raw === '') continue;
+        const display = (stackLookup[col] && stackLookup[col][String(raw)]) || String(raw);
+        vals[col].add(display);
       }
     }
   }
+
   const out = {};
-  for (const col of cols) out[col] = Array.from(vals[col] || []).sort();
+  for (const col of cols) {
+    const present = vals[col] || new Set();
+    const customOrder = getGroupValueOrder(field, col);
+    if (customOrder && customOrder.length > 0) {
+      const ordered = customOrder.filter((v) => present.has(v));
+      const extras = Array.from(present).filter((v) => !customOrder.includes(v)).sort();
+      out[col] = [...ordered, ...extras];
+    } else {
+      out[col] = Array.from(present).sort();
+    }
+  }
   return out;
 }
 

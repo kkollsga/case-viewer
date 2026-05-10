@@ -70,7 +70,7 @@ function rerunIfPriorExists() {
   const refCase = cases[baseName];
   if (!refCase) { render(); return; }
   const filter = loadPlotFilter(field);
-  const slots = buildSlots(cases, baseName, filter);
+  const slots = buildSlots(cases, baseName, filter, field);
   if (slots.length === 0) { render(); return; }
   // Hydrate config from the prior sim (preserves runs/bins/weights), but with
   // the freshly-derived slots (whose multipliers reflect the new filter).
@@ -99,7 +99,7 @@ export function render() {
   }
 
   const filter = loadPlotFilter(field);
-  const slots = buildSlots(cases, baseName, filter);
+  const slots = buildSlots(cases, baseName, filter, field);
   if (slots.length === 0) {
     containerEl.appendChild(emptyState('Assign a parameter name to one or more non-reference cases (via the pen icon on the card) to enable the simulation.'));
     containerEl.appendChild(buildFilterDiv(field));
@@ -148,9 +148,9 @@ export function render() {
 
 // ─── Aggregate parameter extraction ─────────────────────────
 
-function aggregates(caseData, filter) {
+function aggregates(caseData, filter, field) {
   if (!caseData?.data) return null;
-  const rows = filter ? applyPlotFilter(caseData.data, filter) : caseData.data;
+  const rows = filter ? applyPlotFilter(caseData.data, filter, field) : caseData.data;
   let bulk = 0, net = 0, pore = 0, ho = 0, hg = 0, st = 0, gi = 0;
   for (const r of rows) {
     bulk += parseFloat(r['Bulk volume']) || 0;
@@ -192,9 +192,9 @@ function identityVector() {
 
 // ─── Per-zone refs (cached during a simulation) ─────────────
 
-function zoneVectors(refCase, filter) {
+function zoneVectors(refCase, filter, field) {
   const out = [];
-  const rows = filter ? applyPlotFilter(refCase.data || [], filter) : (refCase.data || []);
+  const rows = filter ? applyPlotFilter(refCase.data || [], filter, field) : (refCase.data || []);
   for (const row of rows) {
     const bulk = parseFloat(row['Bulk volume']) || 0;
     const net  = parseFloat(row['Net volume'])  || 0;
@@ -218,10 +218,10 @@ function zoneVectors(refCase, filter) {
 
 // ─── Slot construction (each tornado label = one slot) ──────
 
-function buildSlots(cases, baseName, filter) {
+function buildSlots(cases, baseName, filter, field) {
   const refCase = cases[baseName];
   if (!refCase) return [];
-  const refAgg = aggregates(refCase, filter);
+  const refAgg = aggregates(refCase, filter, field);
   if (!refAgg || refAgg.GRV <= 0) return [];
 
   // Group cases by parameterName
@@ -231,7 +231,7 @@ function buildSlots(cases, baseName, filter) {
     const param = (c.parameterName || '').trim();
     if (!param) continue;
     if (!groups.has(param)) groups.set(param, []);
-    const agg = aggregates(c, filter);
+    const agg = aggregates(c, filter, field);
     if (!agg) continue;
     groups.get(param).push({ name, agg, multVec: multiplierVector(refAgg, agg) });
   }
@@ -358,8 +358,8 @@ function simSignatureMatches(sim, slots, cfg) {
 
 // ─── Monte Carlo engine ─────────────────────────────────────
 
-function runMonteCarlo(refCase, slots, cfg, filter) {
-  const zones = zoneVectors(refCase, filter);
+function runMonteCarlo(refCase, slots, cfg, filter, field) {
+  const zones = zoneVectors(refCase, filter, field);
   const N = Math.max(10, Math.min(200000, parseInt(cfg.runs, 10) || DEFAULT_RUNS));
   const binCount = clampBins(cfg.bins);
 
@@ -663,7 +663,7 @@ function simulate(slots, field) {
   const filter = loadPlotFilter(field);
   const cfg = pendingConfig;
   const t0 = performance.now();
-  const results = runMonteCarlo(refCase, slots, cfg, filter);
+  const results = runMonteCarlo(refCase, slots, cfg, filter, field);
   const t1 = performance.now();
 
   // Persist a compact record (bins + percentiles, no raw trials)

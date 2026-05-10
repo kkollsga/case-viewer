@@ -675,19 +675,37 @@ export function savePlotFilter(field, filter) {
   saveFieldStore(field, fs);
 }
 
-// Returns a new array containing only rows where every column's value is
-// NOT in the filter's exclude set. Excluding by value (rather than including)
-// means rows with newly added zone/facies values are kept by default.
-export function applyPlotFilter(rows, filter) {
+// Returns a new array containing only rows where every column's value (after
+// resolving through group mappings, e.g. "Sand 5" → "Channel") is NOT in the
+// filter's exclude set. Excluding by value (rather than including) means rows
+// with newly added zone/facies values are kept by default.
+export function applyPlotFilter(rows, filter, field) {
   if (!Array.isArray(rows) || !filter || !filter.exclude) return rows;
   const ex = filter.exclude;
   const cols = Object.keys(ex);
   if (cols.length === 0) return rows;
+  // For each filtered column, build raw-value → stack-name lookup so the
+  // filter compares against the same standardized names shown in the pills.
+  const mappings = field ? loadGroupMappings(field) : null;
+  const stackLookup = {};
+  if (mappings) {
+    for (const c of cols) {
+      stackLookup[c] = {};
+      const stacks = mappings[c];
+      if (!Array.isArray(stacks)) continue;
+      for (const stack of stacks) {
+        if (!stack || !Array.isArray(stack.values)) continue;
+        for (const v of stack.values) stackLookup[c][String(v)] = stack.name;
+      }
+    }
+  }
   return rows.filter((row) => {
     for (const c of cols) {
       const list = ex[c];
       if (!Array.isArray(list) || list.length === 0) continue;
-      if (list.includes(String(row[c]))) return false;
+      const raw = row[c];
+      const displayName = (stackLookup[c] && stackLookup[c][String(raw)]) || raw;
+      if (list.includes(String(displayName))) return false;
     }
     return true;
   });

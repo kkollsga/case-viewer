@@ -122,7 +122,7 @@ function computeMetric(caseData, metric) {
   if (!caseData?.data) return NaN;
   const field = getActiveField();
   const filter = field ? loadPlotFilter(field) : null;
-  const rows = filter ? applyPlotFilter(caseData.data, filter) : caseData.data;
+  const rows = filter ? applyPlotFilter(caseData.data, filter, field) : caseData.data;
   if (metric.key === 'oe') {
     return sumColumn(rows, 'STOIIP') + sumColumn(rows, 'GIIP');
   }
