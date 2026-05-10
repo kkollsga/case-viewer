@@ -501,6 +501,8 @@ function serializeTableForClipboard(table) {
       labelStack[level] = extractLabelText(labelInner);
       for (let i = level + 1; i < labelCols; i++) labelStack[i] = '';
       labelTexts = labelStack.slice();
+      // Aggregate rows: deeper label columns become "Sum" so they're filterable
+      for (let i = level + 1; i < labelCols; i++) labelTexts[i] = 'Sum';
       valueCells = cells.slice(1);
     } else {
       labelTexts = [cleanCellText(cells[0])];
