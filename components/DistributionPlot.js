@@ -713,7 +713,9 @@ function drawDistribution(r, unit, metric, sim, field) {
 
   // ── Title + percentile subtitle (inside the SVG so the export includes them) ──
   const cx = PAD.left + innerW / 2;
-  const titleText = `${field || 'Field'} distribution plot`;
+  // Title carries the field, the fluid/metric, and the unit — so an exported
+  // image stands on its own without the on-screen metric selector chips.
+  const titleText = `${field || 'Field'} — ${metric.label} distribution${unit ? ` (${unit})` : ''}`;
   svg.appendChild(svgText(titleText.toUpperCase(), cx, 20, {
     'text-anchor': 'middle',
     'font-size': '12',
