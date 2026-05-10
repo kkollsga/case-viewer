@@ -20,6 +20,7 @@ import * as FieldManager from './components/FieldManager.js';
 import * as PivotTable from './components/PivotTable.js';
 import * as DeltaTable from './components/DeltaTable.js';
 import * as DriverChart from './components/DriverChart.js';
+import * as TornadoPlot from './components/TornadoPlot.js';
 
 let BallChart, CrossPlot, RevisionTimeline, CaseBrowser;
 
@@ -35,6 +36,7 @@ export async function init() {
   PivotTable.init();
   DeltaTable.init();
   DriverChart.init();
+  TornadoPlot.init();
 
   // Dynamic imports
   try { BallChart = await import('./components/BallChart.js'); BallChart.init(); } catch (e) { console.warn('BallChart:', e.message); }
@@ -50,6 +52,7 @@ export async function init() {
   PivotTable.setupEvents();
   DeltaTable.setupEvents();
   DriverChart.setupEvents();
+  TornadoPlot.setupEvents();
   if (BallChart?.setupEvents) BallChart.setupEvents();
   if (CrossPlot?.setupEvents) CrossPlot.setupEvents();
   if (RevisionTimeline?.setupEvents) RevisionTimeline.setupEvents();
@@ -383,6 +386,7 @@ function setupDataViewControls() {
   const nextBtn = $('#next-case-btn');
   if (prevBtn) prevBtn.addEventListener('click', (e) => { e.stopPropagation(); navigateCase('prev'); });
   if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); navigateCase('next'); });
+  setupCollapsible('toggle-tornado', 'tornado-container', () => TornadoPlot.render());
   setupCollapsible('toggle-drivers', 'driver-chart-outer');
   setupCollapsible('toggle-ball-chart', 'ball-chart-outer', () => { if (BallChart?.render) BallChart.render(); });
 

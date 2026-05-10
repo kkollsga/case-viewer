@@ -169,6 +169,56 @@ export function renameCase(field, scenario, oldName, newName) {
   return true;
 }
 
+// ─── Case meta (parameter, base case) ───────────────────────
+
+export function setCaseParameter(field, scenario, caseName, parameterName) {
+  const fs = getFieldStore(field);
+  const sc = fs.scenarios[scenario];
+  if (!sc || !sc.cases[caseName]) return false;
+  sc.cases[caseName].parameterName = parameterName || '';
+  saveFieldStore(field, fs);
+  return true;
+}
+
+export function updateCaseMeta(field, scenario, caseName, meta) {
+  const fs = getFieldStore(field);
+  const sc = fs.scenarios[scenario];
+  if (!sc || !sc.cases[caseName]) return false;
+  const c = sc.cases[caseName];
+  if (meta.description !== undefined) c.description = meta.description;
+  if (meta.parameterName !== undefined) c.parameterName = meta.parameterName;
+  saveFieldStore(field, fs);
+  return true;
+}
+
+export function setBaseCase(field, scenario, caseName) {
+  const fs = getFieldStore(field);
+  const sc = fs.scenarios[scenario];
+  if (!sc) return false;
+  for (const [name, c] of Object.entries(sc.cases || {})) {
+    c.isBaseCase = (name === caseName);
+  }
+  saveFieldStore(field, fs);
+  return true;
+}
+
+export function clearBaseCase(field, scenario) {
+  const fs = getFieldStore(field);
+  const sc = fs.scenarios[scenario];
+  if (!sc) return false;
+  for (const c of Object.values(sc.cases || {})) c.isBaseCase = false;
+  saveFieldStore(field, fs);
+  return true;
+}
+
+export function getBaseCaseName(field, scenario) {
+  const cases = getCasesForScenario(field, scenario);
+  for (const [name, c] of Object.entries(cases)) {
+    if (c && c.isBaseCase) return name;
+  }
+  return null;
+}
+
 // ─── Case order ─────────────────────────────────────────────
 
 export function getCaseOrder(field, scenario) {
