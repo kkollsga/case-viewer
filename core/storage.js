@@ -156,17 +156,28 @@ export function getRawCase(field, scenario, caseName) {
   return raw[caseName] || null;
 }
 
+// Valid targets a linked case can override. Mode is 'multiplier' or 'value'.
+export const LINK_TARGETS = ['GRV', 'NTG', 'Por', 'So', 'Sg', '1/Bo', '1/Bg'];
+
+function readLinkOverride(linked) {
+  // Backward compat: legacy linked cases only had `multiplier` (= GRV ×).
+  const target = LINK_TARGETS.includes(linked.paramTarget) ? linked.paramTarget : 'GRV';
+  const mode = linked.paramMode === 'value' ? 'value' : 'multiplier';
+  const raw = linked.paramValue !== undefined ? linked.paramValue : linked.multiplier;
+  const num = parseFloat(raw);
+  const value = Number.isFinite(num) ? num : (mode === 'multiplier' ? 1 : 0);
+  return { target, mode, value };
+}
+
 function resolveLinkedCase(linked, rawCases) {
   const source = rawCases[linked.linkedFrom];
   if (!source || !source.data) {
     return { ...linked, data: [], _linkBroken: true };
   }
-  const multiplier = parseFloat(linked.multiplier);
-  const m = Number.isFinite(multiplier) ? multiplier : 1;
+  const { target, mode, value } = readLinkOverride(linked);
+  const apply = (orig) => (mode === 'multiplier' ? orig * value : value);
 
-  // Multiplier is applied to GRV (Bulk volume); downstream volumes are
-  // recomputed using the source's original ratios (NTG, Por, So, Sg, 1/Bo,
-  // 1/Bg) so they stay physically consistent.
+  // Apply the override to one parameter; cascade the rest from source ratios.
   const data = source.data.map((row) => {
     const out = { ...row };
     const bulk = parseFloat(row['Bulk volume']) || 0;
@@ -177,22 +188,29 @@ function resolveLinkedCase(linked, rawCases) {
     const stoiipOrig = parseFloat(row['STOIIP']) || 0;
     const giipOrig = parseFloat(row['GIIP']) || 0;
 
-    const ntg = bulk > 0 ? net / bulk : 0;
-    const por = net > 0 ? pore / net : 0;
-    const so = pore > 0 ? hcpvOil / pore : 0;
-    const sg = pore > 0 ? hcpvGas / pore : 0;
-    const oneOverBo = hcpvOil > 0 ? stoiipOrig / hcpvOil : 0;
-    const oneOverBg = hcpvGas > 0 ? giipOrig / hcpvGas : 0;
+    const ntgOrig = bulk > 0 ? net / bulk : 0;
+    const porOrig = net > 0 ? pore / net : 0;
+    const soOrig = pore > 0 ? hcpvOil / pore : 0;
+    const sgOrig = pore > 0 ? hcpvGas / pore : 0;
+    const boOrig = hcpvOil > 0 ? stoiipOrig / hcpvOil : 0;   // 1/Bo
+    const bgOrig = hcpvGas > 0 ? giipOrig / hcpvGas : 0;     // 1/Bg
 
-    const newBulk = bulk * m;
-    const newNet = newBulk * ntg;
-    const newPore = newNet * por;
-    const newHcpvOil = newPore * so;
-    const newHcpvGas = newPore * sg;
-    const newStoiip = newHcpvOil * oneOverBo;
-    const newGiip = newHcpvGas * oneOverBg;
+    const newGrv = target === 'GRV' ? apply(bulk) : bulk;
+    const newNtg = target === 'NTG' ? apply(ntgOrig) : ntgOrig;
+    const newPor = target === 'Por' ? apply(porOrig) : porOrig;
+    const newSo = target === 'So' ? apply(soOrig) : soOrig;
+    const newSg = target === 'Sg' ? apply(sgOrig) : sgOrig;
+    const newBo = target === '1/Bo' ? apply(boOrig) : boOrig;
+    const newBg = target === '1/Bg' ? apply(bgOrig) : bgOrig;
 
-    if ('Bulk volume' in row) out['Bulk volume'] = newBulk;
+    const newNet = newGrv * newNtg;
+    const newPore = newNet * newPor;
+    const newHcpvOil = newPore * newSo;
+    const newHcpvGas = newPore * newSg;
+    const newStoiip = newHcpvOil * newBo;
+    const newGiip = newHcpvGas * newBg;
+
+    if ('Bulk volume' in row) out['Bulk volume'] = newGrv;
     if ('Net volume' in row) out['Net volume'] = newNet;
     if ('Pore volume' in row) out['Pore volume'] = newPore;
     if ('HCPV oil' in row) out['HCPV oil'] = newHcpvOil;
@@ -211,7 +229,10 @@ function resolveLinkedCase(linked, rawCases) {
     timestamp: linked.timestamp || source.timestamp,
     author: linked.author || source.author,
     linkedFrom: linked.linkedFrom,
-    multiplier: m,
+    paramTarget: target,
+    paramMode: mode,
+    paramValue: value,
+    multiplier: target === 'GRV' && mode === 'multiplier' ? value : undefined,
     data,
     units: source.units,
     volumeGroups: source.volumeGroups,
@@ -272,9 +293,24 @@ export function updateCaseMeta(field, scenario, caseName, meta) {
   const c = sc.cases[caseName];
   if (meta.description !== undefined) c.description = meta.description;
   if (meta.parameterName !== undefined) c.parameterName = meta.parameterName;
-  if (meta.multiplier !== undefined && c.linkedFrom) {
-    const num = parseFloat(meta.multiplier);
-    c.multiplier = Number.isFinite(num) ? num : 1;
+  if (c.linkedFrom) {
+    if (meta.paramTarget !== undefined && LINK_TARGETS.includes(meta.paramTarget)) {
+      c.paramTarget = meta.paramTarget;
+    }
+    if (meta.paramMode !== undefined) {
+      c.paramMode = meta.paramMode === 'value' ? 'value' : 'multiplier';
+    }
+    if (meta.paramValue !== undefined) {
+      const num = parseFloat(meta.paramValue);
+      const mode = c.paramMode || (meta.paramMode === 'value' ? 'value' : 'multiplier');
+      c.paramValue = Number.isFinite(num) ? num : (mode === 'multiplier' ? 1 : 0);
+    }
+    // Legacy: keep `multiplier` in sync when target is GRV / multiplier mode
+    if (c.paramTarget === 'GRV' && (c.paramMode || 'multiplier') === 'multiplier') {
+      c.multiplier = c.paramValue;
+    } else {
+      delete c.multiplier;
+    }
   }
   saveFieldStore(field, fs);
   return true;
@@ -282,32 +318,37 @@ export function updateCaseMeta(field, scenario, caseName, meta) {
 
 // ─── Linked cases ───────────────────────────────────────────
 
-export function createLinkedCase(field, scenario, sourceName, multiplier, newName) {
+export function createLinkedCase(field, scenario, sourceName, override = {}, newName) {
   const fs = getFieldStore(field);
   const sc = fs.scenarios[scenario];
   if (!sc || !sc.cases[sourceName]) return null;
   const source = sc.cases[sourceName];
   if (source.linkedFrom) return null; // don't allow chains for now
-  const m = Number.isFinite(parseFloat(multiplier)) ? parseFloat(multiplier) : 1;
 
-  // Pick a unique title
-  const base = (newName && newName.trim()) || `${sourceName} ×${formatMultiplier(m)}`;
+  const target = LINK_TARGETS.includes(override.paramTarget) ? override.paramTarget : 'GRV';
+  const mode = override.paramMode === 'value' ? 'value' : 'multiplier';
+  const valueRaw = parseFloat(override.paramValue);
+  const value = Number.isFinite(valueRaw) ? valueRaw : (mode === 'multiplier' ? 1 : 0);
+
+  const base = (newName && newName.trim()) || `${sourceName} (${formatLinkLabel(target, mode, value)})`;
   let candidate = base;
   let n = 2;
-  while (sc.cases[candidate]) {
-    candidate = `${base} (${n++})`;
-  }
+  while (sc.cases[candidate]) candidate = `${base} (${n++})`;
 
-  sc.cases[candidate] = {
+  const caseObj = {
     title: candidate,
     description: '',
     parameterName: '',
     timestamp: new Date().toISOString(),
     linkedFrom: sourceName,
-    multiplier: m,
+    paramTarget: target,
+    paramMode: mode,
+    paramValue: value,
   };
+  if (target === 'GRV' && mode === 'multiplier') caseObj.multiplier = value;
+
+  sc.cases[candidate] = caseObj;
   if (!Array.isArray(sc.caseOrder)) sc.caseOrder = [];
-  // Insert directly after the source for visual proximity
   const idx = sc.caseOrder.indexOf(sourceName);
   if (idx === -1) sc.caseOrder.push(candidate);
   else sc.caseOrder.splice(idx + 1, 0, candidate);
@@ -315,9 +356,17 @@ export function createLinkedCase(field, scenario, sourceName, multiplier, newNam
   return candidate;
 }
 
+export function formatLinkLabel(target, mode, value) {
+  const v = formatMultiplier(value);
+  if (mode === 'value') return `${target}=${v}`;
+  return target === 'GRV' ? `×${v}` : `${target} ×${v}`;
+}
+
 function formatMultiplier(m) {
-  if (Number.isInteger(m)) return String(m);
-  return m.toFixed(2).replace(/\.?0+$/, '');
+  const n = Number(m);
+  if (!Number.isFinite(n)) return '1';
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(3).replace(/\.?0+$/, '');
 }
 
 export function getLinkedCasesOf(field, scenario, sourceName) {
