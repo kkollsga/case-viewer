@@ -15,6 +15,7 @@ import {
   applyGroupMappings, computeColumnColors,
   deleteFieldData, renameFieldData, deleteScenarioData, renameScenarioData,
   deleteCase, renameCase, updateCaseMeta, setBaseCase, clearBaseCase,
+  createLinkedCase, getRawCase,
 } from '../core/storage.js';
 import { parseOutputSheet, FORMAT } from '../core/parser.js';
 import * as FieldSettings from './FieldSettings.js';
@@ -1750,6 +1751,13 @@ function renderCaseCard(caseName, caseData, isActive) {
 
   // Title (with parameter badge if set)
   const titleRow = el('div', { class: 'flex items-baseline gap-2 pr-20' });
+  if (caseData.linkedFrom) {
+    titleRow.appendChild(el('span', {
+      class: 'text-gray-400',
+      title: `Linked to ${caseData.linkedFrom} (×${caseData.multiplier ?? 1})`,
+      innerHTML: '<i class="fas fa-link text-[10px]"></i>',
+    }));
+  }
   titleRow.appendChild(el('div', {
     class: 'text-base font-semibold text-gray-900 truncate',
     textContent: caseData.title || caseName,
@@ -1761,6 +1769,14 @@ function renderCaseCard(caseName, caseData, isActive) {
     }));
   }
   card.appendChild(titleRow);
+
+  // Linked indicator subtitle
+  if (caseData.linkedFrom) {
+    card.appendChild(el('div', {
+      class: 'mt-0.5 text-[11px] text-gray-400',
+      textContent: `× ${formatMultiplier(caseData.multiplier ?? 1)} of ${caseData.linkedFrom}${caseData._linkBroken ? ' (source missing)' : ''}`,
+    }));
+  }
 
   // Timestamp
   if (caseData.timestamp) {
@@ -1802,17 +1818,24 @@ function renderCaseCard(caseName, caseData, isActive) {
 }
 
 function buildEditPanel(card, caseName, caseData) {
+  const isLinked = !!caseData.linkedFrom;
   const panel = el('div', {
     class: 'case-edit-panel mt-3 p-3 bg-white border border-indigo-200 rounded-xl space-y-2',
   });
-  // Stop card click activation while interacting with the panel
   panel.addEventListener('click', (e) => e.stopPropagation());
+
+  // Linked-from header
+  if (isLinked) {
+    panel.appendChild(el('div', {
+      class: 'flex items-center gap-1.5 text-[11px] text-gray-500',
+      innerHTML: `<i class="fas fa-link text-[10px] text-gray-400"></i><span>Linked to <span class="font-medium text-gray-700">${escapeAttr(caseData.linkedFrom)}</span></span>`,
+    }));
+  }
 
   const nameLabel = el('label', { class: 'block text-[10px] uppercase tracking-wider text-gray-400', textContent: 'Name' });
   const nameInput = el('input', {
     type: 'text',
     class: 'w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-indigo-400 focus:outline-none',
-    value: caseData.title || caseName,
   });
   nameInput.value = caseData.title || caseName;
 
@@ -1831,7 +1854,38 @@ function buildEditPanel(card, caseName, caseData) {
   });
   paramInput.value = caseData.parameterName || '';
 
-  const actions = el('div', { class: 'flex justify-end gap-2 mt-2' });
+  panel.append(nameLabel, nameInput, descLabel, descInput, paramLabel, paramInput);
+
+  // Multiplier row — meaning depends on case type
+  const multLabelText = isLinked ? 'Multiplier (× GRV)' : 'Multiplier for new linked case';
+  const multLabel = el('label', { class: 'block text-[10px] uppercase tracking-wider text-gray-400 mt-3', textContent: multLabelText });
+  const multRow = el('div', { class: 'flex items-center gap-2' });
+  const multInput = el('input', {
+    type: 'number',
+    step: 'any',
+    class: 'w-24 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-indigo-400 focus:outline-none',
+    placeholder: '1',
+  });
+  multInput.value = String(isLinked ? (caseData.multiplier ?? 1) : 1);
+  multRow.appendChild(multInput);
+
+  let generateBtn = null;
+  if (!isLinked) {
+    generateBtn = el('button', {
+      class: 'inline-flex items-center gap-1 px-3 py-1 text-xs text-white bg-emerald-500 hover:bg-emerald-600 rounded transition-colors',
+      innerHTML: '<i class="fas fa-link text-[10px]"></i><span>Generate linked case</span>',
+    });
+    multRow.appendChild(generateBtn);
+  } else {
+    multRow.appendChild(el('span', {
+      class: 'text-[11px] text-gray-400',
+      textContent: 'Applied to GRV; downstream volumes follow original ratios.',
+    }));
+  }
+
+  panel.append(multLabel, multRow);
+
+  const actions = el('div', { class: 'flex justify-end gap-2 mt-3' });
   const cancelBtn = el('button', {
     class: 'px-3 py-1 text-xs text-gray-500 hover:text-gray-700 rounded transition-colors',
     textContent: 'Cancel',
@@ -1841,8 +1895,7 @@ function buildEditPanel(card, caseName, caseData) {
     textContent: 'Save',
   });
   actions.append(cancelBtn, saveBtn);
-
-  panel.append(nameLabel, nameInput, descLabel, descInput, paramLabel, paramInput, actions);
+  panel.appendChild(actions);
 
   cancelBtn.addEventListener('click', (e) => { e.stopPropagation(); panel.remove(); });
   saveBtn.addEventListener('click', (e) => {
@@ -1860,13 +1913,34 @@ function buildEditPanel(card, caseName, caseData) {
         finalName = nextName;
       }
     }
-    updateCaseMeta(field, scenario, finalName, { description: nextDesc, parameterName: nextParam });
+    const meta = { description: nextDesc, parameterName: nextParam };
+    if (isLinked) {
+      const m = parseFloat(multInput.value);
+      meta.multiplier = Number.isFinite(m) ? m : 1;
+    }
+    updateCaseMeta(field, scenario, finalName, meta);
     store.dispatch('CASE_UPDATED', { field, scenario, caseName: finalName });
     saveAppState();
     render();
   });
 
-  // Keyboard: Esc cancels, Cmd/Ctrl+Enter saves
+  if (generateBtn) {
+    generateBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const field = getActiveField();
+      const scenario = getActiveScenario();
+      if (!field || !scenario) return;
+      const m = parseFloat(multInput.value);
+      const created = createLinkedCase(field, scenario, caseName, Number.isFinite(m) ? m : 1, null);
+      if (created) {
+        store.dispatch('CASE_CREATED', { field, scenario, caseName: created });
+        setActiveCase(created);
+        saveAppState();
+        render();
+      }
+    });
+  }
+
   panel.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.stopPropagation(); panel.remove(); }
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.stopPropagation(); saveBtn.click(); }
@@ -1874,6 +1948,19 @@ function buildEditPanel(card, caseName, caseData) {
 
   requestAnimationFrame(() => nameInput.focus());
   return panel;
+}
+
+function formatMultiplier(m) {
+  const n = Number(m);
+  if (!Number.isFinite(n)) return '1';
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
 }
 
 // ─── Case Stats ──────────────────────────────────────────────

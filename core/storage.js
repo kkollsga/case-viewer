@@ -123,6 +123,17 @@ export function clearLegacyData() {
 
 export function getCasesForScenario(field, scenario) {
   const sc = getScenarioStore(field, scenario);
+  const raw = sc.cases || {};
+  // Resolve linked cases so callers see multiplied data transparently.
+  const out = {};
+  for (const [name, c] of Object.entries(raw)) {
+    out[name] = c?.linkedFrom ? resolveLinkedCase(c, raw) : c;
+  }
+  return out;
+}
+
+export function getRawCasesForScenario(field, scenario) {
+  const sc = getScenarioStore(field, scenario);
   return sc.cases || {};
 }
 
@@ -134,8 +145,78 @@ export function getCasesForField(field) {
 export function getCaseData(field, caseName, scenario) {
   const sc = scenario || getActiveScenario();
   if (!sc) return null;
-  const cases = getCasesForScenario(field, sc);
-  return cases[caseName] || null;
+  const raw = getRawCasesForScenario(field, sc);
+  const c = raw[caseName];
+  if (!c) return null;
+  return c.linkedFrom ? resolveLinkedCase(c, raw) : c;
+}
+
+export function getRawCase(field, scenario, caseName) {
+  const raw = getRawCasesForScenario(field, scenario);
+  return raw[caseName] || null;
+}
+
+function resolveLinkedCase(linked, rawCases) {
+  const source = rawCases[linked.linkedFrom];
+  if (!source || !source.data) {
+    return { ...linked, data: [], _linkBroken: true };
+  }
+  const multiplier = parseFloat(linked.multiplier);
+  const m = Number.isFinite(multiplier) ? multiplier : 1;
+
+  // Multiplier is applied to GRV (Bulk volume); downstream volumes are
+  // recomputed using the source's original ratios (NTG, Por, So, Sg, 1/Bo,
+  // 1/Bg) so they stay physically consistent.
+  const data = source.data.map((row) => {
+    const out = { ...row };
+    const bulk = parseFloat(row['Bulk volume']) || 0;
+    const net = parseFloat(row['Net volume']) || 0;
+    const pore = parseFloat(row['Pore volume']) || 0;
+    const hcpvOil = parseFloat(row['HCPV oil']) || 0;
+    const hcpvGas = parseFloat(row['HCPV gas']) || 0;
+    const stoiipOrig = parseFloat(row['STOIIP']) || 0;
+    const giipOrig = parseFloat(row['GIIP']) || 0;
+
+    const ntg = bulk > 0 ? net / bulk : 0;
+    const por = net > 0 ? pore / net : 0;
+    const so = pore > 0 ? hcpvOil / pore : 0;
+    const sg = pore > 0 ? hcpvGas / pore : 0;
+    const oneOverBo = hcpvOil > 0 ? stoiipOrig / hcpvOil : 0;
+    const oneOverBg = hcpvGas > 0 ? giipOrig / hcpvGas : 0;
+
+    const newBulk = bulk * m;
+    const newNet = newBulk * ntg;
+    const newPore = newNet * por;
+    const newHcpvOil = newPore * so;
+    const newHcpvGas = newPore * sg;
+    const newStoiip = newHcpvOil * oneOverBo;
+    const newGiip = newHcpvGas * oneOverBg;
+
+    if ('Bulk volume' in row) out['Bulk volume'] = newBulk;
+    if ('Net volume' in row) out['Net volume'] = newNet;
+    if ('Pore volume' in row) out['Pore volume'] = newPore;
+    if ('HCPV oil' in row) out['HCPV oil'] = newHcpvOil;
+    if ('HCPV gas' in row) out['HCPV gas'] = newHcpvGas;
+    if ('STOIIP' in row) out['STOIIP'] = newStoiip;
+    if ('GIIP' in row) out['GIIP'] = newGiip;
+    return out;
+  });
+
+  return {
+    ...source,
+    title: linked.title,
+    description: linked.description,
+    parameterName: linked.parameterName,
+    isBaseCase: linked.isBaseCase,
+    timestamp: linked.timestamp || source.timestamp,
+    author: linked.author || source.author,
+    linkedFrom: linked.linkedFrom,
+    multiplier: m,
+    data,
+    units: source.units,
+    volumeGroups: source.volumeGroups,
+    valueConversions: source.valueConversions,
+  };
 }
 
 export function saveCase(field, scenario, caseName, caseData) {
@@ -165,6 +246,10 @@ export function renameCase(field, scenario, oldName, newName) {
   sc.cases[newName] = { ...sc.cases[oldName], title: newName };
   delete sc.cases[oldName];
   sc.caseOrder = (sc.caseOrder || []).map(n => n === oldName ? newName : n);
+  // Update any linked cases that reference the old name
+  for (const c of Object.values(sc.cases)) {
+    if (c && c.linkedFrom === oldName) c.linkedFrom = newName;
+  }
   saveFieldStore(field, fs);
   return true;
 }
@@ -187,8 +272,61 @@ export function updateCaseMeta(field, scenario, caseName, meta) {
   const c = sc.cases[caseName];
   if (meta.description !== undefined) c.description = meta.description;
   if (meta.parameterName !== undefined) c.parameterName = meta.parameterName;
+  if (meta.multiplier !== undefined && c.linkedFrom) {
+    const num = parseFloat(meta.multiplier);
+    c.multiplier = Number.isFinite(num) ? num : 1;
+  }
   saveFieldStore(field, fs);
   return true;
+}
+
+// ─── Linked cases ───────────────────────────────────────────
+
+export function createLinkedCase(field, scenario, sourceName, multiplier, newName) {
+  const fs = getFieldStore(field);
+  const sc = fs.scenarios[scenario];
+  if (!sc || !sc.cases[sourceName]) return null;
+  const source = sc.cases[sourceName];
+  if (source.linkedFrom) return null; // don't allow chains for now
+  const m = Number.isFinite(parseFloat(multiplier)) ? parseFloat(multiplier) : 1;
+
+  // Pick a unique title
+  const base = (newName && newName.trim()) || `${sourceName} ×${formatMultiplier(m)}`;
+  let candidate = base;
+  let n = 2;
+  while (sc.cases[candidate]) {
+    candidate = `${base} (${n++})`;
+  }
+
+  sc.cases[candidate] = {
+    title: candidate,
+    description: '',
+    parameterName: '',
+    timestamp: new Date().toISOString(),
+    linkedFrom: sourceName,
+    multiplier: m,
+  };
+  if (!Array.isArray(sc.caseOrder)) sc.caseOrder = [];
+  // Insert directly after the source for visual proximity
+  const idx = sc.caseOrder.indexOf(sourceName);
+  if (idx === -1) sc.caseOrder.push(candidate);
+  else sc.caseOrder.splice(idx + 1, 0, candidate);
+  saveFieldStore(field, fs);
+  return candidate;
+}
+
+function formatMultiplier(m) {
+  if (Number.isInteger(m)) return String(m);
+  return m.toFixed(2).replace(/\.?0+$/, '');
+}
+
+export function getLinkedCasesOf(field, scenario, sourceName) {
+  const raw = getRawCasesForScenario(field, scenario);
+  const out = [];
+  for (const [name, c] of Object.entries(raw)) {
+    if (c?.linkedFrom === sourceName) out.push(name);
+  }
+  return out;
 }
 
 export function setBaseCase(field, scenario, caseName) {

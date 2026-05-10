@@ -309,6 +309,11 @@ function setupGlobalEvents() {
     updateCaseSectionSummary();
   });
 
+  // Refresh data view when case meta (incl. multiplier on linked cases) changes
+  store.subscribe(s => s._sig?.caseUpdated, () => {
+    if (getActiveCase()) loadCaseData();
+  });
+
   // Field/scenario changes → update summary
   store.subscribe(s => [s.activeField, s.activeScenario], () => updateCaseSectionSummary());
 
