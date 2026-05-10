@@ -411,6 +411,87 @@ function setupDataViewControls() {
       if (BallChart?.render) BallChart.render();
     });
   }
+
+  setupCopyTableButton();
+}
+
+// ─── Copy visible pivot table ───────────────────────────────
+
+function setupCopyTableButton() {
+  const btn = $('#copy-table-btn');
+  if (!btn) return;
+  const labelEl = btn.querySelector('.copy-table-label');
+  const defaultLabel = labelEl ? labelEl.textContent : '';
+  let resetTimer = null;
+
+  btn.addEventListener('click', async () => {
+    const table = document.getElementById('pivot-table');
+    if (!table) return;
+    const { tsv, html } = serializeTableForClipboard(table);
+    if (!tsv) return;
+
+    let copied = false;
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/plain': new Blob([tsv], { type: 'text/plain' }),
+          'text/html': new Blob([html], { type: 'text/html' }),
+        })]);
+        copied = true;
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(tsv);
+        copied = true;
+      }
+    } catch (err) {
+      console.error('Copy table failed', err);
+    }
+
+    if (copied && labelEl) {
+      labelEl.textContent = 'Copied';
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => { labelEl.textContent = defaultLabel; }, 1500);
+    }
+  });
+}
+
+function serializeTableForClipboard(table) {
+  const tsvRows = [];
+  const htmlRows = [];
+  for (const tr of table.querySelectorAll('tr')) {
+    if (!isElementVisible(tr)) continue;
+    const tsvCells = [];
+    const htmlCells = [];
+    for (const cell of tr.children) {
+      if (!isElementVisible(cell)) continue;
+      const raw = (cell.innerText || cell.textContent || '').replace(/\s+/g, ' ').trim();
+      tsvCells.push(raw.replace(/[\t\r\n]/g, ' '));
+      const tag = cell.tagName.toLowerCase() === 'th' ? 'th' : 'td';
+      const colspan = cell.colSpan > 1 ? ` colspan="${cell.colSpan}"` : '';
+      const rowspan = cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : '';
+      htmlCells.push(`<${tag}${colspan}${rowspan}>${escapeForHtml(raw)}</${tag}>`);
+    }
+    if (tsvCells.length === 0) continue;
+    tsvRows.push(tsvCells.join('\t'));
+    htmlRows.push(`<tr>${htmlCells.join('')}</tr>`);
+  }
+  return {
+    tsv: tsvRows.join('\n'),
+    html: `<table>${htmlRows.join('')}</table>`,
+  };
+}
+
+function isElementVisible(elem) {
+  if (!elem) return false;
+  if (elem.hidden) return false;
+  if (elem.classList && elem.classList.contains('hidden')) return false;
+  const style = window.getComputedStyle(elem);
+  return style.display !== 'none' && style.visibility !== 'hidden';
+}
+
+function escapeForHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
 }
 
 // ─── Keyboard shortcuts ─────────────────────────────────────
