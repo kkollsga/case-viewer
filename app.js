@@ -9,7 +9,7 @@ import { getState, getActiveField, getActiveCase, getActiveScenario,
 import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames, getCasesForField,
          loadFieldSettings, saveFieldSettings, loadCrossPlotSettings,
          saveCase, addCaseToOrder, saveCaseOrder, saveFields,
-         hasLegacyData, clearLegacyData, applyGroupMappings } from './core/storage.js';
+         hasLegacyData, clearLegacyData, applyGroupMappings, getGroupTypeOrder } from './core/storage.js';
 // events.js kept for bridge in state.js (will be removed in final cleanup)
 import { formatDateTime, formatCompact } from './utils/format.js';
 import { $ } from './utils/dom.js';
@@ -455,29 +455,112 @@ function setupCopyTableButton() {
 }
 
 function serializeTableForClipboard(table) {
-  const tsvRows = [];
-  const htmlRows = [];
+  // Collect visible rows + detect nesting level from .pivot-label-inner padding
+  const rows = [];
+  let maxLevel = 0;
+  let hasNestedLabels = false;
   for (const tr of table.querySelectorAll('tr')) {
     if (!isElementVisible(tr)) continue;
-    const tsvCells = [];
-    const htmlCells = [];
-    for (const cell of tr.children) {
-      if (!isElementVisible(cell)) continue;
-      const raw = (cell.innerText || cell.textContent || '').replace(/\s+/g, ' ').trim();
-      tsvCells.push(raw.replace(/[\t\r\n]/g, ' '));
-      const tag = cell.tagName.toLowerCase() === 'th' ? 'th' : 'td';
-      const colspan = cell.colSpan > 1 ? ` colspan="${cell.colSpan}"` : '';
-      const rowspan = cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : '';
-      htmlCells.push(`<${tag}${colspan}${rowspan}>${escapeForHtml(raw)}</${tag}>`);
+    const cells = Array.from(tr.children).filter(isElementVisible);
+    if (cells.length === 0) continue;
+    const labelInner = tr.querySelector('.pivot-label-inner');
+    let level = 0;
+    if (labelInner) {
+      const pl = parseInt(labelInner.style.paddingLeft, 10) || 0;
+      level = Math.round(pl / 20);
+      if (level > 0) hasNestedLabels = true;
     }
-    if (tsvCells.length === 0) continue;
-    tsvRows.push(tsvCells.join('\t'));
-    htmlRows.push(`<tr>${htmlCells.join('')}</tr>`);
+    if (level > maxLevel) maxLevel = level;
+    rows.push({ tr, cells, labelInner, level });
   }
+  if (rows.length === 0) return { tsv: '', html: '' };
+
+  const labelCols = hasNestedLabels ? maxLevel + 1 : 1;
+  const groupNames = labelCols > 1 ? getGroupColumnNames(labelCols) : null;
+
+  const labelStack = new Array(labelCols).fill('');
+  const tsvRows = [];
+  const htmlRows = [];
+
+  for (const { tr, cells, labelInner, level } of rows) {
+    const isHeaderRow = cells.every((c) => c.tagName === 'TH');
+    const isTotal = tr.classList.contains('pivot-total-row');
+
+    let labelTexts;
+    let valueCells;
+
+    if (isHeaderRow) {
+      labelTexts = labelCols > 1 && groupNames
+        ? groupNames.slice(0, labelCols)
+        : [cleanCellText(cells[0])];
+      valueCells = cells.slice(1);
+    } else if (isTotal) {
+      labelTexts = ['Total', ...new Array(labelCols - 1).fill('')];
+      valueCells = cells.slice(1);
+    } else if (labelInner && labelCols > 1) {
+      labelStack[level] = extractLabelText(labelInner);
+      for (let i = level + 1; i < labelCols; i++) labelStack[i] = '';
+      labelTexts = labelStack.slice();
+      valueCells = cells.slice(1);
+    } else {
+      labelTexts = [cleanCellText(cells[0])];
+      valueCells = cells.slice(1);
+    }
+
+    const tsvCells = [
+      ...labelTexts.map((t) => t.replace(/[\t\r\n]/g, ' ')),
+      ...valueCells.map((c) => cleanCellText(c).replace(/[\t\r\n]/g, ' ')),
+    ];
+    tsvRows.push(tsvCells.join('\t'));
+
+    const tag = isHeaderRow ? 'th' : 'td';
+    const labelHtml = labelTexts
+      .map((t) => `<${tag}>${escapeForHtml(t)}</${tag}>`)
+      .join('');
+    const valueHtml = valueCells
+      .map((c) => {
+        const text = cleanCellText(c);
+        const t2 = c.tagName.toLowerCase() === 'th' ? 'th' : 'td';
+        const colspan = c.colSpan > 1 ? ` colspan="${c.colSpan}"` : '';
+        const rowspan = c.rowSpan > 1 ? ` rowspan="${c.rowSpan}"` : '';
+        return `<${t2}${colspan}${rowspan}>${escapeForHtml(text)}</${t2}>`;
+      })
+      .join('');
+    htmlRows.push(`<tr>${labelHtml}${valueHtml}</tr>`);
+  }
+
   return {
     tsv: tsvRows.join('\n'),
     html: `<table>${htmlRows.join('')}</table>`,
   };
+}
+
+function getGroupColumnNames(count) {
+  const runtime = getRuntime();
+  const cols = runtime?.volumetricData?.volumeGroups?.columns || [];
+  let ordered = cols.slice();
+  const field = getActiveField();
+  const typeOrder = field ? getGroupTypeOrder(field) : null;
+  if (typeOrder) {
+    const head = typeOrder.filter((c) => cols.includes(c));
+    const tail = cols.filter((c) => !head.includes(c));
+    ordered = [...head, ...tail];
+  }
+  const out = ordered.slice(0, count);
+  while (out.length < count) out.push(`Group ${out.length + 1}`);
+  return out;
+}
+
+function extractLabelText(labelInner) {
+  const spans = labelInner.querySelectorAll('span');
+  if (spans.length > 0) {
+    return cleanCellText(spans[spans.length - 1]);
+  }
+  return cleanCellText(labelInner);
+}
+
+function cleanCellText(elem) {
+  return (elem.innerText || elem.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
 function isElementVisible(elem) {
