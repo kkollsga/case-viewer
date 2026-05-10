@@ -30,7 +30,9 @@ const METRICS = [
 ];
 const DEFAULT_WEIGHTS = [0.30, 0.40, 0.30];
 const DEFAULT_RUNS = 1000;
-const HIST_BINS = 60;
+const DEFAULT_BINS = 60;
+const MIN_BINS = 10;
+const MAX_BINS = 250;
 
 let containerEl = null;
 let activeMetricKey = 'oil';
@@ -255,7 +257,7 @@ function buildSlots(cases, baseName) {
 function defaultConfig(slots, scenario, baseName) {
   const weights = {};
   for (const s of slots) weights[s.label] = DEFAULT_WEIGHTS.slice();
-  return { runs: DEFAULT_RUNS, weights, scenario, refCase: baseName };
+  return { runs: DEFAULT_RUNS, bins: DEFAULT_BINS, weights, scenario, refCase: baseName };
 }
 
 function hydrateConfig(prior, slots, scenario, baseName) {
@@ -264,11 +266,18 @@ function hydrateConfig(prior, slots, scenario, baseName) {
   }
   const cfg = defaultConfig(slots, scenario, baseName);
   cfg.runs = prior.config?.runs || DEFAULT_RUNS;
+  cfg.bins = clampBins(prior.config?.bins);
   for (const s of slots) {
     const w = prior.config?.weights?.[s.label];
     if (Array.isArray(w) && w.length === 3) cfg.weights[s.label] = normalizeWeights(w);
   }
   return cfg;
+}
+
+function clampBins(n) {
+  const v = parseInt(n, 10);
+  if (!Number.isFinite(v)) return DEFAULT_BINS;
+  return Math.max(MIN_BINS, Math.min(MAX_BINS, v));
 }
 
 function reconcileConfig(cfg, slots, scenario, baseName) {
@@ -292,6 +301,7 @@ function normalizeWeights(w) {
 function simSignatureMatches(sim, slots, cfg) {
   if (!sim?.config) return false;
   if ((sim.config.runs || 0) !== (cfg.runs || 0)) return false;
+  if ((sim.config.bins || DEFAULT_BINS) !== (cfg.bins || DEFAULT_BINS)) return false;
   const labels = slots.map((s) => s.label).sort();
   const simLabels = Object.keys(sim.config.weights || {}).sort();
   if (labels.join('|') !== simLabels.join('|')) return false;
@@ -315,6 +325,7 @@ function simSignatureMatches(sim, slots, cfg) {
 function runMonteCarlo(refCase, slots, cfg) {
   const zones = zoneVectors(refCase);
   const N = Math.max(10, Math.min(200000, parseInt(cfg.runs, 10) || DEFAULT_RUNS));
+  const binCount = clampBins(cfg.bins);
 
   // Pre-build per-slot CDF for fast sampling: [w_low_cum, w_low_cum+w_ref_cum]
   const slotCdfs = slots.map((s) => {
@@ -365,13 +376,13 @@ function runMonteCarlo(refCase, slots, cfg) {
   }
 
   return {
-    oil: summarize(oilArr),
-    gas: summarize(gasArr),
-    oe:  summarize(oeArr),
+    oil: summarize(oilArr, binCount),
+    gas: summarize(gasArr, binCount),
+    oe:  summarize(oeArr,  binCount),
   };
 }
 
-function summarize(arr) {
+function summarize(arr, binCount) {
   const N = arr.length;
   const sorted = Float64Array.from(arr).sort();
   const pct = (q) => {
@@ -389,25 +400,41 @@ function summarize(arr) {
   const mean = sum / N;
   const min = sorted[0], max = sorted[N - 1];
 
-  // Histogram
+  // Histogram with nice-snapped bin edges. The user asks for approximately
+  // `binCount` bins; we snap the bin width to {1, 2, 5} × 10^k so edges land
+  // at round numbers (e.g. 1.0M, 1.05M, 1.10M instead of 0.987M, 1.034M…).
+  // The actual bin count therefore drifts slightly from the requested target.
   const span = max - min;
-  const lo = min - span * 0.02;
-  const hi = max + span * 0.02;
-  const w = (hi - lo) / HIST_BINS;
-  const bins = new Array(HIST_BINS).fill(0);
+  const w = niceStep(span / binCount);
+  const lo = Math.floor(min / w) * w;
+  const hi = Math.ceil((max + w * 1e-9) / w) * w;
+  const actualBins = Math.max(1, Math.round((hi - lo) / w));
+  const bins = new Array(actualBins).fill(0);
   for (let i = 0; i < N; i++) {
-    const x = sorted[i];
-    let idx = Math.floor((x - lo) / w);
+    let idx = Math.floor((sorted[i] - lo) / w);
     if (idx < 0) idx = 0;
-    if (idx >= HIST_BINS) idx = HIST_BINS - 1;
+    if (idx >= actualBins) idx = actualBins - 1;
     bins[idx]++;
   }
 
   return {
     p90, p50, p10, mean, min, max,
-    binMin: lo, binMax: hi, binCount: HIST_BINS,
+    binMin: lo, binMax: hi, binCount: actualBins, binWidth: w,
     bins,
   };
+}
+
+// Snap a rough step to the nearest "nice" {1, 2, 5} × 10^k value.
+function niceStep(rough) {
+  if (!Number.isFinite(rough) || rough <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  let nice;
+  if (norm < 1.5)      nice = 1;
+  else if (norm < 3.5) nice = 2;
+  else if (norm < 7.5) nice = 5;
+  else                 nice = 10;
+  return nice * mag;
 }
 
 // ─── UI: assumptions panel ──────────────────────────────────
@@ -440,6 +467,21 @@ function buildAssumptionsPanel(slots, field) {
   });
   runsLabel.appendChild(runsInput);
   right.appendChild(runsLabel);
+
+  const binsLabel = el('label', { class: 'text-xs text-gray-500 flex items-center gap-1' });
+  binsLabel.appendChild(document.createTextNode('Bins:'));
+  const binsInput = el('input', {
+    type: 'number',
+    min: String(MIN_BINS), max: String(MAX_BINS), step: '5',
+    value: String(pendingConfig.bins),
+    class: 'w-16 text-xs px-2 py-1 bg-white border border-gray-200 rounded focus:ring-1 focus:ring-indigo-500 focus:border-transparent',
+    title: `Histogram bin count (${MIN_BINS}–${MAX_BINS}). Higher = finer detail; lower = smoother. Re-simulate after changing.`,
+  });
+  binsInput.addEventListener('input', (e) => {
+    pendingConfig.bins = clampBins(e.target.value);
+  });
+  binsLabel.appendChild(binsInput);
+  right.appendChild(binsLabel);
 
   const simBtn = el('button', {
     class: 'px-3 py-1 text-xs text-white bg-indigo-500 hover:bg-indigo-600 rounded transition-colors',
@@ -587,6 +629,7 @@ function simulate(slots, field) {
     runMs: Math.round(t1 - t0),
     config: {
       runs: cfg.runs,
+      bins: clampBins(cfg.bins),
       weights: cfg.weights,
       slotMults,
       slotMeta: slots.map((s) => ({
@@ -613,40 +656,15 @@ function buildPlot(sim, field, stale = false) {
   const r = sim.results[metric.key];
   if (!r || !Array.isArray(r.bins)) return emptyState('No data for this metric.');
 
-  const wrap = el('div');
-
-  // Header: "<field> distribution plot" + subtitle "P90 / P50 / P10"
   const cases = getCasesForScenario(field, sim.scenario);
   const sample = Object.values(cases).find((c) => c?.units);
   const unit = metric.key === 'oe'
     ? (sample?.units?.STOIIP || '')
     : (sample?.units?.[metric.column] || '');
 
-  const titleText = `${field || 'Field'} distribution plot`;
-  wrap.appendChild(el('div', {
-    class: 'text-center text-xs font-semibold text-indigo-700 uppercase tracking-widest',
-    textContent: titleText,
-  }));
-
-  const subtitleHtml = `<span class="text-blue-600">P90: ${formatCompact(r.p90)}${unit ? ' ' + unit : ''}</span>` +
-                       `&nbsp;&nbsp;<span class="text-gray-700">P50: ${formatCompact(r.p50)}${unit ? ' ' + unit : ''}</span>` +
-                       `&nbsp;&nbsp;<span class="text-red-600">P10: ${formatCompact(r.p10)}${unit ? ' ' + unit : ''}</span>` +
-                       `&nbsp;&nbsp;<span class="text-gray-400">Mean: ${formatCompact(r.mean)}${unit ? ' ' + unit : ''}</span>`;
-  wrap.appendChild(el('div', {
-    class: 'text-center text-xs text-gray-600 mt-1 mb-3',
-    innerHTML: subtitleHtml,
-  }));
-
-  const svg = drawDistribution(r, unit, metric, sim);
-  wrap.appendChild(svg);
-
-  const meta = el('div', {
-    class: 'text-[10px] text-gray-400 mt-1 text-right',
-    textContent: `${sim.config.runs} runs · ${sim.runMs} ms · ref: ${sim.refCase}`,
-  });
-  wrap.appendChild(meta);
-
-  return wrap;
+  // Title, subtitle, and meta line are drawn INSIDE the SVG so they're
+  // included in the SVG/PNG export.
+  return drawDistribution(r, unit, metric, sim, field);
 }
 
 function staleNotice() {
@@ -657,10 +675,12 @@ function staleNotice() {
 }
 
 const PLOT_W = 720;
-const PLOT_H = 320;
-const PAD = { top: 12, right: 48, bottom: 36, left: 48 };
+const PLOT_H = 380;
+// Top padding leaves room for the title (y≈18) + subtitle (y≈40); bottom
+// leaves room for x-axis ticks/label and the meta line.
+const PAD = { top: 60, right: 48, bottom: 56, left: 48 };
 
-function drawDistribution(r, unit, metric, sim) {
+function drawDistribution(r, unit, metric, sim, field) {
   const innerW = PLOT_W - PAD.left - PAD.right;
   const innerH = PLOT_H - PAD.top - PAD.bottom;
 
@@ -672,6 +692,38 @@ function drawDistribution(r, unit, metric, sim) {
   svg.setAttribute('class', 'distribution-svg');
   svg.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   svg.style.background = '#ffffff';
+
+  // ── Title + percentile subtitle (inside the SVG so the export includes them) ──
+  const cx = PAD.left + innerW / 2;
+  const titleText = `${field || 'Field'} distribution plot`;
+  svg.appendChild(svgText(titleText.toUpperCase(), cx, 20, {
+    'text-anchor': 'middle',
+    'font-size': '12',
+    'font-weight': '600',
+    fill: '#4338ca',
+    'letter-spacing': '0.12em',
+  }));
+
+  const fmtP = (v) => `${formatCompact(v)}${unit ? ' ' + unit : ''}`;
+  const subParts = [
+    { label: `P90: ${fmtP(r.p90)}`,   color: '#2563eb' },
+    { label: `P50: ${fmtP(r.p50)}`,   color: '#374151' },
+    { label: `P10: ${fmtP(r.p10)}`,   color: '#dc2626' },
+    { label: `Mean: ${fmtP(r.mean)}`, color: '#9ca3af' },
+  ];
+  const subtitle = document.createElementNS(SVG_NS, 'text');
+  subtitle.setAttribute('x', cx);
+  subtitle.setAttribute('y', 40);
+  subtitle.setAttribute('text-anchor', 'middle');
+  subtitle.setAttribute('font-size', '11');
+  subParts.forEach((part, i) => {
+    const ts = document.createElementNS(SVG_NS, 'tspan');
+    ts.setAttribute('fill', part.color);
+    if (i > 0) ts.setAttribute('dx', '12');
+    ts.textContent = part.label;
+    subtitle.appendChild(ts);
+  });
+  svg.appendChild(subtitle);
 
   const N = sim.config.runs;
   const xMin = r.binMin;
@@ -697,20 +749,20 @@ function drawDistribution(r, unit, metric, sim) {
     svg.appendChild(rect);
   }
 
-  // Cumulative curve (descending = "no case below" → P100=min, decreasing)
-  // We draw the standard ascending CDF on a secondary axis 0..1.
+  // Exceedance curve (descending): y(x) = P(X > x). Starts at 100% on the
+  // left and counts down to 0% on the right. Matches the P-naming convention
+  // P90 = low (90% chance the truth EXCEEDS this), P50 = median, P10 = high.
   const yCdfToPx = (p) => PAD.top + innerH - p * innerH;
-  const cum = [];
   let acc = 0;
+  const exceed = []; // P(X > right edge of bin i)
   for (let i = 0; i < r.bins.length; i++) {
     acc += r.bins[i];
-    cum.push(acc / N);
+    exceed.push(1 - acc / N);
   }
-  let dPath = '';
-  for (let i = 0; i < cum.length; i++) {
+  let dPath = `M ${PAD.left} ${yCdfToPx(1)}`;
+  for (let i = 0; i < exceed.length; i++) {
     const x = PAD.left + (i + 1) * binW;
-    const y = yCdfToPx(cum[i]);
-    dPath += (i === 0 ? `M ${PAD.left} ${yCdfToPx(0)} L ${x} ${y}` : ` L ${x} ${y}`);
+    dPath += ` L ${x} ${yCdfToPx(exceed[i])}`;
   }
   const path = document.createElementNS(SVG_NS, 'path');
   path.setAttribute('d', dPath);
@@ -768,7 +820,15 @@ function drawDistribution(r, unit, metric, sim) {
     fill: '#374151',
   }));
 
-  // Right Y axis: cumulative probability 0..1
+  // Meta footer (run count, run time, ref case) — included in export
+  const metaText = `${sim.config.runs} runs · ${sim.runMs} ms · ref: ${sim.refCase}`;
+  svg.appendChild(svgText(metaText, PAD.left + innerW, PLOT_H - 6, {
+    'text-anchor': 'end',
+    'font-size': '9',
+    fill: '#9ca3af',
+  }));
+
+  // Right Y axis: exceedance probability P(X > x)
   for (const p of [0, 0.25, 0.5, 0.75, 1]) {
     const y = yCdfToPx(p);
     svg.appendChild(svgText(`${(p * 100).toFixed(0)}%`, PAD.left + innerW + 6, y + 3, {
