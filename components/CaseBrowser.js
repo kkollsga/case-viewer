@@ -15,7 +15,7 @@ import {
   applyGroupMappings, computeColumnColors,
   deleteFieldData, renameFieldData, deleteScenarioData, renameScenarioData,
   deleteCase, renameCase, updateCaseMeta, setBaseCase, clearBaseCase,
-  createLinkedCase, getRawCase,
+  createLinkedCase, getRawCase, LINK_TARGETS, formatLinkLabel,
 } from '../core/storage.js';
 import { parseOutputSheet, FORMAT } from '../core/parser.js';
 import * as FieldSettings from './FieldSettings.js';
@@ -1772,9 +1772,12 @@ function renderCaseCard(caseName, caseData, isActive) {
 
   // Linked indicator subtitle
   if (caseData.linkedFrom) {
+    const tgt = caseData.paramTarget || 'GRV';
+    const mode = caseData.paramMode || 'multiplier';
+    const val = caseData.paramValue ?? caseData.multiplier ?? 1;
     card.appendChild(el('div', {
       class: 'mt-0.5 text-[11px] text-gray-400',
-      textContent: `× ${formatMultiplier(caseData.multiplier ?? 1)} of ${caseData.linkedFrom}${caseData._linkBroken ? ' (source missing)' : ''}`,
+      textContent: `${formatLinkLabel(tgt, mode, val)} of ${caseData.linkedFrom}${caseData._linkBroken ? ' (source missing)' : ''}`,
     }));
   }
 
@@ -1856,18 +1859,44 @@ function buildEditPanel(card, caseName, caseData) {
 
   panel.append(nameLabel, nameInput, descLabel, descInput, paramLabel, paramInput);
 
-  // Multiplier row — meaning depends on case type
-  const multLabelText = isLinked ? 'Multiplier (× GRV)' : 'Multiplier for new linked case';
-  const multLabel = el('label', { class: 'block text-[10px] uppercase tracking-wider text-gray-400 mt-3', textContent: multLabelText });
-  const multRow = el('div', { class: 'flex items-center gap-2' });
-  const multInput = el('input', {
+  // Linked-case override controls — target / mode / value (+ Generate for source cases)
+  const sectionLabel = el('label', {
+    class: 'block text-[10px] uppercase tracking-wider text-gray-400 mt-3',
+    textContent: isLinked ? 'Override' : 'New linked case',
+  });
+  panel.appendChild(sectionLabel);
+
+  const initTarget = LINK_TARGETS.includes(caseData.paramTarget) ? caseData.paramTarget : 'GRV';
+  const initMode = caseData.paramMode === 'value' ? 'value' : 'multiplier';
+  const initValueRaw = caseData.paramValue ?? caseData.multiplier;
+  const initValue = Number.isFinite(parseFloat(initValueRaw)) ? parseFloat(initValueRaw) : 1;
+
+  const ctrlRow = el('div', { class: 'flex items-center gap-2 flex-wrap' });
+  const targetSel = el('select', {
+    class: 'px-2 py-1 text-sm border border-gray-200 rounded bg-white focus:ring-1 focus:ring-indigo-400 focus:outline-none',
+  });
+  for (const t of LINK_TARGETS) {
+    const opt = el('option', { value: t, textContent: t });
+    if (t === initTarget) opt.selected = true;
+    targetSel.appendChild(opt);
+  }
+  const modeSel = el('select', {
+    class: 'px-2 py-1 text-sm border border-gray-200 rounded bg-white focus:ring-1 focus:ring-indigo-400 focus:outline-none',
+  });
+  for (const [val, lbl] of [['multiplier', '× multiplier'], ['value', '= value']]) {
+    const opt = el('option', { value: val, textContent: lbl });
+    if (val === initMode) opt.selected = true;
+    modeSel.appendChild(opt);
+  }
+  const valueInput = el('input', {
     type: 'number',
     step: 'any',
     class: 'w-24 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-indigo-400 focus:outline-none',
     placeholder: '1',
   });
-  multInput.value = String(isLinked ? (caseData.multiplier ?? 1) : 1);
-  multRow.appendChild(multInput);
+  valueInput.value = String(isLinked ? initValue : 1);
+
+  ctrlRow.append(targetSel, modeSel, valueInput);
 
   let generateBtn = null;
   if (!isLinked) {
@@ -1875,15 +1904,17 @@ function buildEditPanel(card, caseName, caseData) {
       class: 'inline-flex items-center gap-1 px-3 py-1 text-xs text-white bg-emerald-500 hover:bg-emerald-600 rounded transition-colors',
       innerHTML: '<i class="fas fa-link text-[10px]"></i><span>Generate linked case</span>',
     });
-    multRow.appendChild(generateBtn);
-  } else {
-    multRow.appendChild(el('span', {
-      class: 'text-[11px] text-gray-400',
-      textContent: 'Applied to GRV; downstream volumes follow original ratios.',
-    }));
+    ctrlRow.appendChild(generateBtn);
   }
+  panel.appendChild(ctrlRow);
 
-  panel.append(multLabel, multRow);
+  const hint = el('div', {
+    class: 'text-[11px] text-gray-400 mt-1',
+    textContent: isLinked
+      ? 'The chosen parameter is overridden; downstream volumes follow the source\'s other ratios.'
+      : 'Pick a parameter, mode and value, then Generate to create a new linked case.',
+  });
+  panel.appendChild(hint);
 
   const actions = el('div', { class: 'flex justify-end gap-2 mt-3' });
   const cancelBtn = el('button', {
@@ -1915,8 +1946,9 @@ function buildEditPanel(card, caseName, caseData) {
     }
     const meta = { description: nextDesc, parameterName: nextParam };
     if (isLinked) {
-      const m = parseFloat(multInput.value);
-      meta.multiplier = Number.isFinite(m) ? m : 1;
+      meta.paramTarget = targetSel.value;
+      meta.paramMode = modeSel.value;
+      meta.paramValue = parseFloat(valueInput.value);
     }
     updateCaseMeta(field, scenario, finalName, meta);
     store.dispatch('CASE_UPDATED', { field, scenario, caseName: finalName });
@@ -1930,8 +1962,11 @@ function buildEditPanel(card, caseName, caseData) {
       const field = getActiveField();
       const scenario = getActiveScenario();
       if (!field || !scenario) return;
-      const m = parseFloat(multInput.value);
-      const created = createLinkedCase(field, scenario, caseName, Number.isFinite(m) ? m : 1, null);
+      const created = createLinkedCase(field, scenario, caseName, {
+        paramTarget: targetSel.value,
+        paramMode: modeSel.value,
+        paramValue: parseFloat(valueInput.value),
+      }, null);
       if (created) {
         store.dispatch('CASE_CREATED', { field, scenario, caseName: created });
         setActiveCase(created);
