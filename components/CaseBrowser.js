@@ -346,7 +346,13 @@ function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addL
     menu.appendChild(addRow);
   }
 
-  trigger.addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); });
+  menu.classList.add('js-header-dropdown-menu');
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = !menu.classList.contains('hidden');
+    document.querySelectorAll('.js-header-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+    if (!wasOpen) menu.classList.remove('hidden');
+  });
   menu.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => menu.classList.add('hidden'));
 
