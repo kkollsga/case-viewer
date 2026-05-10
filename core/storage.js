@@ -662,6 +662,37 @@ export function computeColumnColors(field, column) {
   return map;
 }
 
+// ─── Plot filter (one per field, shared by Tornado + Distribution) ──
+
+export function loadPlotFilter(field) {
+  const fs = getFieldStore(field);
+  return fs.plotFilter || { prefix: null, exclude: {} };
+}
+
+export function savePlotFilter(field, filter) {
+  const fs = getFieldStore(field);
+  fs.plotFilter = filter;
+  saveFieldStore(field, fs);
+}
+
+// Returns a new array containing only rows where every column's value is
+// NOT in the filter's exclude set. Excluding by value (rather than including)
+// means rows with newly added zone/facies values are kept by default.
+export function applyPlotFilter(rows, filter) {
+  if (!Array.isArray(rows) || !filter || !filter.exclude) return rows;
+  const ex = filter.exclude;
+  const cols = Object.keys(ex);
+  if (cols.length === 0) return rows;
+  return rows.filter((row) => {
+    for (const c of cols) {
+      const list = ex[c];
+      if (!Array.isArray(list) || list.length === 0) continue;
+      if (list.includes(String(row[c]))) return false;
+    }
+    return true;
+  });
+}
+
 // ─── Monte Carlo simulation (one per field) ─────────────────
 
 export function saveSimulation(field, sim) {

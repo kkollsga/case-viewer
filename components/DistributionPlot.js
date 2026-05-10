@@ -18,9 +18,11 @@
 import { getActiveField, getActiveScenario, store } from '../core/state.js';
 import {
   getCasesForScenario, getBaseCaseName, saveSimulation, loadSimulation,
+  applyPlotFilter, loadPlotFilter,
 } from '../core/storage.js';
 import { formatCompact } from '../utils/format.js';
 import { el, clear } from '../utils/dom.js';
+import { buildFilterDiv, subscribe as subscribeFilter, getTitlePrefix } from './PlotFilter.js';
 
 const FUNDAMENTALS = ['GRV', 'NTG', 'Por', 'So', 'Sg', '1/Bo', '1/Bg'];
 const METRICS = [
@@ -47,6 +49,7 @@ export function setupEvents() {
     (s) => [s.activeField, s.activeScenario, s._sig?.caseUpdated, s._sig?.caseDeleted, s._sig?.caseCreated],
     () => { pendingConfig = null; render(); },
   );
+  subscribeFilter(() => { pendingConfig = null; render(); });
 }
 
 export function render() {
@@ -65,12 +68,15 @@ export function render() {
   const baseName = getBaseCaseName(field, scenario);
   if (!baseName) {
     containerEl.appendChild(emptyState('Mark one case as the reference (★ on the case card) to enable the simulation.'));
+    containerEl.appendChild(buildFilterDiv(field));
     return;
   }
 
-  const slots = buildSlots(cases, baseName);
+  const filter = loadPlotFilter(field);
+  const slots = buildSlots(cases, baseName, filter);
   if (slots.length === 0) {
     containerEl.appendChild(emptyState('Assign a parameter name to one or more non-reference cases (via the pen icon on the card) to enable the simulation.'));
+    containerEl.appendChild(buildFilterDiv(field));
     return;
   }
 
@@ -110,14 +116,17 @@ export function render() {
   } else {
     plotMount.appendChild(emptyState('Click Simulate to run the Monte Carlo.'));
   }
+
+  containerEl.appendChild(buildFilterDiv(field));
 }
 
 // ─── Aggregate parameter extraction ─────────────────────────
 
-function aggregates(caseData) {
+function aggregates(caseData, filter) {
   if (!caseData?.data) return null;
+  const rows = filter ? applyPlotFilter(caseData.data, filter) : caseData.data;
   let bulk = 0, net = 0, pore = 0, ho = 0, hg = 0, st = 0, gi = 0;
-  for (const r of caseData.data) {
+  for (const r of rows) {
     bulk += parseFloat(r['Bulk volume']) || 0;
     net  += parseFloat(r['Net volume'])  || 0;
     pore += parseFloat(r['Pore volume']) || 0;
@@ -157,9 +166,10 @@ function identityVector() {
 
 // ─── Per-zone refs (cached during a simulation) ─────────────
 
-function zoneVectors(refCase) {
+function zoneVectors(refCase, filter) {
   const out = [];
-  for (const row of refCase.data || []) {
+  const rows = filter ? applyPlotFilter(refCase.data || [], filter) : (refCase.data || []);
+  for (const row of rows) {
     const bulk = parseFloat(row['Bulk volume']) || 0;
     const net  = parseFloat(row['Net volume'])  || 0;
     const pore = parseFloat(row['Pore volume']) || 0;
@@ -182,10 +192,10 @@ function zoneVectors(refCase) {
 
 // ─── Slot construction (each tornado label = one slot) ──────
 
-function buildSlots(cases, baseName) {
+function buildSlots(cases, baseName, filter) {
   const refCase = cases[baseName];
   if (!refCase) return [];
-  const refAgg = aggregates(refCase);
+  const refAgg = aggregates(refCase, filter);
   if (!refAgg || refAgg.GRV <= 0) return [];
 
   // Group cases by parameterName
@@ -195,7 +205,7 @@ function buildSlots(cases, baseName) {
     const param = (c.parameterName || '').trim();
     if (!param) continue;
     if (!groups.has(param)) groups.set(param, []);
-    const agg = aggregates(c);
+    const agg = aggregates(c, filter);
     if (!agg) continue;
     groups.get(param).push({ name, agg, multVec: multiplierVector(refAgg, agg) });
   }
@@ -322,8 +332,8 @@ function simSignatureMatches(sim, slots, cfg) {
 
 // ─── Monte Carlo engine ─────────────────────────────────────
 
-function runMonteCarlo(refCase, slots, cfg) {
-  const zones = zoneVectors(refCase);
+function runMonteCarlo(refCase, slots, cfg, filter) {
+  const zones = zoneVectors(refCase, filter);
   const N = Math.max(10, Math.min(200000, parseInt(cfg.runs, 10) || DEFAULT_RUNS));
   const binCount = clampBins(cfg.bins);
 
@@ -624,9 +634,10 @@ function simulate(slots, field) {
   const refCase = cases[baseName];
   if (!refCase) return;
 
+  const filter = loadPlotFilter(field);
   const cfg = pendingConfig;
   const t0 = performance.now();
-  const results = runMonteCarlo(refCase, slots, cfg);
+  const results = runMonteCarlo(refCase, slots, cfg, filter);
   const t1 = performance.now();
 
   // Persist a compact record (bins + percentiles, no raw trials)
@@ -713,9 +724,10 @@ function drawDistribution(r, unit, metric, sim, field) {
 
   // ── Title + percentile subtitle (inside the SVG so the export includes them) ──
   const cx = PAD.left + innerW / 2;
-  // Title carries the field, the fluid/metric, and the unit — so an exported
-  // image stands on its own without the on-screen metric selector chips.
-  const titleText = `${field || 'Field'} — ${metric.label} distribution${unit ? ` (${unit})` : ''}`;
+  // Title carries the field (or user-set prefix), the fluid/metric, and the
+  // unit — so an exported image stands on its own without the on-screen
+  // metric selector chips.
+  const titleText = `${getTitlePrefix(field)} — ${metric.label} distribution${unit ? ` (${unit})` : ''}`;
   svg.appendChild(svgText(titleText.toUpperCase(), cx, 20, {
     'text-anchor': 'middle',
     'font-size': '12',

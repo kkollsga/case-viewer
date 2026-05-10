@@ -3,9 +3,10 @@
 // Bar from min→base = blue, base→max = red. Bars sorted by |max-min| descending.
 
 import { getActiveField, getActiveScenario, store } from '../core/state.js';
-import { getCasesForScenario, getBaseCaseName } from '../core/storage.js';
+import { getCasesForScenario, getBaseCaseName, applyPlotFilter, loadPlotFilter } from '../core/storage.js';
 import { formatCompact } from '../utils/format.js';
 import { el, clear } from '../utils/dom.js';
+import { buildFilterDiv, subscribe as subscribeFilter, getTitlePrefix } from './PlotFilter.js';
 
 const METRICS = [
   { key: 'oil', label: 'Oil (STOIIP)', column: 'STOIIP' },
@@ -25,6 +26,7 @@ export function setupEvents() {
     (s) => [s.activeField, s.activeScenario, s._sig?.caseUpdated, s._sig?.caseDeleted, s._sig?.caseCreated],
     () => render(),
   );
+  subscribeFilter(() => render());
 }
 
 export function render() {
@@ -49,6 +51,7 @@ export function render() {
 
   if (!baseName) {
     containerEl.appendChild(emptyState('Mark one case as the reference (★ on the case card) to enable the tornado.'));
+    containerEl.appendChild(buildFilterDiv(field));
     return;
   }
 
@@ -58,6 +61,7 @@ export function render() {
   const baseValue = computeMetric(baseCase, metric);
   if (!Number.isFinite(baseValue)) {
     containerEl.appendChild(emptyState('Reference case has no value for the selected metric.'));
+    containerEl.appendChild(buildFilterDiv(field));
     return;
   }
 
@@ -111,18 +115,21 @@ export function render() {
 
   const svg = drawTornado(rows, baseValue, baseName, metric);
   containerEl.appendChild(svg);
+
+  containerEl.appendChild(buildFilterDiv(field));
 }
 
 // ─── Metric / case helpers ─────────────────────────────────
 
 function computeMetric(caseData, metric) {
   if (!caseData?.data) return NaN;
+  const field = getActiveField();
+  const filter = field ? loadPlotFilter(field) : null;
+  const rows = filter ? applyPlotFilter(caseData.data, filter) : caseData.data;
   if (metric.key === 'oe') {
-    const stoiip = sumColumn(caseData.data, 'STOIIP');
-    const giip = sumColumn(caseData.data, 'GIIP');
-    return stoiip + giip;
+    return sumColumn(rows, 'STOIIP') + sumColumn(rows, 'GIIP');
   }
-  return sumColumn(caseData.data, metric.column);
+  return sumColumn(rows, metric.column);
 }
 
 function sumColumn(rows, col) {
@@ -229,9 +236,9 @@ function drawTornado(rows, baseValue, baseName, metric) {
   svg.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   svg.style.background = '#ffffff';
 
-  // ── Header: "<field> tornado" + base case name + base value ──
+  // ── Header: "<prefix> tornado" + base case name + base value ──
   const fieldName = getActiveField();
-  const titleText = fieldName ? `${fieldName} tornado` : 'Tornado';
+  const titleText = `${getTitlePrefix(fieldName)} tornado`;
   const headerText = svgText(titleText, baseX, 16, {
     'text-anchor': 'middle',
     'font-size': '11',
