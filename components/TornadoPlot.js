@@ -229,8 +229,10 @@ function drawTornado(rows, baseValue, baseName, metric) {
   svg.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   svg.style.background = '#ffffff';
 
-  // ── Header: "Ref Case" label + base case name + base value ──
-  const headerText = svgText('Ref Case', baseX, 16, {
+  // ── Header: "<field> tornado" + base case name + base value ──
+  const fieldName = getActiveField();
+  const titleText = fieldName ? `${fieldName} tornado` : 'Tornado';
+  const headerText = svgText(titleText, baseX, 16, {
     'text-anchor': 'middle',
     'font-size': '11',
     'font-weight': '600',
