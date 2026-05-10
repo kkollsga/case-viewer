@@ -8,7 +8,7 @@ import { getState, getActiveField, getActiveCase, getActiveScenario,
          addField, addScenario, openBrowser, getSelectedCases, getScenariosForField, store } from './core/state.js';
 import { loadAppState, saveAppState, getCaseData, getOrderedCaseNames, getCasesForField,
          loadFieldSettings, saveFieldSettings, loadCrossPlotSettings,
-         saveCase, addCaseToOrder, saveCaseOrder, saveFields,
+         saveCase, addCaseToOrder, saveCaseOrder, saveFields, getBaseCaseName,
          hasLegacyData, clearLegacyData, applyGroupMappings, getGroupTypeOrder } from './core/storage.js';
 // events.js kept for bridge in state.js (will be removed in final cleanup)
 import { formatDateTime, formatCompact } from './utils/format.js';
@@ -21,6 +21,7 @@ import * as PivotTable from './components/PivotTable.js';
 import * as DeltaTable from './components/DeltaTable.js';
 import * as DriverChart from './components/DriverChart.js';
 import * as TornadoPlot from './components/TornadoPlot.js';
+import * as DistributionPlot from './components/DistributionPlot.js';
 
 let BallChart, CrossPlot, RevisionTimeline, CaseBrowser;
 
@@ -37,6 +38,7 @@ export async function init() {
   DeltaTable.init();
   DriverChart.init();
   TornadoPlot.init();
+  DistributionPlot.init();
 
   // Dynamic imports
   try { BallChart = await import('./components/BallChart.js'); BallChart.init(); } catch (e) { console.warn('BallChart:', e.message); }
@@ -53,6 +55,7 @@ export async function init() {
   DeltaTable.setupEvents();
   DriverChart.setupEvents();
   TornadoPlot.setupEvents();
+  DistributionPlot.setupEvents();
   if (BallChart?.setupEvents) BallChart.setupEvents();
   if (CrossPlot?.setupEvents) CrossPlot.setupEvents();
   if (RevisionTimeline?.setupEvents) RevisionTimeline.setupEvents();
@@ -77,6 +80,16 @@ function showBrowser() {
   if (state.activeField && !state.activeScenario) {
     const scenarios = getScenariosForField(state.activeField);
     if (scenarios.length > 0) setActiveScenario(scenarios[0]);
+  }
+
+  // If there's a ref (★) case for the active scenario and no active case, default to it.
+  if (state.activeField && state.activeScenario && !getActiveCase()) {
+    const baseName = getBaseCaseName(state.activeField, state.activeScenario);
+    if (baseName) {
+      setActiveCase(baseName);
+      // setActiveCase fires the subscription that calls showDataView() — done.
+      return;
+    }
   }
 
   // Expand case selector
@@ -392,6 +405,7 @@ function setupDataViewControls() {
   if (prevBtn) prevBtn.addEventListener('click', (e) => { e.stopPropagation(); navigateCase('prev'); });
   if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); navigateCase('next'); });
   setupCollapsible('toggle-tornado', 'tornado-container', () => TornadoPlot.render());
+  setupCollapsible('toggle-distribution', 'distribution-container', () => DistributionPlot.render());
   setupCollapsible('toggle-drivers', 'driver-chart-outer');
   setupCollapsible('toggle-ball-chart', 'ball-chart-outer', () => { if (BallChart?.render) BallChart.render(); });
 

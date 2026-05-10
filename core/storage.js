@@ -662,6 +662,24 @@ export function computeColumnColors(field, column) {
   return map;
 }
 
+// ─── Monte Carlo simulation (one per field) ─────────────────
+
+export function saveSimulation(field, sim) {
+  const fs = getFieldStore(field);
+  fs.simulation = sim;
+  saveFieldStore(field, fs);
+}
+
+export function loadSimulation(field) {
+  return getFieldStore(field).simulation || null;
+}
+
+export function clearSimulation(field) {
+  const fs = getFieldStore(field);
+  delete fs.simulation;
+  saveFieldStore(field, fs);
+}
+
 // ─── Default author ─────────────────────────────────────────
 
 export function saveDefaultAuthor(author) {
