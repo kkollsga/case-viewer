@@ -347,6 +347,7 @@ function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addL
   }
 
   trigger.addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); });
+  menu.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => menu.classList.add('hidden'));
 
   wrapper.append(trigger, menu);
@@ -459,6 +460,9 @@ function renderDropdown({ value, items, placeholder, onSelect, onAdd, addLabel, 
     e.stopPropagation();
     menu.classList.toggle('hidden');
   });
+
+  // Keep menu open when interacting with its contents (e.g. add input)
+  menu.addEventListener('click', (e) => e.stopPropagation());
 
   // Close on outside click
   document.addEventListener('click', () => menu.classList.add('hidden'));
