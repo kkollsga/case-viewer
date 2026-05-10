@@ -285,6 +285,27 @@ export function renderHeaderSelectors(activeField, activeScenario) {
     onSelect: (name) => { FieldSettings.hide(); setActiveField(name); saveAppState(); },
     onAdd: (name) => { addField(name); saveAppState(); render(); },
     addLabel: '+ New field',
+    onRename: activeField ? (newName) => {
+      if (renameField(activeField, newName)) {
+        renameFieldData(activeField, newName);
+        saveAppState();
+        render();
+      }
+    } : null,
+    onDelete: activeField ? () => {
+      deleteFieldData(activeField);
+      deleteField(activeField);
+      saveAppState();
+      render();
+    } : null,
+    deleteWarning: activeField ? () => {
+      const scenarios = getScenariosForField(activeField);
+      let caseCount = 0;
+      for (const sc of scenarios) caseCount += getOrderedCaseNames(activeField, sc).length;
+      return caseCount > 0
+        ? `Delete "${activeField}"? ${caseCount} case${caseCount !== 1 ? 's' : ''} across ${scenarios.length} scenario${scenarios.length !== 1 ? 's' : ''} will be lost.`
+        : `Delete "${activeField}"?`;
+    } : null,
   }));
 
   if (activeField) {
@@ -298,33 +319,171 @@ export function renderHeaderSelectors(activeField, activeScenario) {
       onSelect: (name) => { setActiveScenario(name); saveAppState(); },
       onAdd: (name) => { addScenario(activeField, name); setActiveScenario(name); saveAppState(); render(); },
       addLabel: '+ New scenario',
+      onRename: activeScenario ? (newName) => {
+        if (renameScenario(activeField, activeScenario, newName)) {
+          renameScenarioData(activeField, activeScenario, newName);
+          saveAppState();
+          render();
+        }
+      } : null,
+      onDelete: activeScenario ? () => {
+        deleteScenarioData(activeField, activeScenario);
+        deleteScenario(activeField, activeScenario);
+        saveAppState();
+        render();
+      } : null,
+      deleteWarning: activeScenario ? () => {
+        const caseCount = getOrderedCaseNames(activeField, activeScenario).length;
+        return caseCount > 0
+          ? `Delete "${activeScenario}"? ${caseCount} case${caseCount !== 1 ? 's' : ''} will be lost.`
+          : `Delete "${activeScenario}"?`;
+      } : null,
     }));
   }
 
   return row;
 }
 
-function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addLabel, onSettings }) {
-  const wrapper = el('div', { class: 'relative inline-block' });
+function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addLabel, onRename, onDelete, deleteWarning }) {
+  const wrapper = el('div', { class: 'relative inline-flex items-center group' });
+
+  // ── View state: title + hover actions ─────────
+  const viewState = el('div', { class: 'inline-flex items-center gap-1' });
 
   const trigger = el('span', {
     class: 'text-xl font-semibold cursor-pointer transition-colors ' +
            (value ? 'text-gray-800 hover:text-indigo-600' : 'text-gray-400 hover:text-indigo-400'),
     textContent: value || placeholder,
   });
+  viewState.appendChild(trigger);
 
-  const menu = el('div', {
-    class: 'absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 min-w-[200px] py-1 hidden',
+  let editBtn = null;
+  let deleteBtn = null;
+  if (value && (onRename || onDelete)) {
+    const actions = el('div', { class: 'hidden group-hover:flex items-center gap-0.5 ml-1' });
+    if (onRename) {
+      editBtn = el('button', {
+        class: 'w-6 h-6 flex items-center justify-center rounded-full text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all',
+        innerHTML: '<i class="fas fa-pen text-[10px]"></i>',
+        title: 'Rename',
+      });
+      actions.appendChild(editBtn);
+    }
+    if (onDelete) {
+      deleteBtn = el('button', {
+        class: 'w-6 h-6 flex items-center justify-center rounded-full text-red-300 hover:text-red-500 hover:bg-red-50 transition-all',
+        innerHTML: '<i class="fas fa-trash text-[10px]"></i>',
+        title: 'Delete',
+      });
+      actions.appendChild(deleteBtn);
+    }
+    viewState.appendChild(actions);
+  }
+
+  // ── Edit state: input + check/cancel ──────────
+  const editState = el('div', { class: 'items-center gap-1', style: { display: 'none' } });
+  const editInput = el('input', {
+    type: 'text',
+    class: 'text-xl font-semibold px-2 py-0 border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 text-gray-800 w-48 bg-white',
+  });
+  const confirmEditBtn = el('button', {
+    class: 'w-6 h-6 flex items-center justify-center rounded-full bg-indigo-500 text-white text-xs hover:bg-indigo-600 transition-colors',
+    innerHTML: '<i class="fas fa-check text-[10px]"></i>',
+    title: 'Confirm',
+  });
+  const cancelEditBtn = el('button', {
+    class: 'w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 text-xs transition-colors',
+    innerHTML: '<i class="fas fa-times text-[10px]"></i>',
+    title: 'Cancel',
+  });
+  editState.append(editInput, confirmEditBtn, cancelEditBtn);
+
+  function enterEdit() {
+    editInput.value = value || '';
+    viewState.style.display = 'none';
+    editState.style.display = 'inline-flex';
+    requestAnimationFrame(() => { editInput.focus(); editInput.select(); });
+  }
+  function exitEdit() {
+    editState.style.display = 'none';
+    viewState.style.display = 'inline-flex';
+  }
+  function commitEdit() {
+    const next = editInput.value.trim();
+    if (!next || next === value) { exitEdit(); return; }
+    onRename(next);
+  }
+  if (editBtn) editBtn.addEventListener('click', (e) => { e.stopPropagation(); enterEdit(); });
+  confirmEditBtn.addEventListener('click', (e) => { e.stopPropagation(); commitEdit(); });
+  cancelEditBtn.addEventListener('click', (e) => { e.stopPropagation(); exitEdit(); });
+  editInput.addEventListener('click', (e) => e.stopPropagation());
+  editInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') commitEdit();
+    if (e.key === 'Escape') exitEdit();
   });
 
+  // ── Menu ──────────────────────────────────────
+  const menu = el('div', {
+    class: 'absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 min-w-[200px] py-1 hidden overflow-hidden',
+  });
+
+  // Confirmation slot (inserted directly below the active item below)
+  let confirmContainer = null;
+  let confirmText = null;
+  function hideConfirm() {
+    if (!confirmContainer) return;
+    confirmContainer.style.maxHeight = '0';
+  }
+  function showConfirm() {
+    if (!confirmContainer) return;
+    document.querySelectorAll('.js-header-dropdown-menu').forEach((m) => { if (m !== menu) m.classList.add('hidden'); });
+    menu.classList.remove('hidden');
+    confirmText.textContent = deleteWarning ? deleteWarning() : `Delete "${value}"?`;
+    requestAnimationFrame(() => {
+      confirmContainer.style.maxHeight = confirmContainer.scrollHeight + 'px';
+    });
+  }
+  if (onDelete && value) {
+    confirmContainer = el('div', {
+      class: 'overflow-hidden transition-[max-height] duration-200 ease-out',
+      style: { maxHeight: '0' },
+    });
+    const confirmInner = el('div', {
+      class: 'bg-amber-50 border-y border-amber-100 px-3 py-2',
+    });
+    confirmText = el('div', {
+      class: 'text-xs text-amber-800 mb-2',
+    });
+    const confirmActions = el('div', { class: 'flex items-center justify-end gap-2' });
+    const noBtn = el('button', {
+      class: 'px-2 py-1 text-xs text-gray-600 hover:text-gray-800 rounded transition-colors',
+      textContent: 'Cancel',
+    });
+    const yesBtn = el('button', {
+      class: 'px-3 py-1 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-full transition-colors',
+      textContent: 'Delete',
+    });
+    confirmActions.append(noBtn, yesBtn);
+    confirmInner.append(confirmText, confirmActions);
+    confirmContainer.appendChild(confirmInner);
+
+    yesBtn.addEventListener('click', (e) => { e.stopPropagation(); menu.classList.add('hidden'); hideConfirm(); onDelete(); });
+    noBtn.addEventListener('click', (e) => { e.stopPropagation(); hideConfirm(); });
+  }
+
+  // Items
   for (const item of items) {
     const isActive = item === value;
-    menu.appendChild(el('button', {
+    const btn = el('button', {
       class: `w-full text-left px-3 py-2 text-sm transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`,
       textContent: item,
-      onClick: () => { menu.classList.add('hidden'); onSelect(item); },
-    }));
+      onClick: () => { menu.classList.add('hidden'); hideConfirm(); onSelect(item); },
+    });
+    menu.appendChild(btn);
+    if (isActive && confirmContainer) menu.appendChild(confirmContainer);
   }
+
+  if (deleteBtn) deleteBtn.addEventListener('click', (e) => { e.stopPropagation(); showConfirm(); });
 
   if (onAdd) {
     menu.appendChild(el('div', { class: 'border-t border-gray-100 my-1' }));
@@ -346,10 +505,18 @@ function renderHeaderDropdown({ value, items, placeholder, onSelect, onAdd, addL
     menu.appendChild(addRow);
   }
 
-  trigger.addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); });
-  document.addEventListener('click', () => menu.classList.add('hidden'));
+  menu.classList.add('js-header-dropdown-menu');
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = !menu.classList.contains('hidden');
+    document.querySelectorAll('.js-header-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+    hideConfirm();
+    if (!wasOpen) menu.classList.remove('hidden');
+  });
+  menu.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => { menu.classList.add('hidden'); hideConfirm(); });
 
-  wrapper.append(trigger, menu);
+  wrapper.append(viewState, editState, menu);
   return wrapper;
 }
 
@@ -459,6 +626,9 @@ function renderDropdown({ value, items, placeholder, onSelect, onAdd, addLabel, 
     e.stopPropagation();
     menu.classList.toggle('hidden');
   });
+
+  // Keep menu open when interacting with its contents (e.g. add input)
+  menu.addEventListener('click', (e) => e.stopPropagation());
 
   // Close on outside click
   document.addEventListener('click', () => menu.classList.add('hidden'));
