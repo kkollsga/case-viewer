@@ -76,24 +76,36 @@ export function render() {
 
   const rows = [];
   for (const [param, entries] of buckets.entries()) {
-    if (entries.length < 2) continue;
     const sorted = entries.slice().sort((a, b) => a.value - b.value);
-    const min = sorted[0];
-    const max = sorted[sorted.length - 1];
-    if (min.value === max.value) continue;
+    let minEntry = sorted[0];
+    let maxEntry = sorted[sorted.length - 1];
+    // Single-case parameters: use the reference case as the missing extreme.
+    if (sorted.length === 1) {
+      const only = sorted[0];
+      if (only.value < baseValue) {
+        maxEntry = { caseName: baseName, value: baseValue, isRef: true };
+      } else if (only.value > baseValue) {
+        minEntry = { caseName: baseName, value: baseValue, isRef: true };
+      } else {
+        continue; // single case equal to ref → nothing to show
+      }
+    }
+    if (minEntry.value === maxEntry.value) continue;
     rows.push({
       param,
-      minValue: min.value,
-      maxValue: max.value,
-      minCase: min.caseName,
-      maxCase: max.caseName,
-      delta: Math.abs(max.value - min.value),
+      minValue: minEntry.value,
+      maxValue: maxEntry.value,
+      minIsRef: !!minEntry.isRef,
+      maxIsRef: !!maxEntry.isRef,
+      minCase: minEntry.caseName,
+      maxCase: maxEntry.caseName,
+      delta: Math.abs(maxEntry.value - minEntry.value),
     });
   }
   rows.sort((a, b) => b.delta - a.delta);
 
   if (rows.length === 0) {
-    containerEl.appendChild(emptyState('Assign a parameter name to two or more non-reference cases (via the pen icon on the card) to see the tornado.'));
+    containerEl.appendChild(emptyState('Assign a parameter name to one or more non-reference cases (via the pen icon on the card) to see the tornado.'));
     return;
   }
 
@@ -245,17 +257,7 @@ function drawTornado(rows, baseValue, baseName, metric) {
   });
   svg.appendChild(baseValueLabel);
 
-  // ── Reference line spanning all rows ──
-  const refLine = document.createElementNS(SVG_NS, 'line');
-  refLine.setAttribute('x1', baseX);
-  refLine.setAttribute('x2', baseX);
-  refLine.setAttribute('y1', TOP_PADDING - 6);
-  refLine.setAttribute('y2', TOP_PADDING + rows.length * ROW_HEIGHT);
-  refLine.setAttribute('stroke', '#1f2937');
-  refLine.setAttribute('stroke-width', '2.5');
-  svg.appendChild(refLine);
-
-  // ── Rows ──
+  // ── Rows (drawn first so the reference line sits on top) ──
   rows.forEach((row, i) => {
     const rowY = TOP_PADDING + i * ROW_HEIGHT;
     const barY = rowY + (ROW_HEIGHT - BAR_HEIGHT) / 2;
@@ -282,28 +284,43 @@ function drawTornado(rows, baseValue, baseName, metric) {
       svg.appendChild(svgRect(redX1, barY, redX2 - redX1, BAR_HEIGHT, '#ef4444'));
     }
 
-    // Min value label (left of blue bar)
-    const minTextX = scaleX(row.minValue);
-    const minAnchor = (row.minValue < baseValue) ? 'end' : 'start';
-    const minDx = (row.minValue < baseValue) ? -6 : 6;
-    svg.appendChild(svgText(formatCompact(row.minValue), minTextX + minDx, rowY + ROW_HEIGHT / 2 + 4, {
-      'text-anchor': minAnchor,
-      'font-size': '11',
-      fill: '#1d4ed8',
-      'font-weight': '500',
-    }));
+    // Min value label — skip when the min IS the reference (already shown above)
+    if (!row.minIsRef) {
+      const minTextX = scaleX(row.minValue);
+      const minAnchor = (row.minValue < baseValue) ? 'end' : 'start';
+      const minDx = (row.minValue < baseValue) ? -6 : 6;
+      svg.appendChild(svgText(formatCompact(row.minValue), minTextX + minDx, rowY + ROW_HEIGHT / 2 + 4, {
+        'text-anchor': minAnchor,
+        'font-size': '11',
+        fill: '#1d4ed8',
+        'font-weight': '500',
+      }));
+    }
 
-    // Max value label (right of red bar)
-    const maxTextX = scaleX(row.maxValue);
-    const maxAnchor = (row.maxValue > baseValue) ? 'start' : 'end';
-    const maxDx = (row.maxValue > baseValue) ? 6 : -6;
-    svg.appendChild(svgText(formatCompact(row.maxValue), maxTextX + maxDx, rowY + ROW_HEIGHT / 2 + 4, {
-      'text-anchor': maxAnchor,
-      'font-size': '11',
-      fill: '#b91c1c',
-      'font-weight': '500',
-    }));
+    // Max value label — skip when the max IS the reference (already shown above)
+    if (!row.maxIsRef) {
+      const maxTextX = scaleX(row.maxValue);
+      const maxAnchor = (row.maxValue > baseValue) ? 'start' : 'end';
+      const maxDx = (row.maxValue > baseValue) ? 6 : -6;
+      svg.appendChild(svgText(formatCompact(row.maxValue), maxTextX + maxDx, rowY + ROW_HEIGHT / 2 + 4, {
+        'text-anchor': maxAnchor,
+        'font-size': '11',
+        fill: '#b91c1c',
+        'font-weight': '500',
+      }));
+    }
   });
+
+  // ── Reference line — drawn last so it sits above the bars ──
+  const refLine = document.createElementNS(SVG_NS, 'line');
+  refLine.setAttribute('x1', baseX);
+  refLine.setAttribute('x2', baseX);
+  refLine.setAttribute('y1', TOP_PADDING - 6);
+  refLine.setAttribute('y2', TOP_PADDING + rows.length * ROW_HEIGHT);
+  refLine.setAttribute('stroke', '#1f2937');
+  refLine.setAttribute('stroke-width', '2.5');
+  refLine.setAttribute('stroke-linecap', 'square');
+  svg.appendChild(refLine);
 
   return svg;
 }
