@@ -14,7 +14,7 @@ import {
   saveCase, addCaseToOrder, loadDefaultAuthor, saveDefaultAuthor,
   applyGroupMappings, computeColumnColors,
   deleteFieldData, renameFieldData, deleteScenarioData, renameScenarioData,
-  deleteCase,
+  deleteCase, renameCase, updateCaseMeta, setBaseCase, clearBaseCase,
 } from '../core/storage.js';
 import { parseOutputSheet, FORMAT } from '../core/parser.js';
 import * as FieldSettings from './FieldSettings.js';
@@ -1661,15 +1661,57 @@ function renderCaseCard(caseName, caseData, isActive) {
     ].join(' '),
   });
 
-  // Delete X button (only on active card)
+  // Top-right corner buttons (always include base-case star; pen + X on active)
+  const cornerBtns = el('div', { class: 'absolute top-3 right-3 flex items-center gap-1 z-10' });
+
+  // Base case star (always visible, fills when set)
+  const isBase = !!caseData.isBaseCase;
+  const starBtn = el('button', {
+    class: `w-5 h-5 flex items-center justify-center rounded-full transition-colors ${isBase ? 'text-amber-500 hover:text-amber-600' : 'text-gray-300 hover:text-amber-400 hover:bg-amber-50'}`,
+    innerHTML: `<i class="fa${isBase ? 's' : 'r'} fa-star text-[10px]"></i>`,
+    title: isBase ? 'Reference case (click to clear)' : 'Set as reference case',
+  });
+  starBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const field = getActiveField();
+    const scenario = getActiveScenario();
+    if (!field || !scenario) return;
+    if (isBase) clearBaseCase(field, scenario);
+    else setBaseCase(field, scenario, caseName);
+    store.dispatch('CASE_UPDATED', { field, scenario, caseName });
+    render();
+  });
+  cornerBtns.appendChild(starBtn);
+
   if (isActive) {
+    // Pen button (edit)
+    const penBtn = el('button', {
+      class: 'w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 transition-colors',
+      innerHTML: '<i class="fas fa-pen text-[9px]"></i>',
+      title: 'Edit case',
+    });
+    penBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const existing = card.querySelector('.case-edit-panel');
+      if (existing) { existing.remove(); return; }
+      // Close any open delete confirm
+      const dc = card.querySelector('.case-delete-confirm');
+      if (dc) dc.remove();
+      card.appendChild(buildEditPanel(card, caseName, caseData));
+    });
+    cornerBtns.appendChild(penBtn);
+
+    // Delete X button
     const xBtn = el('button', {
-      class: 'absolute top-3 right-3 w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors z-10',
+      class: 'w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors',
       innerHTML: '<i class="fas fa-times text-[9px]"></i>',
+      title: 'Delete case',
     });
     xBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // Toggle confirm bar
+      // Close edit panel if open
+      const editPanel = card.querySelector('.case-edit-panel');
+      if (editPanel) editPanel.remove();
       const existing = card.querySelector('.case-delete-confirm');
       if (existing) { existing.remove(); return; }
       const confirm = el('div', {
@@ -1700,17 +1742,25 @@ function renderCaseCard(caseName, caseData, isActive) {
       }));
       confirm.appendChild(bar);
       card.appendChild(confirm);
-      // Trigger slide-open
       requestAnimationFrame(() => { confirm.style.maxHeight = '50px'; confirm.style.opacity = '1'; confirm.style.marginTop = '8px'; });
     });
-    card.appendChild(xBtn);
+    cornerBtns.appendChild(xBtn);
   }
+  card.appendChild(cornerBtns);
 
-  // Title
-  card.appendChild(el('div', {
-    class: 'text-base font-semibold text-gray-900 truncate pr-8',
+  // Title (with parameter badge if set)
+  const titleRow = el('div', { class: 'flex items-baseline gap-2 pr-20' });
+  titleRow.appendChild(el('div', {
+    class: 'text-base font-semibold text-gray-900 truncate',
     textContent: caseData.title || caseName,
   }));
+  if (caseData.parameterName) {
+    titleRow.appendChild(el('span', {
+      class: 'text-[10px] uppercase tracking-wider text-indigo-500 bg-indigo-50 rounded px-1.5 py-0.5',
+      textContent: caseData.parameterName,
+    }));
+  }
+  card.appendChild(titleRow);
 
   // Timestamp
   if (caseData.timestamp) {
@@ -1749,6 +1799,81 @@ function renderCaseCard(caseName, caseData, isActive) {
   });
 
   return card;
+}
+
+function buildEditPanel(card, caseName, caseData) {
+  const panel = el('div', {
+    class: 'case-edit-panel mt-3 p-3 bg-white border border-indigo-200 rounded-xl space-y-2',
+  });
+  // Stop card click activation while interacting with the panel
+  panel.addEventListener('click', (e) => e.stopPropagation());
+
+  const nameLabel = el('label', { class: 'block text-[10px] uppercase tracking-wider text-gray-400', textContent: 'Name' });
+  const nameInput = el('input', {
+    type: 'text',
+    class: 'w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-indigo-400 focus:outline-none',
+    value: caseData.title || caseName,
+  });
+  nameInput.value = caseData.title || caseName;
+
+  const descLabel = el('label', { class: 'block text-[10px] uppercase tracking-wider text-gray-400 mt-2', textContent: 'Description' });
+  const descInput = el('textarea', {
+    rows: '2',
+    class: 'w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-indigo-400 focus:outline-none resize-none',
+  });
+  descInput.value = caseData.description || '';
+
+  const paramLabel = el('label', { class: 'block text-[10px] uppercase tracking-wider text-gray-400 mt-2', textContent: 'Parameter' });
+  const paramInput = el('input', {
+    type: 'text',
+    class: 'w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-indigo-400 focus:outline-none',
+    placeholder: 'e.g. Porosity',
+  });
+  paramInput.value = caseData.parameterName || '';
+
+  const actions = el('div', { class: 'flex justify-end gap-2 mt-2' });
+  const cancelBtn = el('button', {
+    class: 'px-3 py-1 text-xs text-gray-500 hover:text-gray-700 rounded transition-colors',
+    textContent: 'Cancel',
+  });
+  const saveBtn = el('button', {
+    class: 'px-3 py-1 text-xs text-white bg-indigo-500 hover:bg-indigo-600 rounded transition-colors',
+    textContent: 'Save',
+  });
+  actions.append(cancelBtn, saveBtn);
+
+  panel.append(nameLabel, nameInput, descLabel, descInput, paramLabel, paramInput, actions);
+
+  cancelBtn.addEventListener('click', (e) => { e.stopPropagation(); panel.remove(); });
+  saveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const field = getActiveField();
+    const scenario = getActiveScenario();
+    if (!field || !scenario) return;
+    const nextName = nameInput.value.trim() || caseName;
+    const nextDesc = descInput.value;
+    const nextParam = paramInput.value.trim();
+    let finalName = caseName;
+    if (nextName !== caseName) {
+      if (renameCase(field, scenario, caseName, nextName)) {
+        if (getActiveCase() === caseName) setActiveCase(nextName);
+        finalName = nextName;
+      }
+    }
+    updateCaseMeta(field, scenario, finalName, { description: nextDesc, parameterName: nextParam });
+    store.dispatch('CASE_UPDATED', { field, scenario, caseName: finalName });
+    saveAppState();
+    render();
+  });
+
+  // Keyboard: Esc cancels, Cmd/Ctrl+Enter saves
+  panel.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); panel.remove(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.stopPropagation(); saveBtn.click(); }
+  });
+
+  requestAnimationFrame(() => nameInput.focus());
+  return panel;
 }
 
 // ─── Case Stats ──────────────────────────────────────────────
