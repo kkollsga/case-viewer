@@ -417,10 +417,21 @@ function summarize(arr, binCount) {
     bins[idx]++;
   }
 
+  // Quantile curve — sampled at K evenly-spaced probabilities. Decoupled
+  // from the histogram: the bin choice affects the bars, not the cumulative
+  // line. K=100 is smooth at typical plot widths without bloating storage.
+  const K = 100;
+  const quantiles = new Array(K);
+  for (let i = 0; i < K; i++) {
+    const idx = Math.round((i / (K - 1)) * (N - 1));
+    quantiles[i] = sorted[idx];
+  }
+
   return {
     p90, p50, p10, mean, min, max,
     binMin: lo, binMax: hi, binCount: actualBins, binWidth: w,
     bins,
+    quantiles,
   };
 }
 
@@ -662,9 +673,16 @@ function buildPlot(sim, field, stale = false) {
     ? (sample?.units?.STOIIP || '')
     : (sample?.units?.[metric.column] || '');
 
-  // Title, subtitle, and meta line are drawn INSIDE the SVG so they're
-  // included in the SVG/PNG export.
-  return drawDistribution(r, unit, metric, sim, field);
+  // Title, subtitle, and `n=…` are drawn INSIDE the SVG so they're included
+  // in SVG/PNG exports. Runtime info (runs/ms/ref) is kept OUTSIDE the SVG
+  // so exported images stay clean.
+  const wrap = el('div');
+  wrap.appendChild(drawDistribution(r, unit, metric, sim, field));
+  wrap.appendChild(el('div', {
+    class: 'text-[10px] text-gray-400 mt-1 text-right',
+    textContent: `${sim.config.runs} runs · ${sim.runMs} ms · ref: ${sim.refCase}`,
+  }));
+  return wrap;
 }
 
 function staleNotice() {
@@ -675,10 +693,10 @@ function staleNotice() {
 }
 
 const PLOT_W = 720;
-const PLOT_H = 380;
-// Top padding leaves room for the title (y≈18) + subtitle (y≈40); bottom
-// leaves room for x-axis ticks/label and the meta line.
-const PAD = { top: 60, right: 48, bottom: 56, left: 48 };
+const PLOT_H = 360;
+// Top padding fits the title (y≈20) + subtitle/n (y≈40);
+// bottom fits x-axis ticks (y≈+14) and label (y≈+30).
+const PAD = { top: 60, right: 48, bottom: 42, left: 48 };
 
 function drawDistribution(r, unit, metric, sim, field) {
   const innerW = PLOT_W - PAD.left - PAD.right;
@@ -752,17 +770,31 @@ function drawDistribution(r, unit, metric, sim, field) {
   // Exceedance curve (descending): y(x) = P(X > x). Starts at 100% on the
   // left and counts down to 0% on the right. Matches the P-naming convention
   // P90 = low (90% chance the truth EXCEEDS this), P50 = median, P10 = high.
+  //
+  // Drawn from the stored quantile array — independent of bin count, so
+  // changing bins doesn't distort the curve. (Legacy sims without
+  // `quantiles` fall back to deriving from bin counts.)
   const yCdfToPx = (p) => PAD.top + innerH - p * innerH;
-  let acc = 0;
-  const exceed = []; // P(X > right edge of bin i)
-  for (let i = 0; i < r.bins.length; i++) {
-    acc += r.bins[i];
-    exceed.push(1 - acc / N);
-  }
-  let dPath = `M ${PAD.left} ${yCdfToPx(1)}`;
-  for (let i = 0; i < exceed.length; i++) {
-    const x = PAD.left + (i + 1) * binW;
-    dPath += ` L ${x} ${yCdfToPx(exceed[i])}`;
+  let dPath;
+  if (Array.isArray(r.quantiles) && r.quantiles.length > 1) {
+    const Q = r.quantiles.length;
+    // quantiles[i] is the value at probability i/(Q-1) ascending →
+    // exceedance at that value is 1 - i/(Q-1).
+    dPath = `M ${xToPx(r.quantiles[0])} ${yCdfToPx(1)}`;
+    for (let i = 1; i < Q; i++) {
+      dPath += ` L ${xToPx(r.quantiles[i])} ${yCdfToPx(1 - i / (Q - 1))}`;
+    }
+  } else {
+    let acc = 0;
+    const exceed = [];
+    for (let i = 0; i < r.bins.length; i++) {
+      acc += r.bins[i];
+      exceed.push(1 - acc / N);
+    }
+    dPath = `M ${PAD.left} ${yCdfToPx(1)}`;
+    for (let i = 0; i < exceed.length; i++) {
+      dPath += ` L ${PAD.left + (i + 1) * binW} ${yCdfToPx(exceed[i])}`;
+    }
   }
   const path = document.createElementNS(SVG_NS, 'path');
   path.setAttribute('d', dPath);
@@ -820,11 +852,13 @@ function drawDistribution(r, unit, metric, sim, field) {
     fill: '#374151',
   }));
 
-  // Meta footer (run count, run time, ref case) — included in export
-  const metaText = `${sim.config.runs} runs · ${sim.runMs} ms · ref: ${sim.refCase}`;
-  svg.appendChild(svgText(metaText, PAD.left + innerW, PLOT_H - 6, {
+  // Sample size — small, top-right inside the plot area. The runtime
+  // info (runs/ms/ref) is intentionally kept OUTSIDE the SVG so exported
+  // images stay clean; only `n` is included since it's needed to interpret
+  // the curve.
+  svg.appendChild(svgText(`n = ${sim.config.runs}`, PAD.left + innerW, 40, {
     'text-anchor': 'end',
-    'font-size': '9',
+    'font-size': '10',
     fill: '#9ca3af',
   }));
 
