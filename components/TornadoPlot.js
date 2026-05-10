@@ -16,6 +16,7 @@ const METRICS = [
 
 let containerEl = null;
 let activeMetricKey = 'oil';
+let stackedExport = false;
 
 export function init() {
   containerEl = document.getElementById('tornado-container');
@@ -55,17 +56,29 @@ export function render() {
     return;
   }
 
-  const baseCase = cases[baseName];
   const metric = METRICS.find((m) => m.key === activeMetricKey) || METRICS[0];
-
-  const baseValue = computeMetric(baseCase, metric);
-  if (!Number.isFinite(baseValue)) {
-    containerEl.appendChild(emptyState('Reference case has no value for the selected metric.'));
+  const svg = buildTornadoSvgFor(metric, cases, baseName);
+  if (!svg) {
+    const baseCase = cases[baseName];
+    const baseValue = computeMetric(baseCase, metric);
+    const msg = !Number.isFinite(baseValue)
+      ? 'Reference case has no value for the selected metric.'
+      : 'Assign a parameter name to one or more non-reference cases (via the pen icon on the card) to see the tornado.';
+    containerEl.appendChild(emptyState(msg));
     containerEl.appendChild(buildFilterDiv(field));
     return;
   }
+  containerEl.appendChild(svg);
+  containerEl.appendChild(buildFilterDiv(field));
+}
 
-  // Build parameter buckets (skip the base case + cases without a parameter name)
+// Compute rows + draw a single tornado SVG for the given metric. Returns null
+// if there's nothing meaningful to plot (no base value or no parameter rows).
+function buildTornadoSvgFor(metric, cases, baseName) {
+  const baseCase = cases[baseName];
+  const baseValue = computeMetric(baseCase, metric);
+  if (!Number.isFinite(baseValue)) return null;
+
   const buckets = new Map();
   for (const [name, c] of Object.entries(cases)) {
     if (!c) continue;
@@ -83,40 +96,24 @@ export function render() {
     const sorted = entries.slice().sort((a, b) => a.value - b.value);
     let minEntry = sorted[0];
     let maxEntry = sorted[sorted.length - 1];
-    // Single-case parameters: use the reference case as the missing extreme.
     if (sorted.length === 1) {
       const only = sorted[0];
-      if (only.value < baseValue) {
-        maxEntry = { caseName: baseName, value: baseValue, isRef: true };
-      } else if (only.value > baseValue) {
-        minEntry = { caseName: baseName, value: baseValue, isRef: true };
-      } else {
-        continue; // single case equal to ref → nothing to show
-      }
+      if (only.value < baseValue) maxEntry = { caseName: baseName, value: baseValue, isRef: true };
+      else if (only.value > baseValue) minEntry = { caseName: baseName, value: baseValue, isRef: true };
+      else continue;
     }
     if (minEntry.value === maxEntry.value) continue;
     rows.push({
       param,
-      minValue: minEntry.value,
-      maxValue: maxEntry.value,
-      minIsRef: !!minEntry.isRef,
-      maxIsRef: !!maxEntry.isRef,
-      minCase: minEntry.caseName,
-      maxCase: maxEntry.caseName,
+      minValue: minEntry.value, maxValue: maxEntry.value,
+      minIsRef: !!minEntry.isRef, maxIsRef: !!maxEntry.isRef,
+      minCase: minEntry.caseName, maxCase: maxEntry.caseName,
       delta: Math.abs(maxEntry.value - minEntry.value),
     });
   }
   rows.sort((a, b) => b.delta - a.delta);
-
-  if (rows.length === 0) {
-    containerEl.appendChild(emptyState('Assign a parameter name to one or more non-reference cases (via the pen icon on the card) to see the tornado.'));
-    return;
-  }
-
-  const svg = drawTornado(rows, baseValue, baseName, metric);
-  containerEl.appendChild(svg);
-
-  containerEl.appendChild(buildFilterDiv(field));
+  if (rows.length === 0) return null;
+  return drawTornado(rows, baseValue, baseName, metric);
 }
 
 // ─── Metric / case helpers ─────────────────────────────────
@@ -178,7 +175,16 @@ function buildMetricSelector() {
 }
 
 function buildExportButtons() {
-  const wrap = el('div', { class: 'flex items-center gap-2' });
+  const wrap = el('div', { class: 'flex items-center gap-3' });
+  const stackLabel = el('label', {
+    class: 'inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 cursor-pointer transition-colors',
+    title: 'Export all three fluids (oil / gas / OE) stacked vertically into one image',
+  });
+  const stackInput = el('input', { type: 'checkbox', class: 'mr-1 cursor-pointer' });
+  stackInput.checked = stackedExport;
+  stackInput.addEventListener('change', (e) => { stackedExport = e.target.checked; });
+  stackLabel.append(stackInput, document.createTextNode('Stack all'));
+
   const svgBtn = el('button', {
     class: 'inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors',
     title: 'Download SVG',
@@ -191,7 +197,7 @@ function buildExportButtons() {
   });
   svgBtn.addEventListener('click', () => exportSvg());
   pngBtn.addEventListener('click', () => exportPng());
-  wrap.append(svgBtn, pngBtn);
+  wrap.append(stackLabel, svgBtn, pngBtn);
   return wrap;
 }
 
@@ -236,10 +242,10 @@ function drawTornado(rows, baseValue, baseName, metric) {
   svg.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   svg.style.background = '#ffffff';
 
-  // ── Header: "<prefix> tornado" + base case name + base value ──
+  // ── Header: "<prefix> — <metric> tornado" + base case name + base value ──
   const fieldName = getActiveField();
-  const titleText = `${getTitlePrefix(fieldName)} tornado`;
-  const headerText = svgText(titleText, baseX, 16, {
+  const titleText = `${getTitlePrefix(fieldName)} — ${metric.label} tornado`;
+  const headerText = svgText(titleText.toUpperCase(), baseX, 16, {
     'text-anchor': 'middle',
     'font-size': '11',
     'font-weight': '600',
@@ -357,15 +363,60 @@ function svgRect(x, y, w, h, fill) {
 // ─── Export ────────────────────────────────────────────────
 
 function getCurrentSvgString() {
-  const svg = containerEl?.querySelector('svg.tornado-svg');
+  const svg = stackedExport ? buildStackedSvg() : containerEl?.querySelector('svg.tornado-svg');
   if (!svg) return null;
-  // Clone so we can add explicit dimensions for stand-alone files
   const clone = svg.cloneNode(true);
   const vb = clone.getAttribute('viewBox').split(' ').map(Number);
   clone.setAttribute('width', vb[2]);
   clone.setAttribute('height', vb[3]);
   clone.setAttribute('xmlns', SVG_NS);
   return new XMLSerializer().serializeToString(clone);
+}
+
+// Compose oil → gas → OE tornadoes vertically. Each panel may have a
+// different height (different parameter row counts), so we stack by reading
+// each panel's viewBox.
+function buildStackedSvg() {
+  const field = getActiveField();
+  const scenario = getActiveScenario();
+  if (!field || !scenario) return null;
+  const cases = getCasesForScenario(field, scenario);
+  const baseName = getBaseCaseName(field, scenario);
+  if (!baseName) return null;
+
+  const order = ['oil', 'gas', 'oe'];
+  const panels = [];
+  let width = 0;
+  for (const key of order) {
+    const m = METRICS.find((x) => x.key === key);
+    if (!m) continue;
+    const svg = buildTornadoSvgFor(m, cases, baseName);
+    if (!svg) continue;
+    const vb = svg.getAttribute('viewBox').split(' ').map(Number);
+    panels.push({ svg, w: vb[2], h: vb[3] });
+    if (vb[2] > width) width = vb[2];
+  }
+  if (panels.length === 0) return null;
+  const totalH = panels.reduce((s, p) => s + p.h, 0);
+
+  const outer = document.createElementNS(SVG_NS, 'svg');
+  outer.setAttribute('xmlns', SVG_NS);
+  outer.setAttribute('viewBox', `0 0 ${width} ${totalH}`);
+  outer.setAttribute('width', width);
+  outer.setAttribute('height', totalH);
+  outer.setAttribute('class', 'tornado-svg');
+  outer.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  outer.style.background = '#ffffff';
+
+  let y = 0;
+  for (const p of panels) {
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('transform', `translate(0, ${y})`);
+    while (p.svg.firstChild) g.appendChild(p.svg.firstChild);
+    outer.appendChild(g);
+    y += p.h;
+  }
+  return outer;
 }
 
 function downloadBlob(blob, filename) {
@@ -386,7 +437,7 @@ function exportSvg() {
 }
 
 function exportPng() {
-  const svg = containerEl?.querySelector('svg.tornado-svg');
+  const svg = stackedExport ? buildStackedSvg() : containerEl?.querySelector('svg.tornado-svg');
   if (!svg) return;
   const str = getCurrentSvgString();
   const vb = svg.getAttribute('viewBox').split(' ').map(Number);
@@ -419,5 +470,6 @@ function exportPng() {
 function exportFilenameStem() {
   const field = (getActiveField() || 'field').replace(/\s+/g, '_');
   const scenario = (getActiveScenario() || 'scenario').replace(/\s+/g, '_');
-  return `${field}_${scenario}_tornado_${activeMetricKey}`;
+  const suffix = stackedExport ? 'stacked' : activeMetricKey;
+  return `${field}_${scenario}_tornado_${suffix}`;
 }

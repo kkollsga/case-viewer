@@ -39,6 +39,7 @@ const MAX_BINS = 250;
 let containerEl = null;
 let activeMetricKey = 'oil';
 let pendingConfig = null; // edited but not yet simulated
+let stackedExport = false; // when true, SVG/PNG export composes oil+gas+OE
 
 export function init() {
   containerEl = document.getElementById('distribution-container');
@@ -49,7 +50,32 @@ export function setupEvents() {
     (s) => [s.activeField, s.activeScenario, s._sig?.caseUpdated, s._sig?.caseDeleted, s._sig?.caseCreated],
     () => { pendingConfig = null; render(); },
   );
-  subscribeFilter(() => { pendingConfig = null; render(); });
+  // Filter change → reset config and rerun the simulation if one already
+  // exists (so percentiles stay in sync with the visible filter without the
+  // user having to click Simulate again).
+  subscribeFilter(() => {
+    pendingConfig = null;
+    rerunIfPriorExists();
+  });
+}
+
+function rerunIfPriorExists() {
+  const field = getActiveField();
+  const scenario = getActiveScenario();
+  if (!field || !scenario) { render(); return; }
+  const prior = loadSimulation(field);
+  if (!prior) { render(); return; }
+  const baseName = getBaseCaseName(field, scenario);
+  const cases = getCasesForScenario(field, scenario);
+  const refCase = cases[baseName];
+  if (!refCase) { render(); return; }
+  const filter = loadPlotFilter(field);
+  const slots = buildSlots(cases, baseName, filter);
+  if (slots.length === 0) { render(); return; }
+  // Hydrate config from the prior sim (preserves runs/bins/weights), but with
+  // the freshly-derived slots (whose multipliers reflect the new filter).
+  pendingConfig = hydrateConfig(prior, slots, scenario, baseName);
+  simulate(slots, field);  // simulate() saves and renders
 }
 
 export function render() {
@@ -954,7 +980,21 @@ function buildMetricSelector() {
 }
 
 function buildExportButtons() {
-  const wrap = el('div', { class: 'flex items-center gap-2' });
+  const wrap = el('div', { class: 'flex items-center gap-3' });
+
+  // "Stack" toggle — when on, exports compose oil/gas/OE plots vertically
+  const stackLabel = el('label', {
+    class: 'inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 cursor-pointer transition-colors',
+    title: 'Export all three fluids (oil / gas / OE) stacked vertically into one image',
+  });
+  const stackInput = el('input', {
+    type: 'checkbox',
+    class: 'mr-1 cursor-pointer',
+  });
+  stackInput.checked = stackedExport;
+  stackInput.addEventListener('change', (e) => { stackedExport = e.target.checked; });
+  stackLabel.append(stackInput, document.createTextNode('Stack all'));
+
   const svgBtn = el('button', {
     class: 'inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors',
     title: 'Download SVG',
@@ -967,7 +1007,7 @@ function buildExportButtons() {
   });
   svgBtn.addEventListener('click', () => exportSvg());
   pngBtn.addEventListener('click', () => exportPng());
-  wrap.append(svgBtn, pngBtn);
+  wrap.append(stackLabel, svgBtn, pngBtn);
   return wrap;
 }
 
@@ -983,7 +1023,7 @@ function svgText(text, x, y, attrs = {}) {
 // ─── Export ─────────────────────────────────────────────────
 
 function getCurrentSvgString() {
-  const svg = containerEl?.querySelector('svg.distribution-svg');
+  const svg = stackedExport ? buildStackedSvg() : containerEl?.querySelector('svg.distribution-svg');
   if (!svg) return null;
   const clone = svg.cloneNode(true);
   const vb = clone.getAttribute('viewBox').split(' ').map(Number);
@@ -991,6 +1031,47 @@ function getCurrentSvgString() {
   clone.setAttribute('height', vb[3]);
   clone.setAttribute('xmlns', SVG_NS);
   return new XMLSerializer().serializeToString(clone);
+}
+
+// Compose oil → gas → OE plots into a single tall SVG. Used by Stack export.
+function buildStackedSvg() {
+  const field = getActiveField();
+  if (!field) return null;
+  const sim = loadSimulation(field);
+  if (!sim) return null;
+  const cases = getCasesForScenario(field, sim.scenario);
+  const sample = Object.values(cases).find((c) => c?.units);
+
+  const order = ['oil', 'gas', 'oe'];
+  const panels = [];
+  for (const key of order) {
+    const metric = METRICS.find((m) => m.key === key);
+    const r = sim.results[key];
+    if (!r || !Array.isArray(r.bins)) continue;
+    const unit = metric.key === 'oe'
+      ? (sample?.units?.STOIIP || '')
+      : (sample?.units?.[metric.column] || '');
+    panels.push(drawDistribution(r, unit, metric, sim, field));
+  }
+  if (panels.length === 0) return null;
+
+  const totalH = PLOT_H * panels.length;
+  const outer = document.createElementNS(SVG_NS, 'svg');
+  outer.setAttribute('xmlns', SVG_NS);
+  outer.setAttribute('viewBox', `0 0 ${PLOT_W} ${totalH}`);
+  outer.setAttribute('width', PLOT_W);
+  outer.setAttribute('height', totalH);
+  outer.setAttribute('class', 'distribution-svg');
+  outer.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  outer.style.background = '#ffffff';
+
+  panels.forEach((panel, i) => {
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('transform', `translate(0, ${i * PLOT_H})`);
+    while (panel.firstChild) g.appendChild(panel.firstChild);
+    outer.appendChild(g);
+  });
+  return outer;
 }
 
 function downloadBlob(blob, filename) {
@@ -1011,7 +1092,7 @@ function exportSvg() {
 }
 
 function exportPng() {
-  const svg = containerEl?.querySelector('svg.distribution-svg');
+  const svg = stackedExport ? buildStackedSvg() : containerEl?.querySelector('svg.distribution-svg');
   if (!svg) return;
   const str = getCurrentSvgString();
   const vb = svg.getAttribute('viewBox').split(' ').map(Number);
@@ -1044,5 +1125,6 @@ function exportPng() {
 function exportFilenameStem() {
   const field = (getActiveField() || 'field').replace(/\s+/g, '_');
   const scenario = (getActiveScenario() || 'scenario').replace(/\s+/g, '_');
-  return `${field}_${scenario}_distribution_${activeMetricKey}`;
+  const suffix = stackedExport ? 'stacked' : activeMetricKey;
+  return `${field}_${scenario}_distribution_${suffix}`;
 }
