@@ -711,22 +711,27 @@ export function applyPlotFilter(rows, filter, field) {
   });
 }
 
-// ─── Monte Carlo simulation (one per field) ─────────────────
+// ─── Monte Carlo simulation (in memory only — discarded on reload) ──
+
+const _simCache = new Map();
 
 export function saveSimulation(field, sim) {
+  _simCache.set(field, sim);
+  // Defensive: prior versions persisted simulation results in the field store.
+  // Strip on next touch so localStorage doesn't carry stale data forever.
   const fs = getFieldStore(field);
-  fs.simulation = sim;
-  saveFieldStore(field, fs);
+  if (fs.simulation !== undefined) {
+    delete fs.simulation;
+    saveFieldStore(field, fs);
+  }
 }
 
 export function loadSimulation(field) {
-  return getFieldStore(field).simulation || null;
+  return _simCache.get(field) || null;
 }
 
 export function clearSimulation(field) {
-  const fs = getFieldStore(field);
-  delete fs.simulation;
-  saveFieldStore(field, fs);
+  _simCache.delete(field);
 }
 
 // ─── Default author ─────────────────────────────────────────

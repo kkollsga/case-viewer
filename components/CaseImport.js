@@ -154,6 +154,8 @@ function onDataPaste() {
     let html = `<div class="text-xs text-gray-500 mb-1">${result.data.length} rows, ${result.headers.length} columns`;
     if (result.format === FORMAT.SINGLE_LINE_TOTALS) {
       html += ' <span class="text-amber-500">(totals only)</span>';
+    } else if (result.format === FORMAT.MULTI_ROW_HEADER) {
+      html += ` <span class="text-indigo-500">(multirun · ${result.runs?.length || 0} runs)</span>`;
     }
     html += '</div><div class="overflow-x-auto max-h-20 text-xs border border-gray-100 rounded-lg">';
     html += '<table class="min-w-full"><thead class="bg-gray-50"><tr>';
@@ -234,6 +236,10 @@ function submit() {
     volumeGroups: { columns: volumeGroupColumns },
     valueConversions: {},
   };
+  if (result.isMultiRun) {
+    caseData.isMultiRun = true;
+    caseData.runs = result.runs;
+  }
 
   // Save with scenario
   saveCase(field, scenario, title, caseData);

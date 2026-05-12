@@ -32,12 +32,10 @@ let importVisible = false;
 let parseResult = null;
 let importDivideBy1000 = true;
 let importRawText = '';
-// Standard table: single case metadata
+// Single case metadata (standard table or multirun)
 let importCaseName = '';
 let importCaseDescription = '';
 let importTimestamp = null;
-// Single-row: per-case metadata
-let importCases = []; // [{ checked, originalName, name, description, row }]
 // Removed group columns (by index)
 let importRemovedGroups = new Set();
 // Debounce timer
@@ -961,7 +959,6 @@ function resetImportState() {
   importCaseName = '';
   importCaseDescription = '';
   importTimestamp = null;
-  importCases = [];
   importRemovedGroups = new Set();
   if (pasteDebounceTimer) clearTimeout(pasteDebounceTimer);
   pasteDebounceTimer = null;
@@ -983,23 +980,27 @@ function runParser() {
   const qc = parseResult.qc;
   const meta = qc?.petrelMeta || {};
 
-  if (parseResult.format === FORMAT.SINGLE_LINE_TOTALS && parseResult.cases) {
-    // Multi-case
-    importCases = parseResult.cases.map((c) => ({
-      checked: true,
-      originalName: c.originalName,
-      name: c.suggestedName || c.originalName,
-      description: c.description || '',
-      row: c.row,
-    }));
+  // Multirun (Format 4, or Format 2 with ≥2 rows) and standard table both
+  // produce a single case — the name is suggested from Petrel meta or the
+  // first realization's identifier.
+  if (parseResult.isMultiRun && parseResult.runs?.length > 0) {
+    importCaseName = generateMultiRunName(parseResult.runs, meta);
   } else {
-    // Standard table — single case
     importCaseName = generateCaseName(meta);
-    importCaseDescription = '';
-    importTimestamp = parseTimestamp(meta.exportDate);
   }
-
+  importCaseDescription = '';
+  importTimestamp = parseTimestamp(meta.exportDate);
   importRemovedGroups = new Set();
+}
+
+function generateMultiRunName(runs, meta) {
+  if (meta.case) return meta.case;
+  // Strip the trailing realization index from runs[0].name when present
+  // (e.g. "Cerisa_Disconnected_Fine_Grid_1415" → "Cerisa_Disconnected_Fine_Grid").
+  const first = runs[0]?.name || '';
+  const stem = first.replace(/[_\-\s]?\d+$/, '').trim();
+  if (stem) return `${stem} (${runs.length} runs)`;
+  return `Multirun (${runs.length} runs)`;
 }
 
 function generateCaseName(meta) {
@@ -1097,12 +1098,8 @@ function renderImportSection(field, scenario) {
       section.appendChild(renderGroupPills(qc.groupColumns));
     }
 
-    // ── 6. Case metadata ──
-    if (parseResult.format === FORMAT.SINGLE_LINE_TOTALS && importCases.length > 0) {
-      section.appendChild(renderMultiCaseMetadata());
-    } else {
-      section.appendChild(renderSingleCaseMetadata());
-    }
+    // ── 6. Case metadata (single case — multirun or standard) ──
+    section.appendChild(renderSingleCaseMetadata());
 
     // ── 7. Parse errors (non-fatal) ──
     if (qc.errors && qc.errors.length > 0) {
@@ -1200,10 +1197,10 @@ function renderQCChecks(qc) {
     class: 'text-xs text-gray-400',
     textContent: `${qc.rowCount} rows \u00b7 ${qc.columnCount} columns`,
   }));
-  if (qc.caseCount > 1) {
+  if (qc.runCount > 1) {
     formatRow.appendChild(el('span', {
       class: 'text-xs text-indigo-500 font-medium',
-      textContent: `${qc.caseCount} cases detected`,
+      textContent: `${qc.runCount} runs detected → one multirun case`,
     }));
   }
   infoCard.appendChild(formatRow);
@@ -1458,80 +1455,6 @@ function renderSingleCaseMetadata() {
   return container;
 }
 
-// ─── Multi-Case Metadata (single-row format) ────────────────
-
-function renderMultiCaseMetadata() {
-  const container = el('div', {
-    class: 'space-y-3',
-  });
-
-  const checkedCount = importCases.filter(c => c.checked).length;
-  container.appendChild(el('div', {
-    class: 'text-xs font-medium text-gray-500',
-    textContent: `Detected ${importCases.length} case${importCases.length !== 1 ? 's' : ''}:`,
-  }));
-
-  // Compact table
-  const table = el('div', {
-    class: 'space-y-1',
-  });
-
-  importCases.forEach((c, idx) => {
-    const row = el('div', {
-      class: 'flex items-center gap-3 py-1',
-    });
-
-    // Checkbox
-    const cb = el('input', {
-      type: 'checkbox',
-      class: 'w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer',
-    });
-    cb.checked = c.checked;
-    cb.addEventListener('change', (e) => {
-      importCases[idx].checked = e.target.checked;
-      render();
-    });
-    row.appendChild(cb);
-
-    // Original name (label)
-    row.appendChild(el('span', {
-      class: 'text-xs text-gray-400 w-24 truncate flex-shrink-0',
-      textContent: c.originalName,
-      title: c.originalName,
-    }));
-
-    // Editable name
-    const nameInput = el('input', {
-      type: 'text',
-      class: 'flex-1 min-w-0 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-indigo-400',
-      placeholder: 'Suggested name',
-    });
-    nameInput.value = c.name;
-    nameInput.addEventListener('input', (e) => {
-      importCases[idx].name = e.target.value;
-    });
-    row.appendChild(nameInput);
-
-    // Editable description
-    const descInput = el('input', {
-      type: 'text',
-      class: 'flex-1 min-w-0 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-indigo-400',
-      placeholder: 'Description',
-    });
-    descInput.value = c.description;
-    descInput.addEventListener('input', (e) => {
-      importCases[idx].description = e.target.value;
-    });
-    row.appendChild(descInput);
-
-    table.appendChild(row);
-  });
-
-  container.appendChild(table);
-
-  return container;
-}
-
 // ─── Import Action Buttons ───────────────────────────────────
 
 function renderImportActions(field, scenario) {
@@ -1551,15 +1474,14 @@ function renderImportActions(field, scenario) {
   row.appendChild(cancelBtn);
 
   // Save button
-  const isMulti = parseResult.format === FORMAT.SINGLE_LINE_TOTALS && importCases.length > 0;
-  const checkedCount = isMulti ? importCases.filter(c => c.checked).length : 1;
-  const saveLabel = isMulti
-    ? `Save ${checkedCount} case${checkedCount !== 1 ? 's' : ''} to ${scenario}`
+  const isMultiRun = !!parseResult.isMultiRun;
+  const runCount = parseResult.runs?.length || 0;
+  const saveLabel = isMultiRun
+    ? `Save multirun case (${runCount} runs) to ${scenario}`
     : `Save to ${scenario}`;
 
   const v = validateParseResult();
-  const canSave = v.ok && parseResult && parseResult.data && parseResult.data.length > 0 &&
-    (isMulti ? checkedCount > 0 : true);
+  const canSave = v.ok && parseResult && parseResult.data && parseResult.data.length > 0;
 
   const saveBtn = el('button', {
     class: canSave
@@ -1580,47 +1502,24 @@ function handleSave(field, scenario) {
   if (!parseResult || !parseResult.data) return;
 
   const activeGroupColumns = getActiveGroupColumns();
-
-  if (parseResult.format === FORMAT.SINGLE_LINE_TOTALS && importCases.length > 0) {
-    // Multi-case save
-    const toSave = importCases.filter(c => c.checked);
-    for (const c of toSave) {
-      const caseName = c.name.trim() || c.originalName;
-      const caseData = {
-        title: caseName,
-        description: c.description || '',
-        timestamp: Date.now(),
-        data: [c.row],
-        headers: parseResult.headers,
-        units: parseResult.units,
-        rawUnits: parseResult.rawUnits,
-        format: parseResult.format,
-        volumeGroups: {
-          columns: activeGroupColumns,
-        },
-      };
-      saveCase(field, scenario, caseName, caseData);
-      addCaseToOrder(field, scenario, caseName);
-    }
-  } else {
-    // Standard table — single case
-    const caseName = importCaseName.trim() || generateCaseName(parseResult.qc?.petrelMeta || {});
-    const caseData = {
-      title: caseName,
-      description: importCaseDescription || '',
-      timestamp: importTimestamp || Date.now(),
-      data: parseResult.data,
-      headers: parseResult.headers,
-      units: parseResult.units,
-      rawUnits: parseResult.rawUnits,
-      format: parseResult.format,
-      volumeGroups: {
-        columns: activeGroupColumns,
-      },
-    };
-    saveCase(field, scenario, caseName, caseData);
-    addCaseToOrder(field, scenario, caseName);
+  const caseName = importCaseName.trim() || generateCaseName(parseResult.qc?.petrelMeta || {});
+  const caseData = {
+    title: caseName,
+    description: importCaseDescription || '',
+    timestamp: importTimestamp || Date.now(),
+    data: parseResult.data,
+    headers: parseResult.headers,
+    units: parseResult.units,
+    rawUnits: parseResult.rawUnits,
+    format: parseResult.format,
+    volumeGroups: { columns: activeGroupColumns },
+  };
+  if (parseResult.isMultiRun) {
+    caseData.isMultiRun = true;
+    caseData.runs = parseResult.runs;
   }
+  saveCase(field, scenario, caseName, caseData);
+  addCaseToOrder(field, scenario, caseName);
 
   // Reset import state and re-render
   resetImportState();
@@ -2003,59 +1902,102 @@ function escapeAttr(s) {
 function computeCaseStats(caseData) {
   if (!caseData.data || caseData.data.length === 0) return null;
 
-  const data = caseData.data;
   const units = caseData.units || {};
-
-  let stoiipTotal = 0;
-  let giipTotal = 0;
-
-  for (const row of data) {
-    stoiipTotal += parseFloat(row['STOIIP']) || 0;
-    giipTotal += parseFloat(row['GIIP']) || 0;
-  }
-
   const stoiipUnit = units['STOIIP'] || '';
   const giipUnit = units['GIIP'] || '';
 
-  // OE calculation: stoiip (MCM-equiv) + giip (BCM-equiv, 1 BCM gas = 1 MCM OE)
-  const oeMcm = stoiipTotal + giipTotal;
+  if (caseData.isMultiRun && Array.isArray(caseData.runs) && caseData.runs.length > 0) {
+    const stoiipVals = caseData.runs.map((r) => parseFloat(r.totals?.STOIIP) || 0);
+    const giipVals = caseData.runs.map((r) => parseFloat(r.totals?.GIIP) || 0);
+    const oeVals = stoiipVals.map((s, i) => s + giipVals[i]);
+    return {
+      isMultiRun: true,
+      runCount: caseData.runs.length,
+      stoiip: percentiles(stoiipVals),
+      giip: percentiles(giipVals),
+      oe: percentiles(oeVals),
+      stoiipUnit,
+      giipUnit,
+    };
+  }
 
+  let stoiipTotal = 0;
+  let giipTotal = 0;
+  for (const row of caseData.data) {
+    stoiipTotal += parseFloat(row['STOIIP']) || 0;
+    giipTotal += parseFloat(row['GIIP']) || 0;
+  }
   return {
     stoiip: stoiipTotal,
     stoiipUnit,
     giip: giipTotal,
     giipUnit,
-    oe: oeMcm,
+    oe: stoiipTotal + giipTotal,
   };
 }
 
+// P-naming convention used throughout this app:
+//   P90 = low (10th percentile from bottom, exceeded with 90% probability)
+//   P50 = median
+//   P10 = high (90th percentile from bottom)
+function percentiles(arr) {
+  const sorted = [...arr].sort((a, b) => a - b);
+  const n = sorted.length;
+  const pct = (q) => sorted[Math.max(0, Math.min(n - 1, Math.floor(q * (n - 1) + 0.5)))];
+  let sum = 0;
+  for (const v of sorted) sum += v;
+  return { p90: pct(0.10), p50: pct(0.50), p10: pct(0.90), mean: sum / n };
+}
+
 function renderCaseStats(stats, units) {
+  if (stats.isMultiRun) return renderMultiRunStats(stats);
+
   const container = el('div', { class: 'space-y-1.5' });
-
-  // STOIIP
   container.appendChild(renderStatRow('STOIIP', stats.stoiip, stats.stoiipUnit));
-
-  // GIIP
   container.appendChild(renderStatRow('GIIP', stats.giip, stats.giipUnit));
+  container.appendChild(el('div', { class: 'border-t border-gray-100 my-2' }));
 
-  // Divider
-  container.appendChild(el('div', {
-    class: 'border-t border-gray-100 my-2',
-  }));
-
-  // OE total
   const oeRow = el('div', { class: 'flex justify-between items-baseline' });
-  oeRow.appendChild(el('span', {
-    class: 'text-xs font-medium text-gray-700',
-    textContent: 'OE',
-  }));
+  oeRow.appendChild(el('span', { class: 'text-xs font-medium text-gray-700', textContent: 'OE' }));
   oeRow.appendChild(el('span', {
     class: 'text-sm font-semibold text-gray-900',
     textContent: `${formatNumber(stats.oe)} MCM`,
   }));
   container.appendChild(oeRow);
-
   return container;
+}
+
+// Three-column P90 / P50 / P10 grid for multirun cases.
+function renderMultiRunStats(stats) {
+  const container = el('div', { class: 'space-y-1.5' });
+
+  const header = el('div', { class: 'grid grid-cols-[1fr_auto_auto_auto] gap-x-3 items-baseline text-[10px] uppercase tracking-wider text-gray-400' });
+  header.appendChild(el('span', { textContent: `${stats.runCount} runs` }));
+  header.appendChild(el('span', { class: 'text-right text-blue-500', textContent: 'P90' }));
+  header.appendChild(el('span', { class: 'text-right text-gray-500', textContent: 'P50' }));
+  header.appendChild(el('span', { class: 'text-right text-red-500', textContent: 'P10' }));
+  container.appendChild(header);
+
+  container.appendChild(renderPercentileRow('STOIIP', stats.stoiip, stats.stoiipUnit));
+  container.appendChild(renderPercentileRow('GIIP', stats.giip, stats.giipUnit));
+  container.appendChild(el('div', { class: 'border-t border-gray-100 my-1' }));
+  container.appendChild(renderPercentileRow('OE', stats.oe, 'MCM', /*emphasize=*/true));
+  return container;
+}
+
+function renderPercentileRow(label, p, unit, emphasize = false) {
+  const row = el('div', { class: 'grid grid-cols-[1fr_auto_auto_auto] gap-x-3 items-baseline' });
+  row.appendChild(el('span', {
+    class: emphasize ? 'text-xs font-medium text-gray-700' : 'text-xs text-gray-500',
+    textContent: label,
+  }));
+  const cellClass = emphasize
+    ? 'text-sm font-semibold text-gray-900 text-right tabular-nums'
+    : 'text-sm text-gray-800 text-right tabular-nums';
+  row.appendChild(el('span', { class: cellClass, textContent: formatNumber(p.p90) }));
+  row.appendChild(el('span', { class: cellClass, textContent: formatNumber(p.p50) }));
+  row.appendChild(el('span', { class: cellClass, textContent: `${formatNumber(p.p10)}${unit ? ' ' + unit : ''}` }));
+  return row;
 }
 
 function renderStatRow(label, value, unit) {

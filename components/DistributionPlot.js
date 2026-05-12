@@ -15,7 +15,7 @@
 //   • Volumes computed zone-by-zone exactly like resolveLinkedCase, so
 //     deterministic case views and MC stay consistent.
 
-import { getActiveField, getActiveScenario, store } from '../core/state.js';
+import { getActiveField, getActiveScenario, getActiveCase, store } from '../core/state.js';
 import {
   getCasesForScenario, getBaseCaseName, saveSimulation, loadSimulation,
   applyPlotFilter, loadPlotFilter,
@@ -47,7 +47,7 @@ export function init() {
 
 export function setupEvents() {
   store.subscribe(
-    (s) => [s.activeField, s.activeScenario, s._sig?.caseUpdated, s._sig?.caseDeleted, s._sig?.caseCreated],
+    (s) => [s.activeField, s.activeScenario, s.activeCase, s._sig?.caseUpdated, s._sig?.caseDeleted, s._sig?.caseCreated],
     () => { pendingConfig = null; render(); },
   );
   // Filter change → reset config and rerun the simulation if one already
@@ -63,10 +63,15 @@ function rerunIfPriorExists() {
   const field = getActiveField();
   const scenario = getActiveScenario();
   if (!field || !scenario) { render(); return; }
+
+  // Empirical (multirun) mode owns the view — skip MC rerun entirely.
+  const activeCaseName = getActiveCase();
+  const cases = getCasesForScenario(field, scenario);
+  if (activeCaseName && cases[activeCaseName]?.isMultiRun) { render(); return; }
+
   const prior = loadSimulation(field);
   if (!prior) { render(); return; }
   const baseName = getBaseCaseName(field, scenario);
-  const cases = getCasesForScenario(field, scenario);
   const refCase = cases[baseName];
   if (!refCase) { render(); return; }
   const filter = loadPlotFilter(field);
@@ -91,6 +96,16 @@ export function render() {
   }
 
   const cases = getCasesForScenario(field, scenario);
+
+  // Multirun case path: when a multirun case is selected, show its empirical
+  // histogram instead of running a Monte Carlo over tagged cases.
+  const activeCaseName = getActiveCase();
+  const activeCase = activeCaseName ? cases[activeCaseName] : null;
+  if (activeCase && activeCase.isMultiRun && Array.isArray(activeCase.runs) && activeCase.runs.length > 0) {
+    renderEmpiricalForCase(activeCaseName, activeCase);
+    return;
+  }
+
   const baseName = getBaseCaseName(field, scenario);
   if (!baseName) {
     containerEl.appendChild(emptyState('Mark one case as the reference (★ on the case card) to enable the simulation.'));
@@ -144,6 +159,66 @@ export function render() {
   }
 
   containerEl.appendChild(buildFilterDiv(field));
+}
+
+// ─── Empirical distribution (multirun case) ────────────────
+
+function renderEmpiricalForCase(caseName, caseData) {
+  const sim = buildEmpiricalSim(caseName, caseData);
+
+  // Header: metric selector + export buttons (same chrome as MC mode)
+  const header = el('div', { class: 'flex items-center justify-between mb-3 gap-3 flex-wrap' });
+  header.appendChild(buildMetricSelector());
+  header.appendChild(buildExportButtons());
+  containerEl.appendChild(header);
+
+  // Lightweight info card (replaces the assumptions table)
+  const info = el('div', {
+    class: 'border border-gray-200 rounded-lg p-3 bg-gray-50/50 flex items-center justify-between gap-3 flex-wrap',
+  });
+  info.appendChild(el('div', {
+    class: 'text-xs text-gray-500',
+    innerHTML: `<span class="font-medium text-gray-700">${caseName}</span> · multirun case · empirical distribution from <span class="font-medium text-gray-700">${caseData.runs.length}</span> runs`,
+  }));
+  containerEl.appendChild(info);
+
+  const plotMount = el('div', { class: 'mt-4' });
+  containerEl.appendChild(plotMount);
+  plotMount.appendChild(buildPlot(sim, getActiveField()));
+}
+
+// Return the simulation result currently driving the plot — empirical when a
+// multirun case is selected, otherwise the saved MC.
+function currentSim(field) {
+  const scenario = getActiveScenario();
+  const activeCaseName = getActiveCase();
+  if (field && scenario && activeCaseName) {
+    const cases = getCasesForScenario(field, scenario);
+    const c = cases[activeCaseName];
+    if (c?.isMultiRun) return buildEmpiricalSim(activeCaseName, c);
+  }
+  return loadSimulation(field);
+}
+
+function buildEmpiricalSim(caseName, caseData) {
+  const runs = caseData.runs;
+  const stoiip = runs.map((r) => parseFloat(r.totals?.STOIIP) || 0);
+  const gas    = runs.map((r) => parseFloat(r.totals?.GIIP) || 0);
+  const oe     = stoiip.map((s, i) => s + gas[i]);
+  const binCount = DEFAULT_BINS;
+
+  return {
+    ts: Date.now(),
+    scenario: getActiveScenario(),
+    refCase: caseName,
+    runMs: 0,
+    config: { runs: runs.length, bins: binCount, weights: {}, slotMults: {}, slotMeta: [] },
+    results: {
+      oil: summarize(Float64Array.from(stoiip), binCount),
+      gas: summarize(Float64Array.from(gas),    binCount),
+      oe:  summarize(Float64Array.from(oe),     binCount),
+    },
+  };
 }
 
 // ─── Aggregate parameter extraction ─────────────────────────
@@ -1037,7 +1112,7 @@ function getCurrentSvgString() {
 function buildStackedSvg() {
   const field = getActiveField();
   if (!field) return null;
-  const sim = loadSimulation(field);
+  const sim = currentSim(field);
   if (!sim) return null;
   const cases = getCasesForScenario(field, sim.scenario);
   const sample = Object.values(cases).find((c) => c?.units);
