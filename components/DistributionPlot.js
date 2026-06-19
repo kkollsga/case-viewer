@@ -26,10 +26,23 @@ import { buildFilterDiv, subscribe as subscribeFilter, getTitlePrefix } from './
 
 const FUNDAMENTALS = ['GRV', 'NTG', 'Por', 'So', 'Sg', '1/Bo', '1/Bg'];
 const METRICS = [
-  { key: 'oil', label: 'Oil (STOIIP)', column: 'STOIIP' },
-  { key: 'gas', label: 'Gas (GIIP)',   column: 'GIIP' },
-  { key: 'oe',  label: 'OE',           column: null },
+  { key: 'oil',        label: 'Oil (STOIIP)', column: 'STOIIP' },
+  { key: 'gas_in_oil', label: 'Gas in oil',   column: 'GIIP (in oil)' },
+  { key: 'free_gas',   label: 'Free Gas',     column: 'GIIP (in gas)' },
+  { key: 'gas',        label: 'Gas (GIIP)',   column: 'GIIP' },
+  { key: 'oe',         label: 'OE',           column: null },
 ];
+
+// Resolve the display unit for a metric, falling back sensibly when a
+// decomposed-gas column lacks its own unit string.
+function metricUnit(metric, sample) {
+  const u = sample?.units || {};
+  if (metric.key === 'oe') return u.STOIIP || '';
+  if (metric.key === 'gas_in_oil' || metric.key === 'free_gas') {
+    return u[metric.column] || u.GIIP || '';
+  }
+  return u[metric.column] || '';
+}
 const DEFAULT_WEIGHTS = [0.30, 0.40, 0.30];
 const DEFAULT_RUNS = 1000;
 const DEFAULT_BINS = 60;
@@ -39,7 +52,7 @@ const MAX_BINS = 250;
 let containerEl = null;
 let activeMetricKey = 'oil';
 let pendingConfig = null; // edited but not yet simulated
-let stackedExport = false; // when true, SVG/PNG export composes oil+gas+OE
+let stackedExport = false; // when true, SVG/PNG export composes all metrics stacked
 
 export function init() {
   containerEl = document.getElementById('distribution-container');
@@ -204,6 +217,14 @@ function buildEmpiricalSim(caseName, caseData) {
   const runs = caseData.runs;
   const stoiip = runs.map((r) => parseFloat(r.totals?.STOIIP) || 0);
   const gas    = runs.map((r) => parseFloat(r.totals?.GIIP) || 0);
+  // Gas components: read the in-oil / in-gas splits when present. Free gas
+  // falls back to total GIIP (and gas-in-oil to 0) for legacy data that lacks
+  // the decomposed columns, so the two always sum back to total gas.
+  const gasInOil = runs.map((r) => parseFloat(r.totals?.['GIIP (in oil)']) || 0);
+  const freeGas  = runs.map((r, i) => {
+    const v = parseFloat(r.totals?.['GIIP (in gas)']);
+    return Number.isFinite(v) ? v : gas[i];
+  });
   const oe     = stoiip.map((s, i) => s + gas[i]);
   const binCount = DEFAULT_BINS;
 
@@ -214,9 +235,11 @@ function buildEmpiricalSim(caseName, caseData) {
     runMs: 0,
     config: { runs: runs.length, bins: binCount, weights: {}, slotMults: {}, slotMeta: [] },
     results: {
-      oil: summarize(Float64Array.from(stoiip), binCount),
-      gas: summarize(Float64Array.from(gas),    binCount),
-      oe:  summarize(Float64Array.from(oe),     binCount),
+      oil:        summarize(Float64Array.from(stoiip),   binCount),
+      gas_in_oil: summarize(Float64Array.from(gasInOil), binCount),
+      free_gas:   summarize(Float64Array.from(freeGas),  binCount),
+      gas:        summarize(Float64Array.from(gas),      binCount),
+      oe:         summarize(Float64Array.from(oe),       binCount),
     },
   };
 }
@@ -278,6 +301,13 @@ function zoneVectors(refCase, filter, field) {
     const hg   = parseFloat(row['HCPV gas'])    || 0;
     const st   = parseFloat(row['STOIIP'])      || 0;
     const gi   = parseFloat(row['GIIP'])        || 0;
+    // Decomposed gas: free gas lives in the gas phase (HCPV gas), solution gas
+    // in the oil phase (HCPV oil). Fall back to total GIIP-as-free-gas when the
+    // split columns are absent, so free + in-oil always reproduce total GIIP.
+    const giGasRaw = parseFloat(row['GIIP (in gas)']);
+    const giOilRaw = parseFloat(row['GIIP (in oil)']);
+    const giGas = Number.isFinite(giGasRaw) ? giGasRaw : gi;
+    const giOil = Number.isFinite(giOilRaw) ? giOilRaw : 0;
     out.push({
       GRV:  bulk,
       NTG:  bulk > 0 ? net / bulk : 0,
@@ -285,7 +315,8 @@ function zoneVectors(refCase, filter, field) {
       So:   pore > 0 ? ho / pore : 0,
       Sg:   pore > 0 ? hg / pore : 0,
       Bo:   ho   > 0 ? st / ho : 0,
-      Bg:   hg   > 0 ? gi / hg : 0,
+      BgFree: hg > 0 ? giGas / hg : 0, // free-gas formation factor (gas phase)
+      RsOil:  ho > 0 ? giOil / ho : 0, // solution gas per unit HCPV oil (oil phase)
     });
   }
   return out;
@@ -444,9 +475,11 @@ function runMonteCarlo(refCase, slots, cfg, filter, field) {
     return [w[0], w[0] + w[1]]; // index 0 = low, 1 = ref, 2 = high
   });
 
-  const oilArr = new Float64Array(N);
-  const gasArr = new Float64Array(N);
-  const oeArr  = new Float64Array(N);
+  const oilArr      = new Float64Array(N);
+  const gasInOilArr = new Float64Array(N);
+  const freeGasArr  = new Float64Array(N);
+  const gasArr      = new Float64Array(N);
+  const oeArr       = new Float64Array(N);
 
   // Working multiplier vector (reused every trial). Univariate: each slot only
   // touches its dominant fundamental — multiple slots with the same dominant
@@ -467,8 +500,11 @@ function runMonteCarlo(refCase, slots, cfg, filter, field) {
       m[slots[i].fund] *= pick;
     }
 
-    // Apply per-zone
-    let oil = 0, gas = 0;
+    // Apply per-zone. Oil and free gas respond to their phase's FVF multiplier
+    // (1/Bo, 1/Bg). Solution gas (gas in oil) tracks the oil-in-place drivers
+    // but holds its gas-oil ratio fixed, so it scales with So but not 1/Bg.
+    // Total gas = free gas + gas in oil.
+    let oil = 0, freeGas = 0, gasInOil = 0;
     for (let z = 0; z < zones.length; z++) {
       const zv = zones[z];
       const grv = zv.GRV * m.GRV;
@@ -476,20 +512,27 @@ function runMonteCarlo(refCase, slots, cfg, filter, field) {
       const por = zv.Por * m.Por;
       const so  = zv.So  * m.So;
       const sg  = zv.Sg  * m.Sg;
-      const bo  = zv.Bo  * m['1/Bo'];
-      const bg  = zv.Bg  * m['1/Bg'];
-      oil += grv * ntg * por * so * bo;
-      gas += grv * ntg * por * sg * bg;
+      const bo  = zv.Bo     * m['1/Bo'];
+      const bgFree = zv.BgFree * m['1/Bg'];
+      const oilVol = grv * ntg * por * so;
+      oil      += oilVol * bo;
+      freeGas  += grv * ntg * por * sg * bgFree;
+      gasInOil += oilVol * zv.RsOil;
     }
-    oilArr[t] = oil;
-    gasArr[t] = gas;
-    oeArr[t]  = oil + gas;
+    const gas = freeGas + gasInOil;
+    oilArr[t]      = oil;
+    gasInOilArr[t] = gasInOil;
+    freeGasArr[t]  = freeGas;
+    gasArr[t]      = gas;
+    oeArr[t]       = oil + gas;
   }
 
   return {
-    oil: summarize(oilArr, binCount),
-    gas: summarize(gasArr, binCount),
-    oe:  summarize(oeArr,  binCount),
+    oil:        summarize(oilArr,      binCount),
+    gas_in_oil: summarize(gasInOilArr, binCount),
+    free_gas:   summarize(freeGasArr,  binCount),
+    gas:        summarize(gasArr,      binCount),
+    oe:         summarize(oeArr,       binCount),
   };
 }
 
@@ -781,9 +824,7 @@ function buildPlot(sim, field, stale = false) {
 
   const cases = getCasesForScenario(field, sim.scenario);
   const sample = Object.values(cases).find((c) => c?.units);
-  const unit = metric.key === 'oe'
-    ? (sample?.units?.STOIIP || '')
-    : (sample?.units?.[metric.column] || '');
+  const unit = metricUnit(metric, sample);
 
   // Title, subtitle, and `n=…` are drawn INSIDE the SVG so they're included
   // in SVG/PNG exports. Runtime info (runs/ms/ref) is kept OUTSIDE the SVG
@@ -1057,10 +1098,10 @@ function buildMetricSelector() {
 function buildExportButtons() {
   const wrap = el('div', { class: 'flex items-center gap-3' });
 
-  // "Stack" toggle — when on, exports compose oil/gas/OE plots vertically
+  // "Stack" toggle — when on, exports compose every metric plot vertically
   const stackLabel = el('label', {
     class: 'inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 cursor-pointer transition-colors',
-    title: 'Export all three fluids (oil / gas / OE) stacked vertically into one image',
+    title: 'Export all metrics (oil / gas in oil / free gas / gas / OE) stacked vertically into one image',
   });
   const stackInput = el('input', {
     type: 'checkbox',
@@ -1108,7 +1149,7 @@ function getCurrentSvgString() {
   return new XMLSerializer().serializeToString(clone);
 }
 
-// Compose oil → gas → OE plots into a single tall SVG. Used by Stack export.
+// Compose every metric's plot into a single tall SVG. Used by Stack export.
 function buildStackedSvg() {
   const field = getActiveField();
   if (!field) return null;
@@ -1117,16 +1158,11 @@ function buildStackedSvg() {
   const cases = getCasesForScenario(field, sim.scenario);
   const sample = Object.values(cases).find((c) => c?.units);
 
-  const order = ['oil', 'gas', 'oe'];
   const panels = [];
-  for (const key of order) {
-    const metric = METRICS.find((m) => m.key === key);
-    const r = sim.results[key];
+  for (const metric of METRICS) {
+    const r = sim.results[metric.key];
     if (!r || !Array.isArray(r.bins)) continue;
-    const unit = metric.key === 'oe'
-      ? (sample?.units?.STOIIP || '')
-      : (sample?.units?.[metric.column] || '');
-    panels.push(drawDistribution(r, unit, metric, sim, field));
+    panels.push(drawDistribution(r, metricUnit(metric, sample), metric, sim, field));
   }
   if (panels.length === 0) return null;
 
