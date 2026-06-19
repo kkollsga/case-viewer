@@ -342,46 +342,26 @@ function buildSlots(cases, baseName, filter, field) {
     groups.get(param).push({ name, agg, multVec: multiplierVector(refAgg, agg) });
   }
 
-  // For each label: identify the DOMINANT fundamental (largest VOLUME-WEIGHTED
-  // |log mult| averaged across cases for the slot), then pick low/high by that
-  // fundamental's value. Univariate sampling: only the dominant fundamental moves
-  // when this slot is sampled. Other components are reported as "drift" but
-  // ignored by the MC.
-  //
-  // Volume weighting matters: GRV/NTG/Por scale BOTH phases, So & 1/Bo scale oil
-  // only, Sg & 1/Bg scale gas only. Scoring by raw |log mult| lets a numerically
-  // tiny fundamental (e.g. Sg in an oil field, where a small absolute wobble is a
-  // large relative change) hijack the slot — mislabeling a porosity case as a gas
-  // mover. Weighting each fundamental by the share of total volume it drives keeps
-  // the dominant fundamental tied to the actual volumetric effect.
-  const refOE = (refAgg.STOIIP || 0) + (refAgg.GIIP || 0);
-  const oilShare = refOE > 0 ? (refAgg.STOIIP || 0) / refOE : 0.5;
-  const gasShare = refOE > 0 ? (refAgg.GIIP   || 0) / refOE : 0.5;
-  const volWeight = {
-    GRV: 1, NTG: 1, Por: 1,
-    So: oilShare, '1/Bo': oilShare,
-    Sg: gasShare, '1/Bg': gasShare,
-  };
-
+  // For each label: identify the DOMINANT fundamental (largest |log mult| averaged
+  // across cases for the slot), then pick low/high by that fundamental's value.
+  // Univariate sampling: only the dominant fundamental moves when this slot is sampled.
+  // Other components are reported as "drift" but ignored by the MC.
   const slots = [];
   for (const [label, entries] of groups.entries()) {
     if (entries.length === 0) continue;
 
-    // Score each fundamental: volume-weighted average |log(multVec[k])|
+    // Score each fundamental: average |log(multVec[k])| across cases for this label
     const scores = {};
     for (const k of FUNDAMENTALS) {
       let s = 0;
       for (const e of entries) s += Math.abs(Math.log(e.multVec[k] || 1));
-      scores[k] = (s / entries.length) * (volWeight[k] ?? 1);
+      scores[k] = s / entries.length;
     }
     let fund = FUNDAMENTALS[0];
     for (const k of FUNDAMENTALS) if (scores[k] > scores[fund]) fund = k;
     if (scores[fund] < 1e-6) continue; // Slot has no detectable impact at all
 
-    // Sort cases by their dominant-fund multiplier; take the extremes as the
-    // low/high endpoints. Both extremes are always kept — previously a case was
-    // dropped when both fell on the same side of 1.0 (e.g. the porosity low case
-    // vanished whenever the dominant fundamental was mis-detected).
+    // Sort cases by their dominant-fund multiplier
     const sorted = entries.slice().sort((a, b) => a.multVec[fund] - b.multVec[fund]);
     let lowEntry = null, highEntry = null;
     if (sorted.length === 1) {
@@ -390,9 +370,9 @@ function buildSlots(cases, baseName, filter, field) {
       else if (only.multVec[fund] > 1) highEntry = only;
       else continue;
     } else {
-      lowEntry  = sorted[0];
-      highEntry = sorted[sorted.length - 1];
-      if (lowEntry === highEntry) continue;
+      lowEntry  = sorted[0].multVec[fund]                  < 1 ? sorted[0]                  : null;
+      highEntry = sorted[sorted.length - 1].multVec[fund]  > 1 ? sorted[sorted.length - 1]  : null;
+      if (!lowEntry && !highEntry) continue;
     }
 
     slots.push({
